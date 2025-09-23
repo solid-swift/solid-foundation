@@ -299,13 +299,13 @@ public struct IDNHostname {
       return prevScalar?.value == 0x6C && nextScalar?.value == 0x6C    // 'l' is U+006C
     case "\u{0375}":    // GREEK LOWER NUMERAL SIGN
       // Must be followed by Greek letters
-      guard let nextScalar = nextScalar else { return false }
+      guard let nextScalar else { return false }
       // Check if the character is a Greek letter (uppercase or lowercase)
       return (nextScalar.value >= 0x0391 && nextScalar.value <= 0x03A9)    // Uppercase Greek
         || (nextScalar.value >= 0x03B1 && nextScalar.value <= 0x03C9)    // Lowercase Greek
     case "\u{05F3}", "\u{05F4}":    // HEBREW PUNCTUATION GERESH/GERSHAYIM
       // Must be preceded by Hebrew letters
-      guard let prevScalar = prevScalar else { return false }
+      guard let prevScalar else { return false }
       // Check if the character is in the Hebrew script range and is a letter
       return (prevScalar.value >= 0x0590 && prevScalar.value <= 0x05FF)
         && prevScalar.properties.generalCategory == .otherLetter
@@ -323,17 +323,17 @@ public struct IDNHostname {
         }
     case "\u{309B}", "\u{309C}":    // KATAKANA-HIRAGANA VOICED/SEMI-VOICED SOUND MARK
       // Must be preceded by KATAKANA or HIRAGANA
-      guard let prevScalar = prevScalar else { return false }
+      guard let prevScalar else { return false }
       // Check if the character is in the KATAKANA or HIRAGANA range
       return (prevScalar.value >= 0x30A0 && prevScalar.value <= 0x30FF)    // KATAKANA
         || (prevScalar.value >= 0x3040 && prevScalar.value <= 0x309F)    // HIRAGANA
     case "\u{200D}":    // ZERO WIDTH JOINER
       // Must be preceded by Virama
-      guard let prevScalar = prevScalar else { return false }
+      guard let prevScalar else { return false }
       return prevScalar.properties.canonicalCombiningClass.rawValue == 9    // Virama = 9
     case "\u{200C}":    // ZERO WIDTH NON-JOINER
       // Must be preceded by Virama OR be in a cursive script context
-      guard let prevScalar = prevScalar else { return false }
+      guard let prevScalar else { return false }
       if prevScalar.properties.canonicalCombiningClass.rawValue == 9 {    // Virama = 9
         return true
       }

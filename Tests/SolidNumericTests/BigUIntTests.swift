@@ -746,7 +746,7 @@ struct BigUIntTests {
     let decoded = BigUInt(encoded: encoded)
     #expect(decoded == number)
 
-    if let inputBytes = inputBytes {
+    if let inputBytes {
       let decoded2 = BigUInt(encoded: inputBytes)
       #expect(decoded2 == number)
     }

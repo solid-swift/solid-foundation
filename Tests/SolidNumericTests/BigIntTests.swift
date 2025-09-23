@@ -868,7 +868,7 @@ struct BigIntTests {
     let decoded = BigInt(encoded: encoded)
     #expect(decoded == number)
 
-    if let inputBytes = inputBytes {
+    if let inputBytes {
       let decoded2 = BigInt(encoded: inputBytes)
       #expect(decoded2 == number)
     }

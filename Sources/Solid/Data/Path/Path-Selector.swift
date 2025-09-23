@@ -96,7 +96,7 @@ extension Path.Selector: CustomStringConvertible {
   public var description: String {
     switch self {
     case .name(let name, quote: let quote):
-      return if let quote = quote {
+      return if let quote {
         "\(String(quote))\(name.escaped(quote))\(String(quote))"
       } else {
         name

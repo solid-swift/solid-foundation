@@ -47,7 +47,7 @@ final class IPv6AddressTests {
   func verifyGroupValues() async throws {
     let address = IPv6Address.parse(string: "2001:0db8:85a3:0000:0000:8a2e:0370:7334")
     #expect(address != nil)
-    if let address = address {
+    if let address {
       #expect(address.groups[0] == 0x2001)
       #expect(address.groups[1] == 0x0db8)
       #expect(address.groups[2] == 0x85a3)
@@ -63,7 +63,7 @@ final class IPv6AddressTests {
   func verifyCompressedAddressExpansion() async throws {
     let address = IPv6Address.parse(string: "2001:db8::8a2e:370:7334")
     #expect(address != nil)
-    if let address = address {
+    if let address {
       #expect(address.groups[0] == 0x2001)
       #expect(address.groups[1] == 0x0db8)
       #expect(address.groups[2] == 0x0000)
@@ -79,7 +79,7 @@ final class IPv6AddressTests {
   func verifyEmbeddedIPv4Conversion() async throws {
     let address = IPv6Address.parse(string: "::ffff:192.168.1.1")
     #expect(address != nil)
-    if let address = address {
+    if let address {
       #expect(address.groups[0] == 0x0000)
       #expect(address.groups[1] == 0x0000)
       #expect(address.groups[2] == 0x0000)
@@ -135,7 +135,7 @@ final class IPv6AddressTests {
     // Verify loopback address
     let loopback = IPv6Address.parse(string: "::1")
     #expect(loopback != nil)
-    if let loopback = loopback {
+    if let loopback {
       #expect(loopback.groups[0] == 0x0000)
       #expect(loopback.groups[1] == 0x0000)
       #expect(loopback.groups[2] == 0x0000)
@@ -149,7 +149,7 @@ final class IPv6AddressTests {
     // Verify unspecified address
     let unspecified = IPv6Address.parse(string: "::")
     #expect(unspecified != nil)
-    if let unspecified = unspecified {
+    if let unspecified {
       for i in 0..<8 {
         #expect(unspecified.groups[i] == 0x0000)
       }

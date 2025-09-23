@@ -338,7 +338,7 @@ struct BigDecimalTests {
   )
   func integerProperty(_ value: String, _ expected: Int?) throws {
     let num = try #require(BigDecimal(value), "Failed to create BigDecimal from string: \(value)")
-    if let expected = expected {
+    if let expected {
       let integer = try #require(num.integer, "Expected integer value for: \(value)")
       #expect(integer == expected)
     } else {
@@ -1402,7 +1402,7 @@ struct BigDecimalTests {
     #expect(Int(exactly: num) == expected)
 
     // Test Int(_:)
-    if let expected = expected {
+    if let expected {
       #expect(Int(num) == expected)
     }
   }
@@ -1507,7 +1507,7 @@ struct BigDecimalTests {
     ] as [(BigDecimal, Int?)]
   )
   func bigIntAccessor(_ value: BigDecimal, _ expected: Int?) throws {
-    if let expected = expected {
+    if let expected {
       let bigInt = try #require(value.integer, "Failed to get integer from value: \(value)")
       #expect(bigInt == expected)
     } else {

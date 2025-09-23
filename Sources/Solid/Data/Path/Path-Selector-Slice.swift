@@ -31,14 +31,14 @@ extension Path.Selector.Slice: CustomStringConvertible {
   ///
   public var description: String {
     var desc = ""
-    if let start = start {
+    if let start {
       desc += "\(start)"
     }
     desc += ":"
-    if let end = end {
+    if let end {
       desc += "\(end)"
     }
-    if let step = step {
+    if let step {
       desc += ":\(step)"
     }
     return desc

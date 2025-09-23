@@ -96,7 +96,7 @@ extension ComponentSet: MutableComponentContainer {
   public subscript<K>(_ kind: K) -> K.Value? where K: ComponentKind {
     get { valueIfPresent(for: kind) }
     set {
-      if let newValue = newValue {
+      if let newValue {
         setValue(newValue, for: kind)
       } else {
         _ = removeValue(for: kind)
