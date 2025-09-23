@@ -13,6 +13,7 @@ let package = Package(
   ],
   products: [
     .library(name: "Solid", targets: ["Solid"]),
+    .library(name: "SolidAsync", targets: ["SolidAsync"]),
     .library(name: "SolidCore", targets: ["SolidCore"]),
     .library(name: "SolidIO", targets: ["SolidCore"]),
     .library(name: "SolidNumeric", targets: ["SolidNumeric"]),
@@ -27,17 +28,18 @@ let package = Package(
   dependencies: [
     .package(url: "https://github.com/apple/swift-algorithms.git", .upToNextMinor(from: "1.2.0")),
     .package(url: "https://github.com/apple/swift-collections.git", .upToNextMinor(from: "1.2.1")),
+    .package(url: "https://github.com/apple/swift-crypto.git", .upToNextMajor(from: "3.13.2")),
+    .package(url: "https://github.com/apple/swift-log.git", .upToNextMajor(from: "1.6.4")),
     .package(url: "https://github.com/apple/swift-argument-parser.git", from: "1.5.0"),
     .package(url: "https://github.com/StarLard/SwiftFormatPlugins.git", from: "1.1.1"),
-    .package(url: "https://github.com/SwiftScream/URITemplate.git", from: "5.0.1"),
+    .package(url: "https://github.com/apple/swift-testing.git", .upToNextMajor(from: "6.1.3")),
     .package(url: "https://github.com/ordo-one/package-benchmark", .upToNextMajor(from: "1.0.0")),
-    .package(url: "https://github.com/apple/swift-log.git", .upToNextMajor(from: "1.6.4")),
-    .package(url: "https://github.com/apple/swift-crypto.git", .upToNextMajor(from: "3.13.2")),
   ],
   targets: [
     .target(
       name: "Solid",
       dependencies: [
+        "SolidAsync",
         "SolidCore",
         "SolidNumeric",
         "SolidURI",
@@ -49,6 +51,16 @@ let package = Package(
         "SolidCBOR",
       ],
       path: "Sources/Solid/Root",
+    ),
+    .target(
+      name: "SolidAsync",
+      dependencies: [
+        "SolidCore",
+      ],
+      path: "Sources/Solid/Async",
+      plugins: [
+        .plugin(name: "Lint", package: "swiftformatplugins")
+      ]
     ),
     .target(
       name: "SolidCore",
@@ -77,7 +89,7 @@ let package = Package(
     .target(
       name: "SolidNet",
       dependencies: [
-        "SolidCore",
+        "SolidCore"
       ],
       path: "Sources/Solid/Net",
       plugins: [
@@ -89,7 +101,6 @@ let package = Package(
       dependencies: [
         "SolidCore",
         "SolidNet",
-        .product(name: "ScreamURITemplate", package: "uritemplate"),
       ],
       path: "Sources/Solid/URI",
       plugins: [
@@ -110,7 +121,8 @@ let package = Package(
     .target(
       name: "SolidIO",
       dependencies: [
-        "SolidCore"
+        "SolidCore",
+        "SolidAsync",
       ],
       path: "Sources/Solid/IO",
       plugins: [
@@ -179,21 +191,33 @@ let package = Package(
     ),
     .testTarget(
       name: "SolidDataTests",
-      dependencies: ["SolidTesting", "SolidData"],
+      dependencies: [
+        "SolidData",
+        "SolidTesting",
+        .product(name: "Testing", package: "swift-testing"),
+      ],
       plugins: [
         .plugin(name: "Lint", package: "swiftformatplugins")
       ]
     ),
     .testTarget(
       name: "SolidIOTests",
-      dependencies: ["SolidTesting", "SolidIO"],
+      dependencies: [
+        "SolidIO",
+        "SolidTesting",
+        .product(name: "Testing", package: "swift-testing"),
+      ],
       plugins: [
         .plugin(name: "Lint", package: "swiftformatplugins")
       ]
     ),
     .testTarget(
       name: "SolidNumericTests",
-      dependencies: ["SolidTesting", "SolidNumeric"],
+      dependencies: [
+        "SolidNumeric",
+        "SolidTesting",
+        .product(name: "Testing", package: "swift-testing"),
+      ],
       resources: [
         .copy("Resources")
       ],
@@ -203,7 +227,11 @@ let package = Package(
     ),
     .testTarget(
       name: "SolidSchemaTests",
-      dependencies: ["SolidTesting", "SolidSchema"],
+      dependencies: [
+        "SolidSchema",
+        "SolidTesting",
+        .product(name: "Testing", package: "swift-testing"),
+      ],
       resources: [
         .copy("Resources")
       ],
@@ -213,7 +241,11 @@ let package = Package(
     ),
     .testTarget(
       name: "SolidTempoTests",
-      dependencies: ["SolidTesting", "SolidTempo"],
+      dependencies: [
+        "SolidTempo",
+        "SolidTesting",
+        .product(name: "Testing", package: "swift-testing"),
+      ],
       resources: [
         .copy("Resources")
       ],
@@ -223,7 +255,11 @@ let package = Package(
     ),
     .testTarget(
       name: "SolidURITests",
-      dependencies: ["SolidTesting", "SolidURI"],
+      dependencies: [
+        "SolidURI",
+        "SolidTesting",
+        .product(name: "Testing", package: "swift-testing"),
+      ],
       plugins: [
         .plugin(name: "Lint", package: "swiftformatplugins")
       ]
@@ -267,6 +303,6 @@ if benchmarkEnbled {
       plugins: [
         .plugin(name: "BenchmarkPlugin", package: "package-benchmark")
       ]
-    )
+    ),
   ]
 }

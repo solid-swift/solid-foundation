@@ -44,7 +44,7 @@ extension URI.QueryItem {
   ///   - value: The value of the query item
   /// - Returns: A query item if the name is not nil, nil otherwise
   public static func from(name: String?, value: String?) -> Self? {
-    guard let name = name else {
+    guard let name else {
       return nil
     }
     return Self(name: name, value: value)
@@ -129,7 +129,7 @@ extension URI.QueryItem {
   /// - No invalid percent encoding sequences
   public var isPercentEncoded: Bool {
     guard name.rangeOfCharacter(from: .urlQueryAllowed.inverted) == nil else { return false }
-    if let value = value {
+    if let value {
       guard value.rangeOfCharacter(from: .urlQueryAllowed.inverted) == nil else { return false }
     }
     return true

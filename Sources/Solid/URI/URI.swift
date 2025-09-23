@@ -285,7 +285,7 @@ public struct URI {
       } else {
         ""
       }
-    guard let scheme = scheme else {
+    guard let scheme else {
       return "\(authority)\(path)\(query)\(fragment)"
     }
     return "\(scheme):\(authority)\(path)\(query)\(fragment)"
@@ -348,10 +348,10 @@ public struct URI {
   /// - No empty path segments
   /// - No trailing slash unless it's the root path
   public var isNormalized: Bool {
-    if let scheme = scheme, scheme != scheme.lowercased() {
+    if let scheme, scheme != scheme.lowercased() {
       return false
     }
-    if let authority = authority, !authority.isNormalized {
+    if let authority, !authority.isNormalized {
       return false
     }
     return path.isNormalized
@@ -364,13 +364,13 @@ public struct URI {
   /// - All non-ASCII characters percent encoded
   /// - No invalid percent encoding sequences
   public var isPercentEncoded: Bool {
-    if let authority = authority, !authority.isPercentEncoded {
+    if let authority, !authority.isPercentEncoded {
       return false
     }
-    if let query = query, !query.allSatisfy({ $0.isPercentEncoded }) {
+    if let query, !query.allSatisfy({ $0.isPercentEncoded }) {
       return false
     }
-    if let fragment = fragment {
+    if let fragment {
       guard fragment.rangeOfCharacter(from: .urlFragmentAllowed.inverted) == nil else {
         return false
       }

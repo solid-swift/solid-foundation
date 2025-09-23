@@ -25,6 +25,25 @@ extension URI {
 
   struct Parser {
 
+    struct ParserError: Sendable, Hashable {
+      enum Code: String, Sendable {
+        case invalidScheme
+        case invalidAuthority
+        case invalidUserInfo
+        case invalidHost
+        case invalidIPv6
+        case invalidPort
+        case invalidPath
+        case invalidQuery
+        case invalidFragment
+        case badPercentTriplet
+        case requirementViolation
+      }
+      let code: Code
+      let offset: Int?
+      let message: String
+    }
+
     enum Component: Hashable {
       enum PathToken {
         case slash
@@ -66,6 +85,8 @@ extension URI {
     var states: [State] = []
     var startIndex: String.Index
     var currentIndex: String.Index
+
+    var error: ParserError?
 
     init(string: String, requirements: Set<Requirement>) {
       self.input = string
@@ -349,9 +370,19 @@ extension URI {
       switch state {
       case .scheme:
         guard allowedKinds.contains(.absolute) else {
+          error = .init(
+            code: .requirementViolation,
+            offset: input.distance(from: input.startIndex, to: startIndex),
+            message: "Scheme not allowed for relative reference"
+          )
           return nil
         }
         if requiresNormalized && !token.allSatisfy({ $0.isLowercase || !$0.isLetter }) {
+          error = .init(
+            code: .invalidScheme,
+            offset: input.distance(from: input.startIndex, to: startIndex),
+            message: "Scheme must be lowercase when normalized"
+          )
           return nil
         }
         return .scheme(String(token))
@@ -369,12 +400,22 @@ extension URI {
             let decodedUser = decodePercentEncoded(tokenParts[0]),
             let decodedPassword = decodePercentEncoded(tokenParts[1])
           else {
+            error = .init(
+              code: .badPercentTriplet,
+              offset: input.distance(from: input.startIndex, to: startIndex),
+              message: "Invalid percent-encoding in user info"
+            )
             return nil
           }
           user = decodedUser
           password = decodedPassword
         } else {
           guard let decodedUser = decodePercentEncoded(token) else {
+            error = .init(
+              code: .badPercentTriplet,
+              offset: input.distance(from: input.startIndex, to: startIndex),
+              message: "Invalid percent-encoding in user info"
+            )
             return nil
           }
           user = decodedUser
@@ -383,10 +424,20 @@ extension URI {
         return .userInfo(user: user, password: password)
       case .hostPort:
         if requiresNormalized && !token.allSatisfy({ $0.isLowercase || !$0.isLetter }) {
+          error = .init(
+            code: .invalidHost,
+            offset: input.distance(from: input.startIndex, to: startIndex),
+            message: "Host must be lowercase when normalized"
+          )
           return nil
         }
         guard token.first != "[" else {
           guard let hostEnd = token.lastIndex(of: "]") else {
+            error = .init(
+              code: .invalidIPv6,
+              offset: input.distance(from: input.startIndex, to: startIndex),
+              message: "Unclosed IPv6 host"
+            )
             return nil
           }
           let portToken = token[token.index(after: hostEnd)...]
@@ -398,6 +449,11 @@ extension URI {
           }
           let hostToken = token[token.startIndex...hostEnd]
           guard IPv6Address.parse(string: String(hostToken.dropFirst().dropLast())) != nil else {
+            error = .init(
+              code: .invalidIPv6,
+              offset: input.distance(from: input.startIndex, to: startIndex),
+              message: "Invalid IPv6 address"
+            )
             return nil
           }
           return .hostPort(host: String(hostToken), port: port)
@@ -412,8 +468,13 @@ extension URI {
           portToken = nil
         }
         let port: Int?
-        if let portToken = portToken {
+        if let portToken {
           guard let decodedPort = Int(portToken) else {
+            error = .init(
+              code: .invalidPort,
+              offset: input.distance(from: input.startIndex, to: startIndex),
+              message: "Invalid port"
+            )
             return nil
           }
           port = decodedPort
@@ -422,11 +483,21 @@ extension URI {
         }
         guard requiredRFC == .uri else {
           guard let host = IDNHostname.parse(string: String(hostToken)) else {
+            error = .init(
+              code: .invalidHost,
+              offset: input.distance(from: input.startIndex, to: startIndex),
+              message: "Invalid IRI host"
+            )
             return nil
           }
           return .hostPort(host: host.value, port: port)
         }
         guard let host = Hostname.parse(string: String(hostToken)) else {
+          error = .init(
+            code: .invalidHost,
+            offset: input.distance(from: input.startIndex, to: startIndex),
+            message: "Invalid host"
+          )
           return nil
         }
         return .hostPort(host: host.value, port: port)
@@ -445,6 +516,11 @@ extension URI {
           return nil
         }
         guard !requiresNormalized || ((token != "." && token != "..") || isFirstPath) else {
+          error = .init(
+            code: .invalidPath,
+            offset: input.distance(from: input.startIndex, to: startIndex),
+            message: "Disallowed relative segment in normalized path"
+          )
           return nil
         }
         if token == "." {
@@ -455,12 +531,22 @@ extension URI {
           return .pathToken(.slash)
         } else {
           guard let decodedPath = decodePercentEncoded(token) else {
+            error = .init(
+              code: .badPercentTriplet,
+              offset: input.distance(from: input.startIndex, to: startIndex),
+              message: "Invalid percent-encoding in path"
+            )
             return nil
           }
           return .pathItem(decodedPath)
         }
       case .queryKey:
         guard let decodedKey = decodePercentEncoded(token) else {
+          error = .init(
+            code: .badPercentTriplet,
+            offset: input.distance(from: input.startIndex, to: startIndex),
+            message: "Invalid percent-encoding in query key"
+          )
           return nil
         }
         return .queryKey(decodedKey)
@@ -469,12 +555,22 @@ extension URI {
           case .queryKey(let key) = components.last,
           let decodedValue = decodePercentEncoded(token)
         else {
+          error = .init(
+            code: .badPercentTriplet,
+            offset: input.distance(from: input.startIndex, to: startIndex),
+            message: "Invalid percent-encoding in query value"
+          )
           return nil
         }
         components.removeLast()
         return .queryItem(key: key, value: decodedValue)
       case .fragment:
         guard let decodedFragment = decodePercentEncoded(token) else {
+          error = .init(
+            code: .badPercentTriplet,
+            offset: input.distance(from: input.startIndex, to: startIndex),
+            message: "Invalid percent-encoding in fragment"
+          )
           return nil
         }
         return .fragment(decodedFragment)
@@ -511,12 +607,13 @@ extension URI {
       return true
     }
 
-    func build(components: [Component]) -> URI? {
+    mutating func build(components: [Component]) -> URI? {
 
       // Final requirement checks
 
       // Absolute URIs cannot end at authority separator
       if components.count == 2 && components.last == .authority {
+        error = .init(code: .invalidAuthority, offset: nil, message: "Ended at authority marker")
         return nil
       }
 
@@ -527,6 +624,7 @@ extension URI {
           return pathItem
         }
         if pathItemComponents.dropFirst().dropLast().contains("") == true {
+          error = .init(code: .invalidPath, offset: nil, message: "Empty path segments not allowed in normalized form")
           return nil
         }
       }
@@ -590,12 +688,14 @@ extension URI {
       }
 
       guard fragmentRequirement.isSatisfied(by: fragment) else {
+        error = .init(code: .requirementViolation, offset: nil, message: "Fragment requirement not satisfied")
         return nil
       }
 
-      guard let scheme = scheme else {
+      guard let scheme else {
 
         guard allowedKinds.contains(.relativeReference) else {
+          error = .init(code: .requirementViolation, offset: nil, message: "Expected relative reference")
           return nil
         }
 
@@ -608,6 +708,7 @@ extension URI {
       }
 
       guard allowedKinds.contains(.absolute) else {
+        error = .init(code: .requirementViolation, offset: nil, message: "Expected absolute URI")
         return nil
       }
 

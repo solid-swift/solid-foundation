@@ -342,7 +342,7 @@ extension FormatTypes {
         return false
       }
       do {
-        _ = try URITemplate(string: string)
+        _ = try URI.Template(string)
         return true
       } catch {
         return false

@@ -139,7 +139,7 @@ extension URI.Authority {
   /// Encoded version of the authority.
   public var encoded: String {
     let hostPort = "\(encodedHost)\(port.map { ":\($0)" } ?? "")"
-    guard let userInfo = userInfo else {
+    guard let userInfo else {
       return hostPort
     }
     return "\(userInfo.encoded)@\(hostPort)"
