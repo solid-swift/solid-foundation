@@ -26,14 +26,13 @@ let package = Package(
     .library(name: "SolidCBOR", targets: ["SolidCBOR"]),
   ],
   dependencies: [
-    .package(url: "https://github.com/apple/swift-algorithms.git", .upToNextMinor(from: "1.2.0")),
-    .package(url: "https://github.com/apple/swift-collections.git", .upToNextMinor(from: "1.2.1")),
-    .package(url: "https://github.com/apple/swift-crypto.git", .upToNextMajor(from: "3.13.2")),
-    .package(url: "https://github.com/apple/swift-log.git", .upToNextMajor(from: "1.6.4")),
-    .package(url: "https://github.com/apple/swift-argument-parser.git", from: "1.5.0"),
+    .package(url: "https://github.com/apple/swift-algorithms.git", .upToNextMinor(from: "1.2.1")),
+    .package(url: "https://github.com/apple/swift-collections.git", .upToNextMinor(from: "1.3.0")),
+    .package(url: "https://github.com/apple/swift-crypto.git", .upToNextMajor(from: "4.2.0")),
+    .package(url: "https://github.com/apple/swift-log.git", .upToNextMajor(from: "1.8.0")),
+    .package(url: "https://github.com/apple/swift-argument-parser.git", from: "1.7.0"),
     .package(url: "https://github.com/StarLard/SwiftFormatPlugins.git", from: "1.1.1"),
-    .package(url: "https://github.com/apple/swift-testing.git", .upToNextMajor(from: "6.1.3")),
-    .package(url: "https://github.com/ordo-one/package-benchmark", .upToNextMajor(from: "1.0.0")),
+    .package(url: "https://github.com/ordo-one/package-benchmark", .upToNextMajor(from: "1.29.7")),
   ],
   targets: [
     .target(
@@ -137,9 +136,6 @@ let package = Package(
         "SolidURI",
       ],
       path: "Sources/Solid/Data",
-      exclude: [
-        "Path/Path.g4"
-      ],
       plugins: [
         .plugin(name: "Lint", package: "swiftformatplugins")
       ]
@@ -194,7 +190,6 @@ let package = Package(
       dependencies: [
         "SolidData",
         "SolidTesting",
-        .product(name: "Testing", package: "swift-testing"),
       ],
       plugins: [
         .plugin(name: "Lint", package: "swiftformatplugins")
@@ -205,7 +200,6 @@ let package = Package(
       dependencies: [
         "SolidIO",
         "SolidTesting",
-        .product(name: "Testing", package: "swift-testing"),
       ],
       plugins: [
         .plugin(name: "Lint", package: "swiftformatplugins")
@@ -216,7 +210,6 @@ let package = Package(
       dependencies: [
         "SolidNumeric",
         "SolidTesting",
-        .product(name: "Testing", package: "swift-testing"),
       ],
       resources: [
         .copy("Resources")
@@ -230,7 +223,6 @@ let package = Package(
       dependencies: [
         "SolidSchema",
         "SolidTesting",
-        .product(name: "Testing", package: "swift-testing"),
       ],
       resources: [
         .copy("Resources")
@@ -244,7 +236,6 @@ let package = Package(
       dependencies: [
         "SolidTempo",
         "SolidTesting",
-        .product(name: "Testing", package: "swift-testing"),
       ],
       resources: [
         .copy("Resources")
@@ -258,7 +249,6 @@ let package = Package(
       dependencies: [
         "SolidURI",
         "SolidTesting",
-        .product(name: "Testing", package: "swift-testing"),
       ],
       plugins: [
         .plugin(name: "Lint", package: "swiftformatplugins")

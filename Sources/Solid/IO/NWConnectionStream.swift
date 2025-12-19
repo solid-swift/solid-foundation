@@ -43,5 +43,4 @@ public class NWConnectionStream: Stream, Flushable, @unchecked Sendable {
 
     connection.cancel()
   }
-
 }

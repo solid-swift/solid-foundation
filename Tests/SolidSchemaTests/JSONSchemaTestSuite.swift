@@ -532,16 +532,17 @@ public struct JSONSchemaTestSuite {
       public var description: String { String(rawValue.trimmingPrefix("draft")) }
     }
 
+    private static let draftsDir = "Resources/JSONTestSuite/tests"
+
     public static func load(version: Version) -> Draft {
-      guard let resourceURL = Bundle.module.resourceURL else {
+      guard let draftURL = Bundle.module.url(forResource: "\(draftsDir)/\(version.rawValue)", withExtension: "") else {
         fatalError("No module resource URL found")
       }
-      let draftDir = resourceURL.appending(path: "JSONTestSuite/tests/\(version.rawValue)")
-      guard let reachable = try? draftDir.checkResourceIsReachable(), reachable else {
-        fatalError("Could not locate JSON Schema Test Suite for \(version) at \(draftDir)")
+      guard let reachable = try? draftURL.checkResourceIsReachable(), reachable else {
+        fatalError("Could not locate JSON Schema Test Suite for \(version) at \(draftURL)")
       }
       do {
-        return try Draft(directory: draftDir)
+        return try Draft(directory: draftURL)
       } catch {
         fatalError("Could not load JSON Schema Test Suite: \(error)")
       }
