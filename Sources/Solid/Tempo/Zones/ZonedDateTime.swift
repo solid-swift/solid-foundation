@@ -345,3 +345,11 @@ extension ZonedDateTime {
     return try? Self(dateTime: dateTime, zone: zone, resolving: resolving)
   }
 }
+
+extension ZonedDateTime {
+
+  public static func - (lhs: Self, rhs: Self) -> Duration {
+    return lhs.durationSinceEpoch(at: .utc) - rhs.durationSinceEpoch(at: .utc)
+  }
+
+}

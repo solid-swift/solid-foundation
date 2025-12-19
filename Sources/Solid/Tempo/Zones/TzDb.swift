@@ -139,7 +139,7 @@ public final class TzDb: ZoneRulesLoader {
     do {
       let (zoneInfoUrl, zoneInfoVersion, zoneInfoDataUrls) = try Self.discoverZoneInfo(urls: zoneInfoUrls)
 
-      Self.log.info("Discovered tzdb v\(zoneInfoVersion) at \(zoneInfoUrl) with \(zoneInfoDataUrls.count) zones")
+      Self.log.debug("Discovered tzdb v\(zoneInfoVersion) at \(zoneInfoUrl) with \(zoneInfoDataUrls.count) zones")
 
       self.url = zoneInfoUrl
       self.version = zoneInfoVersion

@@ -622,3 +622,29 @@ extension Duration: Codable {
   }
 
 }
+
+extension Duration {
+
+  /// Order independent different between two ``OffsetDateTime`` values.
+  ///
+  public static func between(_ a: OffsetDateTime, _ b: OffsetDateTime) -> Duration {
+    let ad = a.durationSinceEpoch(at: .utc)
+    let bd = b.durationSinceEpoch(at: .utc)
+    guard ad > bd else {
+      return bd - ad
+    }
+    return ad - bd
+  }
+
+  /// Order independent different between two ``ZonedDateTime`` values.
+  ///
+  public static func between(_ a: ZonedDateTime, _ b: ZonedDateTime) -> Duration {
+    let ad = a.durationSinceEpoch(at: .utc)
+    let bd = b.durationSinceEpoch(at: .utc)
+    guard ad > bd else {
+      return bd - ad
+    }
+    return ad - bd
+  }
+
+}

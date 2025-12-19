@@ -6,19 +6,19 @@ import class Foundation.ProcessInfo
 let package = Package(
   name: "SolidFoundation",
   platforms: [
-    .macOS("15"),
-    .iOS("18"),
-    .tvOS("18"),
-    .watchOS("11"),
+    .macOS("26"),
+    .iOS("26"),
+    .tvOS("26"),
+    .watchOS("26"),
   ],
   products: [
     .library(name: "Solid", targets: ["Solid"]),
-    .library(name: "SolidAsync", targets: ["SolidAsync"]),
     .library(name: "SolidCore", targets: ["SolidCore"]),
     .library(name: "SolidIO", targets: ["SolidCore"]),
     .library(name: "SolidNumeric", targets: ["SolidNumeric"]),
     .library(name: "SolidTempo", targets: ["SolidTempo"]),
     .library(name: "SolidURI", targets: ["SolidURI"]),
+    .library(name: "SolidID", targets: ["SolidID"]),
     .library(name: "SolidData", targets: ["SolidData"]),
     .library(name: "SolidSchema", targets: ["SolidSchema"]),
     .library(name: "SolidJSON", targets: ["SolidJSON"]),
@@ -38,8 +38,8 @@ let package = Package(
     .target(
       name: "Solid",
       dependencies: [
-        "SolidAsync",
         "SolidCore",
+        "SolidID",
         "SolidNumeric",
         "SolidURI",
         "SolidTempo",
@@ -50,16 +50,6 @@ let package = Package(
         "SolidCBOR",
       ],
       path: "Sources/Solid/Root",
-    ),
-    .target(
-      name: "SolidAsync",
-      dependencies: [
-        "SolidCore",
-      ],
-      path: "Sources/Solid/Async",
-      plugins: [
-        .plugin(name: "Lint", package: "swiftformatplugins")
-      ]
     ),
     .target(
       name: "SolidCore",
@@ -107,6 +97,18 @@ let package = Package(
       ]
     ),
     .target(
+      name: "SolidID",
+      dependencies: [
+        "SolidCore",
+        "SolidTempo",
+        "SolidNet",
+      ],
+      path: "Sources/Solid/ID",
+      plugins: [
+        .plugin(name: "Lint", package: "swiftformatplugins")
+      ]
+    ),
+    .target(
       name: "SolidTempo",
       dependencies: [
         "SolidCore",
@@ -121,7 +123,6 @@ let package = Package(
       name: "SolidIO",
       dependencies: [
         "SolidCore",
-        "SolidAsync",
       ],
       path: "Sources/Solid/IO",
       plugins: [
@@ -189,6 +190,16 @@ let package = Package(
       name: "SolidDataTests",
       dependencies: [
         "SolidData",
+        "SolidTesting",
+      ],
+      plugins: [
+        .plugin(name: "Lint", package: "swiftformatplugins")
+      ]
+    ),
+    .testTarget(
+      name: "SolidIDTests",
+      dependencies: [
+        "SolidID",
         "SolidTesting",
       ],
       plugins: [

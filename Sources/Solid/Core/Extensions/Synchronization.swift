@@ -7,6 +7,7 @@
 
 import Synchronization
 
+
 @propertyWrapper
 public struct AtomicReference<T: AnyObject>: ~Copyable {
 
@@ -34,6 +35,7 @@ public struct AtomicReference<T: AnyObject>: ~Copyable {
   }
 
 }
+
 
 @propertyWrapper
 public struct AtomicOptionalReference<T: AnyObject>: ~Copyable {
@@ -67,6 +69,7 @@ public struct AtomicOptionalReference<T: AnyObject>: ~Copyable {
 
 }
 
+
 @propertyWrapper
 public struct AtomicCounter: ~Copyable {
 
@@ -90,6 +93,7 @@ public struct AtomicCounter: ~Copyable {
     storage.add(count, ordering: .acquiringAndReleasing)
   }
 }
+
 
 @propertyWrapper
 public struct AtomicFlag: ~Copyable {

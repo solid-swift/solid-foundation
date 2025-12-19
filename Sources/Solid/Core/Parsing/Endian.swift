@@ -5,6 +5,7 @@
 //  Created by Kevin Wooten on 5/8/25.
 //
 
+
 public protocol Endian: Sendable {
   @inlinable
   static func apply<I>(_ value: I) -> I where I: FixedWidthInteger

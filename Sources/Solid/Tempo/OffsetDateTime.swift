@@ -299,3 +299,11 @@ extension OffsetDateTime {
     return Self(dateTime: LocalDateTime(date: rolloverDate, time: time.time), offset: time.offset)
   }
 }
+
+extension OffsetDateTime {
+
+  public static func - (lhs: Self, rhs: Self) -> Duration {
+    return lhs.durationSinceEpoch(at: .utc) - rhs.durationSinceEpoch(at: .utc)
+  }
+
+}

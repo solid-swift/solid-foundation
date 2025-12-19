@@ -112,6 +112,20 @@ extension Data {
       caseInsensitive: true
     )
 
+    /// Base 32 Crockford encoding.
+    ///
+    /// Base 32 Crockford encoding with the Crockford alphabet and the following options:
+    /// - Padding character: `None`
+    /// - Strict padding: `false`
+    /// - Case insensitive: `true`
+    ///
+    public static let base32Crockford = Self(
+      alphabet: "0123456789ABCDEFGHJKMNPQRSTVWXYZ",
+      padding: nil,
+      strictPadding: false,
+      caseInsensitive: true
+    )
+
     /// Base 16 (hexadecimal) encoding.
     ///
     /// Base 16 encoding with the standard alphabet (`0-9A-F`) and the following options:
