@@ -29,7 +29,7 @@ public struct RandomID<Value: FixedWidthInteger & UnsignedInteger & Sendable>: U
     self.storage = value
   }
 
-  @inlinable public init?<E: UniqueIDStringEncoding>(string: String, encoding: E) where RandomID<Value> == E.ID {
+  @inlinable public init?<E: UniqueIDEncoding>(string: String, encoding: E) where RandomID<Value> == E.ID {
     do {
       self = try encoding.decode(string)
     } catch {
@@ -37,7 +37,7 @@ public struct RandomID<Value: FixedWidthInteger & UnsignedInteger & Sendable>: U
     }
   }
 
-  @inlinable public func encode<E: UniqueIDStringEncoding>(using encoding: E) -> String where RandomID<Value> == E.ID {
+  @inlinable public func encode<E: UniqueIDEncoding>(using encoding: E) -> String where RandomID<Value> == E.ID {
     encoding.encode(self)
   }
 
@@ -48,6 +48,6 @@ public struct RandomID<Value: FixedWidthInteger & UnsignedInteger & Sendable>: U
     }
   }
 
-  @inlinable public var description: String { Base64UniqueIDStringEncoding.instance.encode(self) }
+  @inlinable public var description: String { Base64UniqueIDEncoding.instance.encode(self) }
 
 }

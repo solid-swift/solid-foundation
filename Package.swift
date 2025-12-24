@@ -187,6 +187,16 @@ let package = Package(
       ]
     ),
     .testTarget(
+      name: "SolidCoreTests",
+      dependencies: [
+        "SolidCore",
+        "SolidTesting",
+      ],
+      plugins: [
+        .plugin(name: "Lint", package: "swiftformatplugins")
+      ]
+    ),
+    .testTarget(
       name: "SolidDataTests",
       dependencies: [
         "SolidData",

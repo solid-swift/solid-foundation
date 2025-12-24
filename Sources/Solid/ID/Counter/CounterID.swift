@@ -28,7 +28,7 @@ public struct CounterID<Count: FixedWidthInteger & AtomicRepresentable & Sendabl
     self.storage = value
   }
 
-  @inlinable public init?<E: UniqueIDStringEncoding>(string: String, encoding: E) where CounterID<Count> == E.ID {
+  @inlinable public init?<E: UniqueIDEncoding>(string: String, encoding: E) where CounterID<Count> == E.ID {
     do {
       self = try encoding.decode(string)
     } catch {
@@ -36,7 +36,7 @@ public struct CounterID<Count: FixedWidthInteger & AtomicRepresentable & Sendabl
     }
   }
 
-  @inlinable public func encode<E: UniqueIDStringEncoding>(using encoding: E) -> String where CounterID<Count> == E.ID {
+  @inlinable public func encode<E: UniqueIDEncoding>(using encoding: E) -> String where CounterID<Count> == E.ID {
     encoding.encode(self)
   }
 

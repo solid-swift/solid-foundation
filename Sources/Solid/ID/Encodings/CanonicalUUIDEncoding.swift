@@ -1,5 +1,5 @@
 //
-//  CanonicalUUIDStringEncoding.swift
+//  CanonicalUUIDEncoding.swift
 //  SolidFoundation
 //
 //  Created by Kevin Wooten on 9/23/25.
@@ -7,7 +7,7 @@
 
 
 /// Canonical UUID encoding (8-4-4-4-12 lowercase hex with hyphens) restricted to UUID only.
-public enum CanonicalUUIDStringEncoding: UniqueIDStringEncoding {
+public enum CanonicalUUIDEncoding: UniqueIDEncoding {
   case instance
 
   public typealias ID = UUID
@@ -84,7 +84,7 @@ public enum CanonicalUUIDStringEncoding: UniqueIDStringEncoding {
   }
 }
 
-public extension UniqueIDStringEncoding where Self == CanonicalUUIDStringEncoding {
+public extension UniqueIDEncoding where Self == CanonicalUUIDEncoding {
 
   static var canonical: Self { Self.instance }
 

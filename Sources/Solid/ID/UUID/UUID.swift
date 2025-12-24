@@ -24,7 +24,7 @@ public struct UUID: UniqueID {
     self.storage = try Storage(initializingWith: initializer)
   }
 
-  @inlinable public init?<E: UniqueIDStringEncoding>(string: String, using encoding: E) where E.ID == UUID {
+  @inlinable public init?<E: UniqueIDEncoding>(string: String, using encoding: E) where E.ID == UUID {
     do {
       self = try encoding.decode(string)
     } catch {
@@ -33,16 +33,14 @@ public struct UUID: UniqueID {
   }
 
   public var version: Version {
-    let versionVal = storage[6] >> 4
-    guard let version = Version(rawValue: versionVal) else {
-      return .unknown
+    guard let version = Version(rawValue: storage[6] >> 4) else {
+      return .reserved
     }
     return version
   }
 
   public var variant: Variant {
-    let variantVal = storage[8] >> 4
-    switch variantVal {
+    switch storage[8] >> 4 {
     case 1...7:
       return .ncs
     case 0x8...0xb:
@@ -54,7 +52,7 @@ public struct UUID: UniqueID {
     }
   }
 
-  @inlinable public func encode<E: UniqueIDStringEncoding>(using encoding: E) -> String where E.ID == UUID {
+  @inlinable public func encode<E: UniqueIDEncoding>(using encoding: E) -> String where E.ID == UUID {
     encoding.encode(self)
   }
 
@@ -63,7 +61,7 @@ public struct UUID: UniqueID {
   }
 
   @inlinable public var description: String {
-    CanonicalUUIDStringEncoding.instance.encode(self)
+    CanonicalUUIDEncoding.instance.encode(self)
   }
 
   @inlinable public func hash(into hasher: inout Hasher) {

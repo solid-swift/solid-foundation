@@ -17,7 +17,7 @@ public extension UUID {
     case v6 = 6
     case v7 = 7
     case v8 = 8
-    case unknown = 0xf
+    case reserved = 0xf
   }
 
 }

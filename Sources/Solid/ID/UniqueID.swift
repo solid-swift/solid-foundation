@@ -18,9 +18,9 @@ public protocol UniqueID: Equatable, Hashable, Sendable, CustomStringConvertible
 
   init(initializer: (inout OutputSpan<UInt8>) throws -> Void) throws
 
-  init?<E: UniqueIDStringEncoding>(string: String, encoding: E) where E.ID == Self
+  init?<E: UniqueIDEncoding>(string: String, encoding: E) where E.ID == Self
 
-  func encode<E: UniqueIDStringEncoding>(using encoding: E) -> String where E.ID == Self
+  func encode<E: UniqueIDEncoding>(using encoding: E) -> String where E.ID == Self
 
   func withUnsafeBytes<R>(_ body: (UnsafeBufferPointer<UInt8>) throws -> R) rethrows -> R
 
@@ -28,14 +28,14 @@ public protocol UniqueID: Equatable, Hashable, Sendable, CustomStringConvertible
 
 extension UniqueID {
 
-  @inlinable public init?<E: UniqueIDStringEncoding>(string: String, encoding: E) where E.ID == Self {
+  @inlinable public init?<E: UniqueIDEncoding>(string: String, encoding: E) where E.ID == Self {
     guard let decoded = try? encoding.decode(string) else {
       return nil
     }
     self = decoded
   }
 
-  @inlinable public func encode<E: UniqueIDStringEncoding>(using encoding: E) -> String where E.ID == Self {
+  @inlinable public func encode<E: UniqueIDEncoding>(using encoding: E) -> String where E.ID == Self {
     return encoding.encode(self)
   }
 

@@ -1,5 +1,5 @@
 //
-//  UUIDEncodings.swift
+//  UUIDEncodingTests.swift
 //  SolidFoundation
 //
 //  Created by Kevin Wooten on 12/20/25.
@@ -9,7 +9,7 @@ import Testing
 import SolidID
 
 
-@Suite struct UUIDEncodings {
+@Suite struct UUIDEncodingTests {
 
   @Test func base64Encoding() throws {
     let id = try #require(UUID(string: "56b4214b-848e-46a7-a8b0-e3554f3c9aca", using: .canonical))
@@ -23,7 +23,7 @@ import SolidID
 
   @Test func base32CrockfordEncoding() throws {
     let id = try #require(UUID(string: "56b4214b-848e-46a7-a8b0-e3554f3c9aca", using: .canonical))
-    #expect(id.encode(using: .base32Crockford) == "ATT22JW4HS3AFA5GWDAMYF4TS8")
+    #expect(id.encode(using: .base32Crockford) == "att22jw4hs3afa5gwdamyf4ts8")
   }
 
   @Test func base32CrockfordDecoding() throws {

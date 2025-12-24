@@ -1,12 +1,12 @@
 //
-//  UniqueIDStringEncoding.swift
+//  UniqueIDEncoding.swift
 //  SolidFoundation
 //
 //  Created by Kevin Wooten on 9/23/25.
 //
 
 
-public protocol UniqueIDStringEncoding {
+public protocol UniqueIDEncoding {
 
   associatedtype ID: UniqueID
 
