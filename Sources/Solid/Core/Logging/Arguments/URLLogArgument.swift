@@ -7,6 +7,7 @@
 
 import Foundation
 
+
 public struct URLLogArgument: LogArgument {
 
   public let url: @Sendable () -> URL
@@ -26,6 +27,7 @@ public struct URLLogArgument: LogArgument {
   }
 
 }
+
 
 extension LogMessage.Interpolation {
 

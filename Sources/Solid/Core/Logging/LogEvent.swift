@@ -5,6 +5,7 @@
 //  Created by Kevin Wooten on 7/28/25.
 //
 
+
 public struct LogEvent: Sendable {
 
   public var level: LogLevel

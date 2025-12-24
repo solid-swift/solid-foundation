@@ -5,6 +5,7 @@
 //  Created by Kevin Wooten on 7/28/25.
 //
 
+
 public struct LogContextKey: Equatable, Hashable, Sendable {
 
   public var scope: LogScope

@@ -10,6 +10,7 @@
   import OSLog
   import Synchronization
 
+
   public extension LogFactory {
 
     static func `for`(category: String, name: String) -> OSLogLog {
@@ -18,6 +19,7 @@
     }
 
   }
+
 
   public struct OSLogLog: Log {
 

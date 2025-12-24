@@ -67,6 +67,7 @@ public struct StringLogArgument<S: StringProtocol & Sendable>: LogArgument {
 
 }
 
+
 extension StringLogArgument.Format.Alignment {
 
   public func apply(_ value: String, width: Int) -> String {

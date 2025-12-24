@@ -1,9 +1,10 @@
 //
-//  Logger.swift
+//  Log.swift
 //  SolidFoundation
 //
 //  Created by Kevin Wooten on 7/28/25.
 //
+
 
 public protocol Log: Sendable {
 
@@ -14,6 +15,7 @@ public protocol Log: Sendable {
   func log(_ event: LogEvent)
 
 }
+
 
 public extension Log {
 

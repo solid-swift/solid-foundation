@@ -48,6 +48,7 @@ public struct FloatDateLogArgument<F: BinaryFloatingPoint & Sendable>: LogArgume
 
 }
 
+
 extension FloatDateLogArgument.Format {
 
   public func apply(_ date: Date) -> String {
@@ -64,6 +65,7 @@ extension FloatDateLogArgument.Format {
   }
 
 }
+
 
 extension FloatDateLogArgument.Epoch {
 

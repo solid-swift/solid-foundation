@@ -48,6 +48,7 @@ public struct IntegerTimeLogArgument<I: FixedWidthInteger & Sendable>: LogArgume
 
 }
 
+
 extension IntegerTimeLogArgument.Format {
 
   func format(_ value: Duration) -> String {
@@ -62,6 +63,7 @@ extension IntegerTimeLogArgument.Format {
   }
 
 }
+
 
 extension IntegerTimeLogArgument.Unit {
 

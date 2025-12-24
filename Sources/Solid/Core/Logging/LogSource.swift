@@ -5,8 +5,10 @@
 //  Created by Kevin Wooten on 7/28/25.
 //
 
+
 public typealias LogSourceFunction = LogStaticString
 public typealias LogSourceFile = LogStaticString
+
 
 public struct LogSourceLocation: Equatable, Hashable, Sendable, CustomStringConvertible {
 

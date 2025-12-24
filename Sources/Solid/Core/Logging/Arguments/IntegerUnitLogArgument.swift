@@ -36,6 +36,7 @@ public struct IntegerUnitLogArgument<I: FixedWidthInteger & Sendable>: LogArgume
 
 }
 
+
 extension IntegerUnitLogArgument.Format {
 
   public func apply(_ value: I) -> String {

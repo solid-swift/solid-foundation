@@ -1,5 +1,5 @@
 //
-//  LogLocale.swift
+//  LogFormats.swift
 //  SolidFoundation
 //
 //  Created by Kevin Wooten on 7/29/25.
@@ -7,7 +7,9 @@
 
 import Foundation
 
+
 private let logLocale = Locale(identifier: "en_US_POSIX")
+
 
 package enum ConstantFormatStyles {
 

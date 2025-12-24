@@ -5,6 +5,7 @@
 //  Created by Kevin Wooten on 7/28/25.
 //
 
+
 public struct FunctionLogScope: LogScope {
 
   public var function: LogStaticString

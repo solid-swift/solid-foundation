@@ -33,6 +33,7 @@ public struct LogMessage: Sendable {
 
 }
 
+
 extension LogMessage: ExpressibleByStringInterpolation {
 
   public struct Interpolation: StringInterpolationProtocol {

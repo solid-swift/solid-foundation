@@ -5,6 +5,7 @@
 //  Created by Kevin Wooten on 7/29/25.
 //
 
+
 public struct BoolLogArgument: LogArgument {
 
   public enum Format: Sendable {
@@ -32,6 +33,7 @@ public struct BoolLogArgument: LogArgument {
   }
 
 }
+
 
 public extension BoolLogArgument.Format {
 

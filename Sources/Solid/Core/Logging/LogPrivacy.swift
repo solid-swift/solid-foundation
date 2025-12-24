@@ -9,6 +9,7 @@ import Crypto
 import Foundation
 import Synchronization
 
+
 public enum LogPrivacy: Int, Hashable, Sendable {
   case `public`
   case sensitive
@@ -34,6 +35,7 @@ public enum LogPrivacy: Int, Hashable, Sendable {
     }
   }
 }
+
 
 extension LogPrivacy {
 
@@ -72,7 +74,9 @@ extension LogPrivacy {
 
 }
 
+
 extension LogPrivacy: AtomicRepresentable {}
+
 
 extension LogPrivacy: EnvironmentVariableDiscoverable {
 

@@ -36,6 +36,7 @@ public enum LogFactory: Sendable {
 
 }
 
+
 extension LogFactory.Category {
 
   public var fullName: String {
