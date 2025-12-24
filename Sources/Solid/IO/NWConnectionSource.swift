@@ -15,7 +15,7 @@ public final class NWConnectionSource: NWConnectionStream, Source, @unchecked Se
   @AtomicCounter public var bytesRead: Int
 
   private func process<DataType: DataProtocol>(_ response: NWConnection.ReceiveResponse<DataType>) throws -> DataType? {
-    let (data, context, isComplete) = response
+    let (data, _, isComplete) = response
     if isComplete {
       streamCompleted()
     }

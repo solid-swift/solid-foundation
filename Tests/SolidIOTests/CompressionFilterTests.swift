@@ -12,7 +12,8 @@ import Testing
 @Suite("Compression Filter Tests")
 struct CompressionFilterTests {
 
-  @Test("Round trip compression and decompression", .disabled("Only test on macOS"))
+  @Test("Round trip compression and decompression")
+  @available(macOS 26, *)
   func roundTrip() async throws {
     let data = Data(repeating: 0x5A, count: (512 * 1024) + 3333)
     let sink = DataSink()

@@ -9,7 +9,7 @@ import Testing
 import SolidID
 
 
-@Suite struct RandomIDTests {
+@Suite struct `RandomID Tests` {
 
   @Test func generate() throws {
     let source = RandomIDSource<UInt>()

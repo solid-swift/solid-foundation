@@ -9,12 +9,11 @@ import Testing
 import SolidID
 
 
-@Suite struct CounterIDTests {
+@Suite struct `CounterID Tests` {
 
   @Test func generate() async throws {
     let generator = CounterIDSource(source: AtomicCounterSource<UInt64>(), salt: 0)
     #expect(generator.generate().storage == 1)
     #expect(generator.generate().storage != 1)
   }
-
 }

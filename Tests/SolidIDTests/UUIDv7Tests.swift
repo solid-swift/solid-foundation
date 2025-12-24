@@ -7,9 +7,9 @@ import SolidTempo
 @testable import SolidID
 
 
-@Suite struct UUIDv7Suite {
+@Suite struct `UUIDv7 Tests` {
 
-  @Test func versionAndVariant() {
+  @Test func `version & variant`() {
     let u = UUID.v7()
     #expect(u.version == .v7)
     #expect(u.variant == .rfc)
@@ -25,7 +25,7 @@ import SolidTempo
     }
   }
 
-  @Test func timeAccessor() throws {
+  @Test func `time accessor`() throws {
     let uuid = UUID.v7()
     let timestamp = try #require(uuid.timestamp)
     let sinceNow = Duration.between(timestamp, OffsetDateTime.now())

@@ -11,7 +11,7 @@ import Testing
 
 
 @Suite
-struct BinaryEncodingTests {
+struct `BinaryEncoding Tests` {
 
   @Suite
   struct Hex {
@@ -24,7 +24,6 @@ struct BinaryEncodingTests {
       let string = Data(data).baseEncoded(using: .base16)
       #expect(string == "0102040810204080")
     }
-
   }
 
   @Suite
@@ -36,8 +35,6 @@ struct BinaryEncodingTests {
       let string = Data(data).baseEncoded(using: .base32Crockford)
       #expect(string == "041061050R3GG28A1C60T3GF")
     }
-
-
   }
 
 }

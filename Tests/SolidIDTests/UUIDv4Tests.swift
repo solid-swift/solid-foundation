@@ -6,9 +6,9 @@ import Testing
 @testable import SolidID
 
 
-@Suite struct UUIDv4Suite {
+@Suite struct `UUIDv4 Tests` {
 
-  @Test func versionAndVariant() {
+  @Test func `version & variant`() {
     let u = UUID.v4()
     #expect(u.version == .v4)
     #expect(u.variant == .rfc)
