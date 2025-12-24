@@ -26,7 +26,7 @@ SolidFoundation is a modular Swift foundation library designed as a comprehensiv
 
 **SolidCore** - Foundation layer providing:
 - Core utilities, extensions, and data structures
-- Custom collections (`RingBuffer`, `UnsafeBufferArray`)
+- Custom collections (`RingBuffer`, `UnsafeOutputBuffer`)
 - Logging infrastructure (cross-platform compatible)
 - Base protocols and type-safe utilities
 

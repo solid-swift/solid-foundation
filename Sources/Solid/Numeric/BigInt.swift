@@ -42,7 +42,7 @@ public struct BigInt {
   public init<S>(twosComplementWords words: S) where S: Collection, S.Element == UInt {
     precondition(!words.isEmpty, "words must not be empty")
 
-    let (magnitude, isNegative) = withUnsafeTemporaryBufferArray(from: words) { buffer in
+    let (magnitude, isNegative) = withUnsafeOutputBuffer(from: words) { buffer in
       // Check sign based on highest bit
       guard buffer.mostSignificant >> BigUInt.msbShift == 1 else {
         // Positive: direct initialization
@@ -389,7 +389,7 @@ extension BigInt: Numeric, BinaryInteger, SignedInteger {
     let rhsWords = rhs.words
     let maxCount = Swift.max(lhsWords.count, rhsWords.count)
 
-    let (magnitude, isNegative) = withUnsafeTemporaryBufferArray(count: maxCount) { result in
+    let (magnitude, isNegative) = withUnsafeOutputBuffer(of: UInt.self, count: maxCount) { result in
 
       result.resize(to: maxCount)
 
@@ -518,7 +518,7 @@ extension BigInt: ExpressibleByIntegerLiteral {
       return
     }
     let wordCount = (bitWidth + BigUInt.wordBits - 1) / BigUInt.wordBits
-    let (magnitude, isNegative) = withUnsafeTemporaryBufferArray(count: wordCount + 1) { buffer in
+    let (magnitude, isNegative) = withUnsafeOutputBuffer(of: UInt.self, count: wordCount + 1) { buffer in
 
       buffer.resize(to: buffer.capacity)
       for i in 0..<buffer.count {
@@ -673,7 +673,7 @@ extension BigInt {
   }
 }
 
-extension UnsafeBufferArray<UInt> {
+extension UnsafeOutputBuffer<UInt> {
 
   @inline(__always)
   internal mutating func twosComplement() -> UInt {

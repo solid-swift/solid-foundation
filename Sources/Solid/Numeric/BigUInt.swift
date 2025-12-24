@@ -194,7 +194,7 @@ extension BigUInt: Numeric, BinaryInteger, UnsignedInteger {
   // MARK: - Arithmetic
 
   public static func += (lhs: inout Self, rhs: Self) {
-    withUnsafeTemporaryBufferArray(count: lhs.words.count + rhs.words.count) { result in
+    withUnsafeOutputBuffer(of: UInt.self, count: lhs.words.count + rhs.words.count) { result in
 
       let count = Swift.max(lhs.words.count, rhs.words.count)
       result.resize(to: count)
@@ -225,7 +225,7 @@ extension BigUInt: Numeric, BinaryInteger, UnsignedInteger {
 
   public static func -= (lhs: inout Self, rhs: Self) {
     precondition(lhs >= rhs, "arithmetic operation '\(lhs) - \(rhs)' (on type 'BigUInt') results in an underflow")
-    withUnsafeTemporaryBufferArray(count: lhs.words.count) { result in
+    withUnsafeOutputBuffer(of: UInt.self, count: lhs.words.count) { result in
 
       result.resize(to: lhs.words.count)
 
@@ -258,7 +258,7 @@ extension BigUInt: Numeric, BinaryInteger, UnsignedInteger {
     }
     // Ensure lhs is the longer number
     let (a, b) = lhs.words.count >= rhs.words.count ? (lhs, rhs) : (rhs, lhs)
-    withUnsafeTemporaryBufferArray(repeating: UInt(0), count: a.words.count + b.words.count) { result in
+    withUnsafeOutputBuffer(repeating: UInt(0), count: a.words.count + b.words.count) { result in
 
       result.resize(to: a.words.count + b.words.count)
 
@@ -307,8 +307,8 @@ extension BigUInt: Numeric, BinaryInteger, UnsignedInteger {
   // Long division (Knuth D, radix 2⁶⁴)
   internal func quotientAndRemainder(
     dividingBy divisor: Self,
-    quotient: inout UnsafeBufferArray<UInt>,
-    remainder: inout UnsafeBufferArray<UInt>?
+    quotient: inout UnsafeOutputBuffer<UInt>,
+    remainder: inout UnsafeOutputBuffer<UInt>?
   ) {
     precondition(!divisor.isZero, "division by zero")
 
@@ -421,9 +421,9 @@ extension BigUInt: Numeric, BinaryInteger, UnsignedInteger {
   }
 
   public func quotientAndRemainder(dividingBy rhs: Self) -> (quotient: Self, remainder: Self) {
-    return withUnsafeTemporaryBufferArrays(counts: (words.count + 2, words.count + 2)) { (q, r) in
+    return withUnsafeOutputBuffers(counts: (words.count + 2, words.count + 2)) { (q, r) in
       // swift-format-ignore: NeverUseImplicitlyUnwrappedOptionals
-      var ro: UnsafeBufferArray<UInt>! = r
+      var ro: UnsafeOutputBuffer<UInt>! = r
       self.quotientAndRemainder(dividingBy: rhs, quotient: &q, remainder: &ro)
       return (Self(words: q, preNormalized: true), Self(words: ro, preNormalized: true))
     }
@@ -435,9 +435,9 @@ extension BigUInt: Numeric, BinaryInteger, UnsignedInteger {
   /// - Returns: `true` if the value is a multiple of the divisor; otherwise, `false`.
   ///
   public mutating func divide(ifMultipleOf divisor: Self) -> Bool {
-    return withUnsafeTemporaryBufferArrays(counts: (words.count + 2, words.count + 2)) { (q, r) in
+    return withUnsafeOutputBuffers(counts: (words.count + 2, words.count + 2)) { (q, r) in
       // swift-format-ignore: NeverUseImplicitlyUnwrappedOptionals
-      var ro: UnsafeBufferArray<UInt>! = r
+      var ro: UnsafeOutputBuffer<UInt>! = r
       self.quotientAndRemainder(dividingBy: divisor, quotient: &q, remainder: &ro)
       if !ro.isZero {
         return false
@@ -448,9 +448,9 @@ extension BigUInt: Numeric, BinaryInteger, UnsignedInteger {
   }
 
   public func remainder(dividingBy divisor: Self) -> Self {
-    return withUnsafeTemporaryBufferArrays(counts: (words.count + 2, words.count + 2)) { (q, r) in
+    return withUnsafeOutputBuffers(counts: (words.count + 2, words.count + 2)) { (q, r) in
       // swift-format-ignore: NeverUseImplicitlyUnwrappedOptionals
-      var ro: UnsafeBufferArray<UInt>! = r
+      var ro: UnsafeOutputBuffer<UInt>! = r
       self.quotientAndRemainder(dividingBy: divisor, quotient: &q, remainder: &ro)
       return Self(words: ro, preNormalized: true)
     }
@@ -461,9 +461,9 @@ extension BigUInt: Numeric, BinaryInteger, UnsignedInteger {
   /// - Parameter dividend: The value to divide.
   ///
   public mutating func formRemainder(dividing dividend: Self) {
-    return withUnsafeTemporaryBufferArrays(counts: (dividend.words.count + 2, dividend.words.count + 2)) { (q, r) in
+    return withUnsafeOutputBuffers(counts: (dividend.words.count + 2, dividend.words.count + 2)) { (q, r) in
       // swift-format-ignore: NeverUseImplicitlyUnwrappedOptionals
-      var ro: UnsafeBufferArray<UInt>! = r
+      var ro: UnsafeOutputBuffer<UInt>! = r
       dividend.quotientAndRemainder(dividingBy: self, quotient: &q, remainder: &ro)
       self.words.replaceAll(with: ro)
     }
@@ -502,34 +502,34 @@ extension BigUInt: Numeric, BinaryInteger, UnsignedInteger {
   }
 
   public static func / (lhs: Self, rhs: Self) -> Self {
-    withUnsafeTemporaryBufferArray(count: lhs.words.count + 2) { q in
-      var ro: UnsafeBufferArray<UInt>? = nil
+    withUnsafeOutputBuffer(count: lhs.words.count + 2) { q in
+      var ro: UnsafeOutputBuffer<UInt>? = nil
       lhs.quotientAndRemainder(dividingBy: rhs, quotient: &q, remainder: &ro)
       return Self(words: q, preNormalized: true)
     }
   }
 
   public static func /= (lhs: inout Self, rhs: Self) {
-    withUnsafeTemporaryBufferArray(count: lhs.words.count + 2) { q in
-      var ro: UnsafeBufferArray<UInt>? = nil
+    withUnsafeOutputBuffer(count: lhs.words.count + 2) { q in
+      var ro: UnsafeOutputBuffer<UInt>? = nil
       lhs.quotientAndRemainder(dividingBy: rhs, quotient: &q, remainder: &ro)
       lhs.words.replaceAll(with: q)
     }
   }
 
   public static func % (lhs: Self, rhs: Self) -> Self {
-    withUnsafeTemporaryBufferArrays(counts: (lhs.words.count + 2, lhs.words.count + 2)) { (q, r) in
+    withUnsafeOutputBuffers(counts: (lhs.words.count + 2, lhs.words.count + 2)) { (q, r) in
       // swift-format-ignore: NeverUseImplicitlyUnwrappedOptionals
-      var ro: UnsafeBufferArray<UInt>! = r
+      var ro: UnsafeOutputBuffer<UInt>! = r
       lhs.quotientAndRemainder(dividingBy: rhs, quotient: &q, remainder: &ro)
       return Self(words: ro, preNormalized: true)
     }
   }
 
   public static func %= (lhs: inout Self, rhs: Self) {
-    withUnsafeTemporaryBufferArrays(counts: (lhs.words.count + 2, lhs.words.count + 2)) { (q, r) in
+    withUnsafeOutputBuffers(counts: (lhs.words.count + 2, lhs.words.count + 2)) { (q, r) in
       // swift-format-ignore: NeverUseImplicitlyUnwrappedOptionals
-      var ro: UnsafeBufferArray<UInt>! = r
+      var ro: UnsafeOutputBuffer<UInt>! = r
       lhs.quotientAndRemainder(dividingBy: rhs, quotient: &q, remainder: &ro)
       lhs.words.replaceAll(with: ro)
     }
@@ -590,7 +590,7 @@ extension BigUInt: Numeric, BinaryInteger, UnsignedInteger {
 
   internal static func bitwiseOperation(lhs: inout Self, rhs: Self, _ op: (UInt, UInt) -> UInt) {
     let count = Swift.max(lhs.words.count, rhs.words.count)
-    withUnsafeTemporaryBufferArray(repeating: UInt(0), count: count) { result in
+    withUnsafeOutputBuffer(repeating: UInt(0), count: count) { result in
 
       result.resize(to: count)
 
@@ -749,7 +749,7 @@ extension BigUInt: ExpressibleByIntegerLiteral {
     }
 
     let wordCount = (bitWidth + Self.wordBits - 1) / Self.wordBits
-    let words = withUnsafeTemporaryBufferArray(count: wordCount) { buffer in
+    let words = withUnsafeOutputBuffer(of: UInt.self, count: wordCount) { buffer in
 
       buffer.resize(to: buffer.capacity)
       for i in 0..<buffer.count {
@@ -809,8 +809,8 @@ extension BigUInt: CustomStringConvertible, CustomDebugStringConvertible {
     var n = self
     var tr = BigUInt.zero
     while !n.isZero {
-      withUnsafeTemporaryBufferArrays(counts: (words.count + 2, words.count + 2)) { (q, r) in
-        var ro: UnsafeBufferArray<UInt>! = r
+      withUnsafeOutputBuffers(counts: (words.count + 2, words.count + 2)) { (q, r) in
+        var ro: UnsafeOutputBuffer<UInt>! = r
         n.quotientAndRemainder(dividingBy: base, quotient: &q, remainder: &ro)
         n.words.replaceAll(with: q)
         tr.words.replaceAll(with: ro)
@@ -988,7 +988,7 @@ extension BigUInt {
   }
 }
 
-extension UnsafeBufferArray<UInt> {
+extension UnsafeOutputBuffer<UInt> {
 
   @inline(__always)
   internal var mostSignificant: UInt {

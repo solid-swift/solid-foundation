@@ -1,5 +1,5 @@
 //
-//  UnsafeBufferArray.swift
+//  UnsafeOutputBuffer.swift
 //  SolidFoundation
 //
 //  Created by Kevin Wooten on 4/16/25.
@@ -16,37 +16,37 @@ import Collections
 /// Element access is bounds checked accoring the the current size of the array. If using one of the temporary
 /// initlaizers that provides manages an uninitialized buffer
 /// (e.g. ``Code/withUnsafeTemporaryBufferArray(repeating:count:_:)``) , you must use
-/// ``UnsafeBufferArray/resize(to:)`` to enable access to the uninitialized elements.
+/// ``UnsafeOutputBuffer/resize(to:)`` to enable access to the uninitialized elements.
 ///
 @usableFromInline
-package struct UnsafeBufferArray<Element> {
+package struct UnsafeOutputBuffer<Element> {
 
   public private(set) var buffer: UnsafeMutableBufferPointer<Element>
-  public private(set) var count: Int
+  public private(set) var initializedCount: Int
 
   public var capacity: Int { buffer.count }
 
   @usableFromInline
-  package init(buffer: UnsafeMutableBufferPointer<Element>, count: Int) {
-    precondition(buffer.count >= count, "Buffer count must be greater than or equal to count")
+  package init(buffer: UnsafeMutableBufferPointer<Element>, initializedCount: Int) {
+    precondition(buffer.count >= initializedCount, "Buffer count must be greater than or equal to count")
     self.buffer = buffer
-    self.count = count
+    self.initializedCount = initializedCount
   }
 
   @usableFromInline
-  package mutating func resize(to newCount: Int) {
-    precondition(newCount <= buffer.count, "New count must be less than or equal to buffer capacity")
-    count = newCount
+  package mutating func resize(to initializedCount: Int) {
+    precondition(initializedCount <= buffer.count, "New count must be less than or equal to buffer capacity")
+    self.initializedCount = initializedCount
   }
 
 }
 
-extension UnsafeBufferArray: RandomAccessCollection {
+extension UnsafeOutputBuffer: RandomAccessCollection {
 
   public typealias Index = Int
 
   public var startIndex: Int { 0 }
-  public var endIndex: Int { count }
+  public var endIndex: Int { initializedCount }
 
   public subscript(position: Int) -> Element {
     get {
@@ -56,18 +56,18 @@ extension UnsafeBufferArray: RandomAccessCollection {
     set {
       assert(position >= 0 && position < count, "Index out of bounds")
       buffer[position] = newValue
-      count = Swift.max(count, position + 1)
+      initializedCount = Swift.max(count, position + 1)
     }
   }
 
 }
 
-extension UnsafeBufferArray: MutableCollection {}
+extension UnsafeOutputBuffer: MutableCollection {}
 
-extension UnsafeBufferArray: RangeReplaceableCollection {
+extension UnsafeOutputBuffer: RangeReplaceableCollection {
 
   public init() {
-    self.init(buffer: UnsafeMutableBufferPointer(start: nil, count: 0), count: 0)
+    self.init(buffer: UnsafeMutableBufferPointer(start: nil, count: 0), initializedCount: 0)
   }
 
   public mutating func replaceSubrange<C>(_ subrange: Range<Int>, with newElements: C)
@@ -88,29 +88,29 @@ extension UnsafeBufferArray: RangeReplaceableCollection {
     buffer[subrange.lowerBound..<subrange.lowerBound + replacementCount].initializeAll(fromContentsOf: newElements)
 
     // Update count
-    count = newCount
+    initializedCount = Swift.max(initializedCount, newCount)
   }
 
 }
 
 @inline(__always)
-package func withUnsafeTemporaryBufferArray<Element, R>(
+package func withUnsafeOutputBuffer<Element, R>(
   repeating: Element,
   count: Int,
-  _ body: (inout UnsafeBufferArray<Element>) throws -> R
+  _ body: (inout UnsafeOutputBuffer<Element>) throws -> R
 ) rethrows -> R {
   try withUnsafeTemporaryAllocation(of: Element.self, capacity: count) { buffer in
     buffer.initialize(repeating: repeating)
-    var array = UnsafeBufferArray(buffer: buffer, count: 0)
+    var array = UnsafeOutputBuffer(buffer: buffer, initializedCount: 0)
     return try body(&array)
   }
 }
 
 @inline(__always)
-package func withUnsafeTemporaryBufferArray<Element, R>(
+package func withUnsafeOutputBuffer<Element, R>(
   from source: some Collection<Element>,
   additional: (repeating: Element, count: Int)? = nil,
-  _ body: (inout UnsafeBufferArray<Element>) throws -> R
+  _ body: (inout UnsafeOutputBuffer<Element>) throws -> R
 ) rethrows -> R {
   try withUnsafeTemporaryAllocation(of: Element.self, capacity: source.count + (additional?.count ?? 0)) { buffer in
     if let (additionalElement, additionalCount) = additional {
@@ -120,27 +120,31 @@ package func withUnsafeTemporaryBufferArray<Element, R>(
     } else {
       buffer.initializeAll(fromContentsOf: source)
     }
-    var array = UnsafeBufferArray(buffer: buffer, count: source.count)
+    var array = UnsafeOutputBuffer(buffer: buffer, initializedCount: source.count)
     return try body(&array)
   }
 }
 
 @inline(__always)
-package func withUnsafeTemporaryBufferArray<R>(count: Int, _ body: (inout UnsafeBufferArray<UInt>) -> R) -> R {
-  return withUnsafeTemporaryAllocation(of: UInt.self, capacity: count) { wordBuffer in
-    var array = wordBuffer.extractingArray(0..<count)
+package func withUnsafeOutputBuffer<Element, R>(
+  of: Element.Type = Element.self,
+  count: Int,
+  _ body: (inout UnsafeOutputBuffer<Element>) -> R
+) -> R {
+  return withUnsafeTemporaryAllocation(of: Element.self, capacity: count) { wordBuffer in
+    var array = wordBuffer.output(to: 0..<count)
     return body(&array)
   }
 }
 
 @inline(__always)
-package func withUnsafeTemporaryBufferArrays<Element, R>(
+package func withUnsafeOutputBuffers<Element, R>(
   counts: (Int, Int),
-  body: (inout UnsafeBufferArray<Element>, inout UnsafeBufferArray<Element>) -> R
+  body: (inout UnsafeOutputBuffer<Element>, inout UnsafeOutputBuffer<Element>) -> R
 ) -> R {
   return withUnsafeTemporaryAllocation(of: Element.self, capacity: counts.0 + counts.1) { wordBuffer in
-    var a = wordBuffer.extractingArray(0..<counts.0)
-    var b = wordBuffer.extractingArray(counts.0..<(counts.0 + counts.1))
+    var a = wordBuffer.output(to: 0..<counts.0)
+    var b = wordBuffer.output(to: counts.0..<(counts.0 + counts.1))
     return body(&a, &b)
   }
 }
@@ -148,8 +152,8 @@ package func withUnsafeTemporaryBufferArrays<Element, R>(
 package extension UnsafeMutableBufferPointer {
 
   @inlinable
-  func extractingArray(_ range: Range<Index>) -> UnsafeBufferArray<Element> {
-    return UnsafeBufferArray(buffer: extracting(range), count: 0)
+  func output(to range: Range<Index>, initializedCount: Int = 0) -> UnsafeOutputBuffer<Element> {
+    return UnsafeOutputBuffer(buffer: extracting(range), initializedCount: initializedCount)
   }
 
 }
