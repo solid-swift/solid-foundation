@@ -12,6 +12,67 @@ import Testing
 @Suite("EmailAddress Tests")
 final class EmailAddressTests {
 
+  // MARK: - Initialization
+
+  @Test(
+    "Initialize with local and domain",
+    arguments: [
+      ("user", "example.com", "user@example.com"),
+      ("user.name", "example.com", "user.name@example.com"),
+      ("\\\"user name\\\"", "example.com", "\\\"user name\\\"@example.com"),
+      ("user", "[192.168.0.1]", "user@[192.168.0.1]"),
+    ]
+  )
+  func initWithComponents(local: String, domain: String, expected: String) {
+    let m = EmailAddress(local: local, domain: domain)
+    #expect(m.local == local)
+    #expect(m.domain == domain)
+    #expect(m.encoded == expected)
+  }
+
+  // MARK: - Formatting
+
+  @Test("Encoding and description for simple address")
+  func formattingSimple() {
+    let m = EmailAddress(local: "user", domain: "example.com")
+    #expect(m.encoded == "user@example.com")
+    #expect("\(m)" == "user@example.com")
+  }
+
+  @Test("Quoted local part preserved in formatting")
+  func formattingQuotedLocal() {
+    let m = EmailAddress(local: "\"user name\"", domain: "example.com")
+    #expect(m.encoded == "\"user name\"@example.com")
+    #expect(m.description == "\"user name\"@example.com")
+  }
+
+  @Test("IPv4 domain-literal formatting")
+  func formattingIPv4DomainLiteral() {
+    let ipv4 = ["192","168","1","42"].joined(separator: ".")
+    let domain = "[" + ipv4 + "]"
+    let m = EmailAddress(local: "user", domain: domain)
+    #expect(m.encoded == "user@" + domain)
+  }
+
+  @Test("IPv6 domain-literal formatting")
+  func formattingIPv6DomainLiteral() {
+    func ip6(_ parts: [String]) -> String { parts.joined(separator: ":") }
+    let v6 = "IPv6:" + ip6(["2001","db8","","1"]) // 2001:db8::1
+    let domain = "[" + v6 + "]"
+    let m = EmailAddress(local: "user", domain: domain)
+    #expect(m.description == "user@" + domain)
+  }
+
+  @Test("Parsing preserves formatting on output")
+  func formattingFromParse() throws {
+    let email = "user+tag@sub.example.com"
+    let m = try #require(EmailAddress.parse(string: email))
+    #expect(m.encoded == email)
+    #expect("\(m)" == email)
+  }
+
+  // MARK: - Parsing
+
   @Test(
     "Valid Mailbox Parsing",
     arguments: [
@@ -95,6 +156,8 @@ final class EmailAddressTests {
     #expect(EmailAddress.parse(string: address) == nil, "Should reject invalid address: \(address)")
   }
 
+  // MARK: - Properties
+
   @Test(
     "Mailbox Properties",
     arguments: [
@@ -110,6 +173,8 @@ final class EmailAddressTests {
     #expect(mailbox.domain == domain)
     #expect("\(mailbox)" == expectedString)
   }
+
+  // MARK: - Edge Cases
 
   @Test(
     "Edge Cases",

@@ -12,7 +12,35 @@ import Testing
 @Suite("Hostname Tests")
 final class HostnameTests {
 
-  // MARK: - Valid
+  // MARK: - Initialization
+
+  @Test("Initialize with labels")
+  func initWithLabels() {
+    let labels = ["api", "service", "internal"]
+    let host = Hostname(labels: labels)
+    #expect(host.labels == labels)
+    #expect(host.encoded == "api.service.internal")
+  }
+
+  // MARK: - Formatting
+
+  @Test("Description equals encoded and strips trailing dot")
+  func formattingDescriptionAndEncoded() throws {
+    let input = "Sub.Example.COM."
+    let host = try #require(Hostname.parse(string: input))
+    #expect(host.encoded == "Sub.Example.COM")
+    #expect(host.description == host.encoded)
+    #expect("\(host)" == host.encoded)
+  }
+
+  @Test("Constructed labels encode correctly")
+  func formattingFromLabels() {
+    let host = Hostname(labels: ["sub", "example", "com"])
+    #expect(host.encoded == "sub.example.com")
+    #expect(host.description == "sub.example.com")
+  }
+
+  // MARK: - Parsing Valid
 
   @Test("Valid hostnames should parse successfully")
   func validHostname() {
@@ -38,8 +66,6 @@ final class HostnameTests {
     #expect(Hostname.parse(string: "1example.com") != nil)
     #expect(Hostname.parse(string: "example1.example2.com") != nil)
   }
-
-  // MARK: - Invalid
 
   @Test("Hostnames exceeding maximum length should fail to parse")
   func invalidHostnameLength() {
