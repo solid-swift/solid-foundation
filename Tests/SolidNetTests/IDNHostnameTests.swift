@@ -12,7 +12,40 @@ import Testing
 @Suite("IDN Hostname Tests")
 final class IDNHostnameTests {
 
-  // MARK: - Basic Validation
+  // MARK: - Initialization
+
+  @Test("Initialize with labels (Unicode and A-label)")
+  func initWithLabels() {
+    let unicodeLabels = ["δοκιμή", "παράδειγμα"]
+    let u = IDNHostname(labels: unicodeLabels)
+    #expect(u.labels == unicodeLabels)
+    #expect(u.encoded == "δοκιμή.παράδειγμα")
+
+    let aLabels = ["xn--bcher-kva", "example"]
+    let a = IDNHostname(labels: aLabels)
+    #expect(a.labels == aLabels)
+    #expect(a.encoded == "xn--bcher-kva.example")
+  }
+
+  // MARK: - Formatting
+
+  @Test("Description equals encoded and strips trailing dot (IDN)")
+  func formattingDescriptionAndEncoded_IDN() throws {
+    let input = "δοκιμή.Παράδειγμα."
+    let host = try #require(IDNHostname.parse(string: input))
+    #expect(host.encoded == "δοκιμή.Παράδειγμα")
+    #expect(host.description == host.encoded)
+    #expect("\(host)" == host.encoded)
+  }
+
+  @Test("Constructed IDN labels encode correctly")
+  func formattingFromLabels_IDN() {
+    let host = IDNHostname(labels: ["xn--bcher-kva", "例"])
+    #expect(host.encoded == "xn--bcher-kva.例")
+    #expect(host.description == "xn--bcher-kva.例")
+  }
+
+  // MARK: - Parsing
 
   @Test("Valid hostnames")
   func validHostnames() throws {
@@ -67,8 +100,6 @@ final class IDNHostnameTests {
     #expect(IDNHostname.parse(string: ".example.com") == nil)
   }
 
-  // MARK: - Label Validation
-
   @Test("Valid labels")
   func validLabels() throws {
     // Test valid ASCII labels
@@ -107,8 +138,6 @@ final class IDNHostnameTests {
     #expect(IDNHostname.parse(string: "ex@mple.com") == nil)
     #expect(IDNHostname.parse(string: "ex!mple.com") == nil)
   }
-
-  // MARK: - Parameterized
 
   @Test(
     "Valid hostname lengths",

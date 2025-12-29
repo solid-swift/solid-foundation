@@ -12,6 +12,63 @@ import Testing
 @Suite("IDN EmailAddress Tests")
 final class IDNEmailAddressTests {
 
+  // MARK: - Initialization
+
+  @Test(
+    "Initialize IDN email with components",
+    arguments: [
+      ("χρήστης", "παράδειγμα.δοκιμή", "χρήστης@παράδειγμα.δοκιμή"),
+      ("\\\"ユーザー 名\\\"", "例.テスト", "\\\"ユーザー 名\\\"@例.テスト"),
+      ("user", "[2001:db8::1]", "user@[2001:db8::1]"),
+    ]
+  )
+  func initIDNEmail(local: String, domain: String, expected: String) {
+    let m = IDNEmailAddress(local: local, domain: domain)
+    #expect(m.local == local)
+    #expect(m.domain == domain)
+    #expect(m.encoded == expected)
+  }
+
+  // MARK: - Formatting
+
+  @Test("Encoding and description for simple IDN email")
+  func formattingSimpleIDN() {
+    let m = IDNEmailAddress(local: "χρήστης", domain: "παράδειγμα.δοκιμή")
+    #expect(m.encoded == "χρήστης@παράδειγμα.δοκιμή")
+    #expect("\(m)" == "χρήστης@παράδειγμα.δοκιμή")
+  }
+
+  @Test("Quoted Unicode local part preserved in formatting")
+  func formattingQuotedUnicodeLocal() {
+    let m = IDNEmailAddress(local: "\"ユーザー 名\"", domain: "例.テスト")
+    #expect(m.encoded == "\"ユーザー 名\"@例.テスト")
+    #expect(m.description == "\"ユーザー 名\"@例.テスト")
+  }
+
+  @Test("IDN IPv4 domain-literal formatting")
+  func formattingIDNIPv4DomainLiteral() {
+    let domain = "[192.0.2.10]"
+    let m = IDNEmailAddress(local: "ユーザー", domain: domain)
+    #expect(m.encoded == "ユーザー@" + domain)
+  }
+
+  @Test("IDN IPv6 domain-literal formatting")
+  func formattingIDNIPv6DomainLiteral() {
+    let domain = "[IPv6:2001:db8::1]"
+    let m = IDNEmailAddress(local: "χρήστης", domain: domain)
+    #expect(m.description == "χρήστης@" + domain)
+  }
+
+  @Test("Parsing preserves formatting on output (IDN)")
+  func formattingFromParseIDN() throws {
+    let email = "χρήστης@παράδειγμα.δοκιμή"
+    let m = try #require(IDNEmailAddress.parse(string: email))
+    #expect(m.encoded == email)
+    #expect("\(m)" == email)
+  }
+
+  // MARK: - Parsing
+
   @Test(
     "Valid ASCII email addresses",
     arguments: [
@@ -107,20 +164,22 @@ final class IDNEmailAddressTests {
     #expect(IDNEmailAddress.parse(string: email) == nil, "Incorrectly parsed invalid email: \(email) - \(description)")
   }
 
+  // MARK: - Properties
+
   @Test(
-    "Email address components",
+    "Email address properties",
     arguments: [
-      ("user", "example.com", "Basic email components"),
+      ("user", "example.com", "Basic email properties"),
       ("user.name", "example.com", "Email with dot in local part"),
       ("user+tag", "example.com", "Email with plus tag"),
-      ("用户", "例子.测试", "Internationalized email components"),
-      ("사용자", "예시.테스트", "Korean email components"),
-      ("\"user name\"", "example.com", "Quoted local part components"),
+      ("用户", "例子.测试", "Internationalized email properties"),
+      ("사용자", "예시.테스트", "Korean email properties"),
+      ("\"user name\"", "example.com", "Quoted local part properties"),
       ("\"user@name\"", "example.com", "Quoted local part with at symbol"),
-      ("user", "[127.0.0.1]", "IP address domain components"),
+      ("user", "[127.0.0.1]", "IP address domain properties"),
     ]
   )
-  func emailComponents(local: String, domain: String, description: String) throws {
+  func emailProperties(local: String, domain: String, description: String) throws {
     let email = "\(local)@\(domain)"
     let mailbox = try #require(IDNEmailAddress.parse(string: email))
     #expect(
@@ -132,4 +191,5 @@ final class IDNEmailAddressTests {
       "Domain mismatch for \(description): expected '\(domain)', got '\(mailbox.domain)'"
     )
   }
+
 }
