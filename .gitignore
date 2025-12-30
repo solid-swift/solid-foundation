@@ -5,15 +5,8 @@ xcuserdata/
 DerivedData/
 .swiftpm/configuration/registries.json
 .swiftpm/xcode/package.xcworkspace/contents.xcworkspacedata
+.swiftpm/**/*.xcscheme
 .netrc
 .vscode
 .editorconfig
 .cursor
-
-# python
-__pycache__/
-*.pyc
-*.pyo
-*.pyd
-*.pyw
-*.pyz
