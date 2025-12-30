@@ -48,7 +48,7 @@ final class EmailAddressTests {
 
   @Test("IPv4 domain-literal formatting")
   func formattingIPv4DomainLiteral() {
-    let ipv4 = ["192","168","1","42"].joined(separator: ".")
+    let ipv4 = ["192", "168", "1", "42"].joined(separator: ".")
     let domain = "[" + ipv4 + "]"
     let m = EmailAddress(local: "user", domain: domain)
     #expect(m.encoded == "user@" + domain)
@@ -57,7 +57,7 @@ final class EmailAddressTests {
   @Test("IPv6 domain-literal formatting")
   func formattingIPv6DomainLiteral() {
     func ip6(_ parts: [String]) -> String { parts.joined(separator: ":") }
-    let v6 = "IPv6:" + ip6(["2001","db8","","1"]) // 2001:db8::1
+    let v6 = "IPv6:" + ip6(["2001", "db8", "", "1"])    // 2001:db8::1
     let domain = "[" + v6 + "]"
     let m = EmailAddress(local: "user", domain: domain)
     #expect(m.description == "user@" + domain)
