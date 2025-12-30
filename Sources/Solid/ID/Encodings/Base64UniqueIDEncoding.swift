@@ -12,16 +12,19 @@ public enum Base64UniqueIDEncoding<ID: UniqueID>: UniqueIDEncoding {
   case instance
 
   public func encode(_ id: ID) -> String {
-    id.withUnsafeBytes(BaseEncoding.base64.encode)
+    id.withUnsafeBytes(encoding.encode)
   }
 
   public func decode(_ string: String) throws -> ID {
     try ID { span in
-      try BaseEncoding.base64.decode(string, into: &span)
+      try encoding.decode(string, into: &span)
     }
   }
 
 }
+
+
+private let encoding = BaseEncoding.base64.unpadded()
 
 
 public extension UniqueIDEncoding where Self == Base64UniqueIDEncoding<UUID> {

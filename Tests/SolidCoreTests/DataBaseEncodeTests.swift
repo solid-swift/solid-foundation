@@ -1,5 +1,5 @@
 //
-//  BinaryEncodingTests.swift
+//  DataBaseEncodeTests.swift
 //  SolidFoundation
 //
 //  Created by Kevin Wooten on 9/23/25.
@@ -11,7 +11,7 @@ import Testing
 
 
 @Suite
-struct `BinaryEncoding Tests` {
+struct `Data baseEncode Tests` {
 
   @Suite
   struct Hex {

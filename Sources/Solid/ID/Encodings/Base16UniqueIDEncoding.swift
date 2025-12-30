@@ -12,12 +12,12 @@ public enum Base16UniqueIDEncoding<ID: UniqueID>: UniqueIDEncoding {
   case instance
 
   public func encode(_ id: ID) -> String {
-    id.withUnsafeBytes(BaseEncoding.base16Lower.encode)
+    id.withUnsafeBytes(BaseEncoding.base16.encode)
   }
 
   public func decode(_ string: String) throws -> ID {
     try ID { span in
-      try BaseEncoding.base16Lower.decode(string, into: &span)
+      try BaseEncoding.base16.decode(string, into: &span)
     }
   }
 
