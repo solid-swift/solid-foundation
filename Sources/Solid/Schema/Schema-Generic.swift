@@ -45,8 +45,8 @@ extension Schema {
 
         let types = try typeStrings.enumerated()
           .compactMap { (idx, typeString) in
-            guard let type = context.schema.types.first(where: { $0.name == typeString }) else {
-              try context.invalidValue(options: context.schema.types, at: idx)
+            guard let type = context.metaSchema.types.first(where: { $0.name == typeString }) else {
+              try context.invalidValue(options: context.metaSchema.types, at: idx)
             }
             return type
           }

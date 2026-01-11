@@ -17,7 +17,7 @@ public final class Schema {
   public let keywordLocation: Pointer
   public let anchor: String?
   public let dynamicAnchor: String?
-  public let schema: MetaSchema
+  public let metaSchema: MetaSchema
   public let instance: Value
   public let subSchema: SubSchema
   public let resources: [Schema]
@@ -27,7 +27,7 @@ public final class Schema {
     keywordLocation: Pointer,
     anchor: String?,
     dynamicAnchor: String?,
-    schema: MetaSchema,
+    metaSchema: MetaSchema,
     instance: Value,
     subSchema: SubSchema,
     resources: [Schema]
@@ -36,7 +36,7 @@ public final class Schema {
     self.keywordLocation = keywordLocation
     self.anchor = anchor
     self.dynamicAnchor = dynamicAnchor
-    self.schema = schema
+    self.metaSchema = metaSchema
     self.instance = instance
     self.subSchema = subSchema
     self.resources = resources

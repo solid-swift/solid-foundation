@@ -65,7 +65,7 @@ extension Schema {
         do {
 
           if let metaSchema = try context.locate(metaSchemaId: schemaId) {
-            context.schema = metaSchema
+            context.metaSchema = metaSchema
             return
           }
 
@@ -77,7 +77,7 @@ extension Schema {
             try context.invalidValue("Meta schema must be a root (resource or embedded) schema")
           }
 
-          context.schema = MetaSchema.Builder.build(from: schema)
+          context.metaSchema = MetaSchema.Builder.build(from: schema)
 
           return
 

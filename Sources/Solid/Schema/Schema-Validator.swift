@@ -21,7 +21,7 @@ extension Schema {
 
       let schemaLocator = CompositeSchemaLocator.from(
         locators: [
-          schema.schema.schemaLocator,
+          schema.metaSchema.schemaLocator,
           options.schemaLocator,
         ]
         .compactMap(\.self)
