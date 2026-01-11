@@ -5,15 +5,51 @@
 //  Created by Kevin Wooten on 5/19/25.
 //
 
+import Foundation
 @testable import SolidTempo
 import SolidTesting
 import Testing
 
 
+/// Valid start years for each zone, parsed from tzdata.zi.
+/// Test cases with dates before the valid start year are filtered out.
+private let zoneValidRanges = TzDb.loadZoneValidRanges(
+  zoneInfoURL: URL(filePath: "/usr/share/zoneinfo/")
+)
+
+/// Checks if a transition is within the valid date range for the zone.
+/// The transition must be after the first transition year in the system's tzdata.
+private func isTransitionValid(
+  _ transition: RegionZoneRulesTestData.ZoneDetails.Entry.Transition?,
+  firstTransitionYear: Int
+) -> Bool {
+  guard let transition else { return true }
+  return transition.localBefore.year >= firstTransitionYear
+}
+
+/// Filters test details to only include entries within the zone's valid date range.
+/// This includes checking that all referenced transitions are also within the valid range.
+private func filterByValidRange(
+  _ details: [(zone: Zone, entry: RegionZoneRulesTestData.ZoneDetails.Entry)]
+) -> [(zone: Zone, entry: RegionZoneRulesTestData.ZoneDetails.Entry)] {
+  details.filter { detail in
+    guard let ranges = zoneValidRanges[detail.zone.identifier] else {
+      return true
+    }
+    let entry = detail.entry
+    return entry.local.year >= ranges.validStartYear
+      && isTransitionValid(entry.localApplicableTransition, firstTransitionYear: ranges.firstTransitionYear)
+      && isTransitionValid(entry.instantNextTransition, firstTransitionYear: ranges.firstTransitionYear)
+      && isTransitionValid(entry.instantPriorTransition, firstTransitionYear: ranges.firstTransitionYear)
+  }
+}
+
 @Suite("RegionZoneRules Tests")
 struct RegionZoneRulesTests {
 
-  static let details = RegionZoneRulesTestData.loadFromBundle(bundle: .module).flattened
+  static let details = filterByValidRange(
+    RegionZoneRulesTestData.loadFromBundle(bundle: .module).flattened
+  )
 
   @Test(
     "standard offset",

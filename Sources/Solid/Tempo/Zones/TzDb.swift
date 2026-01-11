@@ -289,6 +289,96 @@ public final class TzDb: ZoneRulesLoader {
       return nil
     }
   }
+
+  /// Parses the `tzdata.zi` file to extract the valid start year and first transition year for each zone.
+  ///
+  /// The `tzdata.zi` file contains zone definitions in the format:
+  /// `Z <zone_name> <offset> <rules> <format> [<until>]`
+  /// followed by continuation lines for additional transitions.
+  ///
+  /// The `<until>` field (if present) indicates when the first transition starts,
+  /// which represents the earliest year for which the zone has recorded data.
+  ///
+  /// - Parameter zoneInfoURL: The URL of the `zoneinfo` directory.
+  /// - Returns: A dictionary mapping zone identifiers to a tuple of (validStartYear, firstTransitionYear).
+  ///   The firstTransitionYear is the year of the first actual transition after the initial LMT period.
+  ///
+  public static func loadZoneValidRanges(
+    zoneInfoURL: URL
+  ) -> [String: (validStartYear: Int, firstTransitionYear: Int)] {
+    do {
+      let tzDataURL = zoneInfoURL.appending(path: tzDataFileName)
+      let tzDataContent = try String(contentsOf: tzDataURL, encoding: .utf8)
+
+      var validRanges: [String: (validStartYear: Int, firstTransitionYear: Int)] = [:]
+      var currentZone: String?
+      var currentStartYear: Int?
+      var currentFirstTransitionYear: Int?
+
+      for line in tzDataContent.split(separator: "\n") {
+        if line.hasPrefix("Z ") {
+          // Save previous zone if any
+          if let zone = currentZone, let startYear = currentStartYear {
+            validRanges[zone] = (startYear, currentFirstTransitionYear ?? startYear)
+          }
+
+          let parts = line.split(separator: " ", omittingEmptySubsequences: true)
+          guard parts.count >= 2 else { continue }
+
+          currentZone = String(parts[1])
+          currentStartYear = nil
+          currentFirstTransitionYear = nil
+
+          // The year is typically the 5th field (index 4) if present
+          // Format: Z <zone_name> <offset> <rules> <format> [<until>]
+          if parts.count >= 5 {
+            for i in 4..<parts.count {
+              if let year = Int(parts[i]) {
+                currentStartYear = year
+                break
+              }
+            }
+          }
+        } else if currentZone != nil && !line.hasPrefix("#") && !line.hasPrefix("R ") && !line.hasPrefix("L ") {
+          // This is a continuation line for the current zone
+          // Format: <offset> <rules> <format> [<until>]
+          let parts = line.split(separator: " ", omittingEmptySubsequences: true)
+          if parts.count >= 3 && currentFirstTransitionYear == nil {
+            // Find the year in this continuation line
+            for i in 3..<parts.count {
+              if let year = Int(parts[i]) {
+                currentFirstTransitionYear = year
+                break
+              }
+            }
+          }
+        }
+      }
+
+      // Save last zone
+      if let zone = currentZone, let startYear = currentStartYear {
+        validRanges[zone] = (startYear, currentFirstTransitionYear ?? startYear)
+      }
+
+      return validRanges
+    } catch {
+      log.error("Failed to load zone valid ranges from tzdata.zi: \(error)")
+      return [:]
+    }
+  }
+
+  /// Returns the valid start year for the specified zone identifier.
+  ///
+  /// This method parses the `tzdata.zi` file to determine the earliest year
+  /// for which the zone has recorded data. If the zone is not found or the
+  /// `tzdata.zi` file cannot be parsed, `nil` is returned.
+  ///
+  /// - Parameter identifier: The zone identifier (e.g., "Pacific/Midway").
+  /// - Returns: The valid start year for the zone, or `nil` if not found.
+  ///
+  public func validStartYear(for identifier: String) -> Int? {
+    return Self.loadZoneValidRanges(zoneInfoURL: url)[identifier]?.validStartYear
+  }
 }
 
 extension ZoneRulesLoader where Self == TzDb {
