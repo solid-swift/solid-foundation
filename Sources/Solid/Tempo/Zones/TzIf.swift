@@ -97,7 +97,7 @@ public enum TzIf {
       time: 8,
       index: V1.elementSizes.index,
       timeType: V1.elementSizes.timeType,
-      leapSecond: V1.elementSizes.leapSecond,
+      leapSecond: 12,    // 8-byte timestamp + 4-byte correction
       indicator: V1.elementSizes.indicator
     )
   }
@@ -947,18 +947,20 @@ extension TzIf {
 
   /// Parses any footer string that appears after all versioned data.
   private static func parseFooter(from data: ReadableRawBuffer<BigEndian>) throws -> String? {
-    // Empty or extraneuous newlines are considered "no footer"
-    guard !data.isEmpty || data.trimming(while: { $0 == 0x0A }).isEmpty else {
+    let remaining = data.remaining
+
+    // Empty or extraneous newlines are considered "no footer"
+    guard !remaining.isEmpty, !remaining.trimming(while: { $0 == 0x0A }).isEmpty else {
       return nil
     }
 
-    // Vaidate the would be footer is wrapped in newlines
-    guard data.count > 1, data.first == 0xA && data.last == 0xA else {
+    // Validate the would be footer is wrapped in newlines
+    guard remaining.count > 1, remaining.first == 0xA && remaining.last == 0xA else {
       log.error("Invalid TZif file: footer not wrapped in newlines")
       throw TzIf.Error.invalidFooter
     }
 
-    let stringData = data.dropFirst().dropLast()
+    let stringData = remaining.dropFirst().dropLast()
     guard let string = String(bytes: stringData, encoding: .utf8) else {
       log.error("Invalid TZif file: footer not UTF-8 encoded")
       throw TzIf.Error.invalidFooter
