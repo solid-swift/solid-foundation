@@ -9,6 +9,8 @@
 import Foundation
 import Testing
 
+#if canImport(Compression)
+
 @Suite("Compression Filter Tests")
 struct CompressionFilterTests {
 
@@ -39,3 +41,6 @@ struct CompressionFilterTests {
     #expect(sink.data == data)
   }
 }
+
+#endif
+

@@ -6,6 +6,8 @@
 //
 
 import SolidCore
+
+#if canImport(Network)
 import Network
 
 public class NWConnectionStream: Stream, Flushable, @unchecked Sendable {
@@ -44,3 +46,6 @@ public class NWConnectionStream: Stream, Flushable, @unchecked Sendable {
     connection.cancel()
   }
 }
+
+#endif
+

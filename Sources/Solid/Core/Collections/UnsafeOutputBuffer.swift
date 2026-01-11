@@ -82,10 +82,18 @@ extension UnsafeOutputBuffer: RangeReplaceableCollection {
     precondition(newCount <= buffer.count, "New elements would exceed buffer capacity")
 
     // Shift remaining elements left or right
-    buffer[subrange.upperBound + diff..<count + diff].initializeAll(fromContentsOf: buffer[subrange.upperBound..<count])
+    let remaining = UnsafeMutableBufferPointer(rebasing: buffer[subrange.upperBound..<count])
+    let remainingTarget = UnsafeMutableBufferPointer(rebasing: buffer[subrange.upperBound + diff..<count + diff])
+    remainingTarget.baseAddress.unsafelyUnwrapped.initialize(
+      from: remaining.baseAddress.unsafelyUnwrapped,
+      count: remaining.count
+    )
 
     // Copy new elements into place
-    buffer[subrange.lowerBound..<subrange.lowerBound + replacementCount].initializeAll(fromContentsOf: newElements)
+    let newTarget =
+      UnsafeMutableBufferPointer(rebasing: buffer[subrange.lowerBound..<subrange.lowerBound + replacementCount])
+    let initNewCount = newTarget.initialize(fromContentsOf: newElements)
+    assert(initNewCount == newElements.count)
 
     // Update count
     initializedCount = Swift.max(initializedCount, newCount)
@@ -115,10 +123,11 @@ package func withUnsafeOutputBuffer<Element, R>(
   try withUnsafeTemporaryAllocation(of: Element.self, capacity: source.count + (additional?.count ?? 0)) { buffer in
     if let (additionalElement, additionalCount) = additional {
       let unitializedIndex = buffer.initialize(fromContentsOf: source)
-      buffer[unitializedIndex...]
-        .initializeAll(fromContentsOf: repeatElement(additionalElement, count: additionalCount))
+      _ = buffer[unitializedIndex...]
+        .initialize(fromContentsOf: repeatElement(additionalElement, count: additionalCount))
     } else {
-      buffer.initializeAll(fromContentsOf: source)
+      let initialized = buffer.initialize(fromContentsOf: source)
+      assert(initialized == source.count)
     }
     var array = UnsafeOutputBuffer(buffer: buffer, initializedCount: source.count)
     return try body(&array)

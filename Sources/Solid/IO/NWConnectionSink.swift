@@ -7,6 +7,8 @@
 
 import SolidCore
 import Foundation
+
+#if canImport(Network)
 import Network
 
 
@@ -23,3 +25,6 @@ public final class NWConnectionSink: NWConnectionStream, Sink, @unchecked Sendab
   }
 
 }
+
+#endif
+

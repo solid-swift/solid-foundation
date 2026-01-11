@@ -6,8 +6,10 @@
 //
 
 import Foundation
-import Network
 import SolidCore
+
+#if canImport(Network)
+import Network
 
 
 public final class NWConnectionSource: NWConnectionStream, Source, @unchecked Sendable {
@@ -54,3 +56,6 @@ public final class NWConnectionSource: NWConnectionStream, Source, @unchecked Se
   }
 
 }
+
+#endif
+

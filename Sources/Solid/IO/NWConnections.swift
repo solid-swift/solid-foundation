@@ -6,6 +6,8 @@
 //
 
 import Foundation
+
+#if canImport(Network)
 import Network
 
 
@@ -76,3 +78,6 @@ public extension NWConnection {
   }
 
 }
+
+#endif
+

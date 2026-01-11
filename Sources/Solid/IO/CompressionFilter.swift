@@ -5,9 +5,10 @@
 //  Created by Kevin Wooten on 7/5/25.
 //
 
-import Compression
 import Foundation
 
+#if canImport(Compression)
+import Compression
 
 /// Compressing or decompressing ``Sink``.
 ///
@@ -161,3 +162,6 @@ public extension Sink {
   }
 
 }
+
+#endif
+

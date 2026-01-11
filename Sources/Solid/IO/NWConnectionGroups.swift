@@ -5,6 +5,7 @@
 //  Created by Kevin Wooten on 7/31/25.
 //
 
+#if canImport(Network)
 import Network
 import ObjectiveC
 
@@ -97,3 +98,6 @@ public extension NWConnectionGroup {
   }
 
 }
+
+#endif
+
