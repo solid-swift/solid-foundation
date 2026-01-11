@@ -9,13 +9,15 @@ import Foundation
 import SolidData
 
 
-public struct JSONValueWriter {
+public struct JSONValueWriter: FormatWriter {
 
-  public struct Options {
+  public struct Options: Sendable {
+
+    public static let `default` = Self()
 
     /// Determines the shape of tagged values.
     ///
-    public enum TagShape {
+    public enum TagShape: Sendable {
       /// No tags are written.
       ///
       /// Unwraps the tagged value and writes the value directly.
@@ -41,12 +43,21 @@ public struct JSONValueWriter {
   let tokenWriter: JSONTokenWriter
   let options: Options
 
+  /// Write a value into a new in-memory Data buffer.
+  public static func write(_ value: Value, options: Options = .default) -> Data {
+    let writer = JSONValueWriter()
+    writer.write(value)
+    return writer.data()
+  }
+
   public init(options: Options = Options()) {
     self.tokenWriter = JSONTokenWriter()
     self.options = options
   }
 
-  public func writeValue(_ value: Value) {
+  public var format: Format { JSON.format }
+
+  public func write(_ value: Value) {
     switch value {
 
     case .null:
@@ -70,7 +81,7 @@ public struct JSONValueWriter {
 
       for (idx, element) in array.enumerated() {
 
-        writeValue(element)
+        write(element)
 
         if idx < array.count - 1 {
           tokenWriter.writeToken(.elementSeparator)
@@ -85,9 +96,9 @@ public struct JSONValueWriter {
 
       for (idx, entry) in object.enumerated() {
 
-        writeValue(entry.key)
+        write(entry.key)
         tokenWriter.writeToken(.pairSeparator)
-        writeValue(entry.value)
+        write(entry.value)
 
         if idx < object.values.count - 1 {
           tokenWriter.writeToken(.elementSeparator)
@@ -99,13 +110,13 @@ public struct JSONValueWriter {
     case .tagged(let tag, let value):
       switch options.tagShape {
       case .unwrapped:
-        writeValue(value)
+        write(value)
       case .array:
-        writeValue([tag, value])
+        write([tag, value])
       case .object(let tagKey, let valueKey):
-        writeValue([.string(tagKey): tag, .string(valueKey): value])
+        write([.string(tagKey): tag, .string(valueKey): value])
       case .wrapped:
-        writeValue([tag: value])
+        write([tag: value])
       }
     }
   }

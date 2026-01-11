@@ -51,4 +51,16 @@ public enum CBOR {
   /// A CBOR value with an optional tag.
   public typealias Value = (value: SolidData.Value, tag: UInt64?)
 
+  public enum Format: SolidData.Format, Sendable {
+    case instance
+
+    public var kind: FormatKind { .binary }
+
+    public func supports(type: ValueType) -> Bool {
+      return true
+    }
+  }
+
+  public static let format = Format.instance
+
 }
