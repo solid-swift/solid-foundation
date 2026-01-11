@@ -33,6 +33,7 @@ public final class TzDb: ZoneRulesLoader {
   public enum Error: Swift.Error {
     case zoneInfoNotFound
     case unableToLoadZone(Swift.Error)
+    case noVersionInZoneInfo
   }
 
   /// The default locations to search for `zoneinfo` data.
@@ -42,6 +43,7 @@ public final class TzDb: ZoneRulesLoader {
 
   /// Possible names for  the `zoneinfo` version stamp file.
   public static let versionFileName = "+VERSION"
+  public static let tzDataFileName = "tzdata.zi"
 
   final class ZoneEntry: Sendable {
 
@@ -144,6 +146,13 @@ public final class TzDb: ZoneRulesLoader {
       self.url = zoneInfoUrl
       self.version = zoneInfoVersion
       self.zones = Dictionary(uniqueKeysWithValues: zoneInfoDataUrls.map { ($0.relativePath, ZoneEntry(url: $0)) })
+
+      if Self.log.isEnabled(for: .trace) {
+        for (zoneId, zone) in zones {
+          Self.log.debug("  - \(zoneId): \(zone.url)")
+        }
+      }
+
     } catch {
       Self.log.error("Failed to initialize \(Self.self): \(error)")
       self.url = URL(fileURLWithPath: "")
@@ -199,7 +208,7 @@ public final class TzDb: ZoneRulesLoader {
       resolvedZoneInfoURL = zoneInfoURL.resolvingSymlinksInPath()
     } while resolvedZoneInfoURL != previousZoneInfoURL
 
-    let version = try loadZoneInfoVersionFile(zoneInfoURL: zoneInfoURL)
+    let version = try loadZoneInfoVersion(zoneInfoURL: zoneInfoURL)
 
     guard
       let contents = fileManager.enumerator(
@@ -212,8 +221,21 @@ public final class TzDb: ZoneRulesLoader {
       return (resolvedZoneInfoURL, version, [])
     }
 
+    #if os(Linux)
+    // Manually relativize paths because linux FileManager
+    // doesn't currently respect `producesRelativePathURLs` option
+    let zoneContents = contents.map {
+      URL(
+        filePath: ($0 as! URL).path().replacingOccurrences(of: zoneInfoURL.path(), with: ""),
+        relativeTo: zoneInfoURL
+      )
+    }
+    #else
+    let zoneContents = contents.compactMap { $0 as? URL }
+    #endif
+
     var urls: [URL] = []
-    for case let url as URL in contents where isZoneInfoFileLike(url) {
+    for case let url in zoneContents where isZoneInfoFileLike(url) {
       urls.append(url)
     }
 
@@ -228,13 +250,40 @@ public final class TzDb: ZoneRulesLoader {
       && url.pathExtension.isEmpty
   }
 
-  private static func loadZoneInfoVersionFile(zoneInfoURL: URL) throws -> String {
+  private static func loadZoneInfoVersion(zoneInfoURL: URL) throws -> String {
+    if let version = loadZoneInfoVersionFromTzData(zoneInfoURL: zoneInfoURL) {
+      return version
+    }
+    if let version = loadZoneInfoVersionFromVersion(zoneInfoURL: zoneInfoURL) {
+      return version
+    }
+    throw Error.unableToLoadZone(Error.noVersionInZoneInfo)
+  }
+
+  private static func loadZoneInfoVersionFromTzData(zoneInfoURL: URL) -> String? {
     do {
-      let versionFileURL = zoneInfoURL.appendingPathComponent(versionFileName)
+      let tzDataURL = zoneInfoURL.appending(path: tzDataFileName)
+      guard let tzDataHead = try FileHandle(forReadingFrom: tzDataURL).read(upToCount: 512) else {
+        return nil
+      }
+      for lineData in tzDataHead.split(separator: "\n".utf8) {
+        guard let line = String(data: lineData, encoding: .utf8) else { continue }
+        guard let match = line.wholeMatch(of: /#\s+version\s+(\w+)/) else { continue }
+        return String(match.output.1)
+      }
+      return nil
+    } catch {
+      return nil
+    }
+  }
+
+  private static func loadZoneInfoVersionFromVersion(zoneInfoURL: URL) -> String? {
+    do {
+      let versionFileURL = zoneInfoURL.appending(path: versionFileName)
       let versionString = try String(contentsOf: versionFileURL, encoding: .utf8)
       return versionString.trimmingCharacters(in: .whitespacesAndNewlines)
     } catch {
-      throw Error.unableToLoadZone(error)
+      return nil
     }
   }
 }

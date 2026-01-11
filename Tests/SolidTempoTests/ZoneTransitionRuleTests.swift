@@ -13,11 +13,11 @@ import Foundation
 @Suite("ZoneTransitionRule Tests")
 struct ZoneTransitionRuleTests {
 
-  static let ruleDetails = ZoneTransitionRuleTestData.loadFromBundle(bundle: .module)
+  static let ruleDetails = ZoneTransitionRuleTestData.loadFromBundle(bundle: .module).flattened
 
   @Test(
     "offset at instant",
-    arguments: ruleDetails.flattened.map { ($0.zone, $0.entry.instant, $0.entry.instantOffset) }
+    arguments: ruleDetails.map { ($0.zone, $0.entry.instant, $0.entry.instantOffset) }
   )
   func testOffsetAtInstant(zone: Zone, instant: Instant, expectedOffset: ZoneOffset) throws {
     let rule = try rule(for: zone)
@@ -27,7 +27,7 @@ struct ZoneTransitionRuleTests {
 
   @Test(
     "offset for local",
-    arguments: ruleDetails.flattened.map { ($0.zone, $0.entry.local, $0.entry.localOffset) }
+    arguments: ruleDetails.map { ($0.zone, $0.entry.local, $0.entry.localOffset) }
   )
   func testOffsetForLocal(zone: Zone, local: LocalDateTime, expectedOffset: ZoneOffset) throws {
     let rule = try rule(for: zone)
@@ -37,7 +37,7 @@ struct ZoneTransitionRuleTests {
 
   @Test(
     "valid offsets for local",
-    arguments: ruleDetails.flattened.map { ($0.zone, $0.entry.local, $0.entry.localValidOffsets) }
+    arguments: ruleDetails.map { ($0.zone, $0.entry.local, $0.entry.localValidOffsets) }
   )
   func testValidOffsetsForLocal(zone: Zone, local: LocalDateTime, expectedOffsets: [ZoneOffset]) throws {
     let rule = try rule(for: zone)
@@ -47,7 +47,7 @@ struct ZoneTransitionRuleTests {
 
   @Test(
     "applicable transition for local",
-    arguments: ruleDetails.flattened.map { ($0.zone, $0.entry.local, $0.entry.localApplicableTransition) }
+    arguments: ruleDetails.map { ($0.zone, $0.entry.local, $0.entry.localApplicableTransition) }
   )
   func testApplicableTransitionForLocal(
     zone: Zone,
@@ -73,7 +73,7 @@ struct ZoneTransitionRuleTests {
 
   @Test(
     "next transition at instant",
-    arguments: ruleDetails.flattened.map { ($0.zone, $0.entry.instant, $0.entry.instantNextTransition) }
+    arguments: ruleDetails.map { ($0.zone, $0.entry.instant, $0.entry.instantNextTransition) }
   )
   func testNextTransitionAtInstant(
     zone: Zone,
@@ -100,7 +100,7 @@ struct ZoneTransitionRuleTests {
 
   @Test(
     "prior transition at instant",
-    arguments: ruleDetails.flattened.map { ($0.zone, $0.entry.instant, $0.entry.instantPriorTransition) }
+    arguments: ruleDetails.map { ($0.zone, $0.entry.instant, $0.entry.instantPriorTransition) }
   )
   func testPriorTransitionAtInstant(
     zone: Zone,
@@ -127,7 +127,7 @@ struct ZoneTransitionRuleTests {
 
   @Test(
     "designation at instant",
-    arguments: ruleDetails.flattened.map { ($0.zone, $0.entry.instant, $0.entry.instantOffset, $0.entry.designation) }
+    arguments: ruleDetails.map { ($0.zone, $0.entry.instant, $0.entry.instantOffset, $0.entry.designation) }
   )
   func testDesignationAtInstant(
     zone: Zone,
@@ -148,7 +148,7 @@ struct ZoneTransitionRuleTests {
 
   @Test(
     "dst duration",
-    arguments: ruleDetails.flattened.map { ($0.zone, $0.entry.instant, $0.entry.instantDstDuration[.totalSeconds]) }
+    arguments: ruleDetails.map { ($0.zone, $0.entry.instant, $0.entry.instantDstDuration[.totalSeconds]) }
   )
   func testDaylightSavingTime(zone: Zone, instant: Instant, expectedDstDurationSeconds: Int) throws {
     let rule = try rule(for: zone)
@@ -208,11 +208,11 @@ extension LocalDateTime {
 
 struct ZoneTransitionRuleTestData: TestData, Decodable {
 
-  struct ZoneDetails: Codable {
+  struct ZoneDetails: Codable, Sendable {
 
-    struct Entry: Codable {
+    struct Entry: Codable, Sendable {
 
-      struct Transition: Codable {
+      struct Transition: Codable, Sendable {
         let instant: Instant
         let localBefore: LocalDateTime
         let localAfter: LocalDateTime
