@@ -58,6 +58,25 @@ public final class Schema {
     return result
   }
 
+  public func locate(_ pointer: Pointer) -> Schema? {
+    guard
+      let subId = id.appending(fragmentPointer: pointer),
+      let subSchema = locate(fragment: "#\(pointer)", allowing: [.keywordLocation]),
+      let subInstance = instance[pointer]
+    else {
+      return nil
+    }
+    return Schema(
+      id: subId,
+      keywordLocation: pointer,
+      anchor: nil,
+      dynamicAnchor: nil,
+      metaSchema: metaSchema,
+      instance: subInstance,
+      subSchema: subSchema,
+      resources: resources
+    )
+  }
 }
 
 extension Schema: Sendable {}
