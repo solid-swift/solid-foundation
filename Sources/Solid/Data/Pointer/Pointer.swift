@@ -270,6 +270,21 @@ extension Pointer: ExpressibleByStringLiteral {
 
 }
 
+extension Pointer: ExpressibleByStringInterpolation {
+
+  /// Creates a pointer from an interpolated string literal.
+  ///
+  /// If the string starts with a slash, it is treated as an encoded pointer.
+  /// Otherwise, it is treated as a single name token.
+  ///
+  /// - Parameter value: The string literal
+  /// - Precondition: If the string contains slashes, it must be a valid encoded pointer
+  public init(stringInterpolation value: DefaultStringInterpolation) {
+    self.init(stringLiteral: value.description)
+  }
+
+}
+
 extension Pointer: ExpressibleByIntegerLiteral {
 
   /// Creates a pointer from an integer literal.
