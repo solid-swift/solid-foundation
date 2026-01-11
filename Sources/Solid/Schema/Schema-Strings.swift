@@ -160,7 +160,7 @@ extension Schema {
         let mode: Mode =
           if let override = context.options.formatModeOverride {
             override
-          } else if context.schema.vocabularies.contains(where: { $0.key.id == Self.formatAssertionVocabularyId }) {
+          } else if context.metaSchema.vocabularies.contains(where: { $0.key.id == Self.formatAssertionVocabularyId }) {
             .assert
           } else {
             .annotate

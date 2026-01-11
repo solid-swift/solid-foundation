@@ -28,7 +28,7 @@ extension Schema.Builder {
       public var idRef: URI?
       public var anchor: String?
       public var dynamicAnchor: String?
-      public var schema: MetaSchema
+      public var metaSchema: MetaSchema
 
       public var keywordBehaviors: Schema.ObjectSubSchema.KeywordBehaviors = [:]
       public var resources: [Schema] = []
@@ -55,7 +55,7 @@ extension Schema.Builder {
           instance: instance,
           instanceLocation: .root,
           baseId: baseId,
-          schema: options.defaultSchema
+          metaSchema: options.defaultSchema
         )
       ]
     }
@@ -93,7 +93,7 @@ extension Schema.Builder {
           instance: self.instance,
           instanceLocation: self.instanceLocation,
           baseId: self.baseId,
-          schema: self.schema
+          metaSchema: self.metaSchema
         )
       )
     }
@@ -195,9 +195,9 @@ extension Schema.Builder {
       }
     }
 
-    public var schema: MetaSchema {
-      get { currentScope.schema }
-      set { currentScope.schema = newValue }
+    public var metaSchema: MetaSchema {
+      get { currentScope.metaSchema }
+      set { currentScope.metaSchema = newValue }
     }
 
     public var resources: [Schema] {

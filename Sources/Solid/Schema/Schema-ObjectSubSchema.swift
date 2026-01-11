@@ -90,7 +90,7 @@ extension Schema {
 
       // Apply identifier keywords (determined by current schema) first
 
-      let presentIdentifierKeywords = unappliedKeywords.intersection(context.schema.identifierKeywords)
+      let presentIdentifierKeywords = unappliedKeywords.intersection(context.metaSchema.identifierKeywords)
       for identifierKeyword in presentIdentifierKeywords where unappliedKeywords.remove(identifierKeyword) != nil {
 
         if isUnknown && identifierKeyword == .id$ {
@@ -98,17 +98,17 @@ extension Schema {
           continue
         }
 
-        guard let idKeywordBehaviorType = context.schema.keywordBehavior(for: identifierKeyword) else {
+        guard let idKeywordBehaviorType = context.metaSchema.keywordBehavior(for: identifierKeyword) else {
           continue
         }
 
         try context.keywordBehavior(for: idKeywordBehaviorType)
       }
 
-      let reservedKeywords = unappliedKeywords.intersection(context.schema.reservedKeywords)
+      let reservedKeywords = unappliedKeywords.intersection(context.metaSchema.reservedKeywords)
       for reservedKeyword in reservedKeywords where unappliedKeywords.remove(reservedKeyword) != nil {
 
-        guard let reservedKeywordBehaviorType = context.schema.keywordBehavior(for: reservedKeyword) else {
+        guard let reservedKeywordBehaviorType = context.metaSchema.keywordBehavior(for: reservedKeyword) else {
           continue
         }
 
@@ -123,7 +123,7 @@ extension Schema {
 
         // Determine keyword behavior via schema / vocabulary
 
-        if let keywordBehaviorType = context.schema.keywordBehavior(for: keyword) {
+        if let keywordBehaviorType = context.metaSchema.keywordBehavior(for: keyword) {
 
           try context.keywordBehavior(for: keywordBehaviorType)
 

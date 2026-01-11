@@ -164,7 +164,7 @@ extension Schema.Validator {
       )
       context.scopes.append(
         Scope(
-          metaSchema: schema.schema,
+          metaSchema: schema.metaSchema,
           schema: schema,
           baseId: schema.id,
           parentAbsoluteKeywordLocation: .root,
@@ -200,7 +200,7 @@ extension Schema.Validator {
       let isResourceRoot = schema is Schema || baseId != nil
       let currentScope = currentScope
       let scope = Scope(
-        metaSchema: (schema as? Schema)?.schema ?? currentScope.metaSchema,
+        metaSchema: (schema as? Schema)?.metaSchema ?? currentScope.metaSchema,
         schema: schema,
         baseId: baseId ?? (isResourceRoot ? schema.id : currentScope.baseId),
         parentAbsoluteKeywordLocation: isResourceRoot ? .root : currentScope.keywordLocation,

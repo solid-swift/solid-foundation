@@ -83,7 +83,7 @@ extension Schema {
         keywordLocation: context.instanceLocation,
         anchor: context.anchor,
         dynamicAnchor: context.dynamicAnchor,
-        schema: context.schema,
+        metaSchema: context.metaSchema,
         instance: context.instance,
         subSchema: subSchema,
         resources: context.resources
