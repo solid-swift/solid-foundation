@@ -40,7 +40,7 @@ final class HostnameTests {
     #expect(host.description == "sub.example.com")
   }
 
-  // MARK: - Parsing Valid
+  // MARK: - Valid
 
   @Test("Valid hostnames should parse successfully")
   func validHostname() {
@@ -66,6 +66,10 @@ final class HostnameTests {
     #expect(Hostname.parse(string: "1example.com") != nil)
     #expect(Hostname.parse(string: "example1.example2.com") != nil)
   }
+
+
+  // MARK: - Invalid
+
 
   @Test("Hostnames exceeding maximum length should fail to parse")
   func invalidHostnameLength() {

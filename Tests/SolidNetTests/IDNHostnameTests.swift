@@ -45,7 +45,7 @@ final class IDNHostnameTests {
     #expect(host.description == "xn--bcher-kva.例")
   }
 
-  // MARK: - Parsing
+  // MARK: - Basic Validation
 
   @Test("Valid hostnames")
   func validHostnames() throws {
@@ -100,6 +100,8 @@ final class IDNHostnameTests {
     #expect(IDNHostname.parse(string: ".example.com") == nil)
   }
 
+  // MARK: - Label Validation
+
   @Test("Valid labels")
   func validLabels() throws {
     // Test valid ASCII labels
@@ -138,6 +140,8 @@ final class IDNHostnameTests {
     #expect(IDNHostname.parse(string: "ex@mple.com") == nil)
     #expect(IDNHostname.parse(string: "ex!mple.com") == nil)
   }
+
+  // MARK: - Parameterized
 
   @Test(
     "Valid hostname lengths",
