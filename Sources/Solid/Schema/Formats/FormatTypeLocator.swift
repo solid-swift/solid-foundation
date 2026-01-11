@@ -5,6 +5,7 @@
 //  Created by Kevin Wooten on 2/9/25.
 //
 
+
 /// Locator for ``FormatType`` instances.
 ///
 public protocol FormatTypeLocator: Sendable {

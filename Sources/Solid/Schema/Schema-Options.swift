@@ -39,6 +39,8 @@ extension Schema {
       )
     }()
 
+    public static func `default`(for defaultSchema: MetaSchema) -> Self { .default.defaultSchema(defaultSchema) }
+
     public enum CollectAnnotations {
 
       public enum Filter {
@@ -67,6 +69,7 @@ extension Schema {
     public let contentMediaTypeLocator: ContentMediaTypeLocator
     public let contentEncodingLocator: ContentEncodingLocator
     public let collectAnnotations: CollectAnnotations
+    public let formatModeOverride: Schema.Strings.Format.Mode?
     public let trace: Bool
 
     public init(
@@ -79,7 +82,8 @@ extension Schema {
       contentMediaTypeLocator: ContentMediaTypeLocator,
       contentEncodingLocator: ContentEncodingLocator,
       collectAnnotations: CollectAnnotations,
-      trace: Bool = false
+      formatModeOverride: Schema.Strings.Format.Mode? = nil,
+      trace: Bool = false,
     ) {
       self.defaultSchema = defaultSchema
       self.unknownKeywords = unknownKeywords
@@ -90,6 +94,7 @@ extension Schema {
       self.contentMediaTypeLocator = contentMediaTypeLocator
       self.contentEncodingLocator = contentEncodingLocator
       self.collectAnnotations = collectAnnotations
+      self.formatModeOverride = formatModeOverride
       self.trace = trace
     }
 
@@ -103,7 +108,8 @@ extension Schema {
       contentMediaTypeLocator: ContentMediaTypeLocator? = nil,
       contentEncodingLocator: ContentEncodingLocator? = nil,
       collectAnnotations: CollectAnnotations? = nil,
-      trace: Bool? = nil
+      formatModeOverride: Schema.Strings.Format.Mode? = nil,
+      trace: Bool? = nil,
     ) -> Self {
       Self(
         defaultSchema: defaultSchema ?? self.defaultSchema,
@@ -115,7 +121,8 @@ extension Schema {
         contentMediaTypeLocator: contentMediaTypeLocator ?? self.contentMediaTypeLocator,
         contentEncodingLocator: contentEncodingLocator ?? self.contentEncodingLocator,
         collectAnnotations: collectAnnotations ?? self.collectAnnotations,
-        trace: trace ?? self.trace
+        formatModeOverride: formatModeOverride ?? self.formatModeOverride,
+        trace: trace ?? self.trace,
       )
     }
 
@@ -159,6 +166,10 @@ extension Schema {
 
     public func collectAnnotations(_ value: CollectAnnotations = .all) -> Self {
       copy(collectAnnotations: value)
+    }
+
+    public func formatModeOverride(_ mode: Schema.Strings.Format.Mode) -> Self {
+      copy(formatModeOverride: mode)
     }
 
     public func trace(_ value: Bool = true) -> Self {

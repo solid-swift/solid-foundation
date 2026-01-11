@@ -21,6 +21,75 @@ public struct IPv6Address {
     self.groups = groups
   }
 
+  public init(initializer: (inout OutputSpan<UInt8>) -> Void) {
+    groups =
+      Array(unsafeUninitializedCapacity: 8) { elementBuffer, initializedCount in
+        elementBuffer.withMemoryRebound(to: UInt8.self) { byteBuffer in
+          var span = OutputSpan(buffer: byteBuffer, initializedCount: 0)
+          initializer(&span)
+          initializedCount = span.finalize(for: byteBuffer) / 2
+        }
+      }
+  }
+
+  /// Encoded string representation of the address.
+  ///
+  /// Encoded the address into RFC 5952 canonical form:
+  /// - Use lowercase hex without leading zeros for each 16-bit group
+  /// - Compress the longest run of consecutive zero groups with "::" (length >= 2)
+  ///   If there are ties, compress the first such run. Do not compress a single zero group.
+  /// - The all-zero address is represented as "::".
+  ///
+  public var encoded: String {
+
+    // Find the longest run of zeros
+    var bestStart: Int? = nil
+    var bestLen = 0
+    var i = 0
+    while i < 8 {
+      if groups[i] == 0 {
+        let start = i
+        var len = 0
+        while i < 8 && groups[i] == 0 {
+          len += 1
+          i += 1
+        }
+        if len > bestLen {
+          bestLen = len
+          bestStart = start
+        }
+      } else {
+        i += 1
+      }
+    }
+
+    // Only compress if run length >= 2
+    if bestLen < 2 { bestStart = nil }
+
+    // Build the string
+    var result = ""
+    i = 0
+    while i < 8 {
+      if let s = bestStart, i == s {
+        // Insert the compression marker
+        result += "::"
+        i += bestLen
+        // If compression reaches the end, we're done
+        if i >= 8 { break }
+        continue
+      }
+
+      let groupStr = String(groups[i], radix: 16)    // lowercase, no leading zeros
+      if !result.isEmpty && !result.hasSuffix(":") {
+        result += ":"
+      }
+      result += groupStr
+      i += 1
+    }
+
+    return result.isEmpty ? "::" : result
+  }
+
   /// Initializes an IPv6Address from a string using RFC 4291 section 2.2 rules.
   ///
   /// This initializer supports:
@@ -152,4 +221,16 @@ public struct IPv6Address {
     }
     return IPv6Address(groups: groups)
   }
+}
+
+extension IPv6Address: Equatable {}
+
+extension IPv6Address: Hashable {}
+
+extension IPv6Address: Sendable {}
+
+extension IPv6Address: CustomStringConvertible {
+
+  public var description: String { encoded }
+
 }

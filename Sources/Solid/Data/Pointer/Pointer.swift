@@ -126,6 +126,7 @@ public struct Pointer {
 extension Pointer: Sendable {}
 
 extension Pointer: Hashable {}
+
 extension Pointer: Equatable {}
 
 extension Pointer: CustomStringConvertible, CustomDebugStringConvertible {

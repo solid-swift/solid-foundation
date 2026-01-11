@@ -145,11 +145,12 @@ let package = Package(
       name: "SolidSchema",
       dependencies: [
         "SolidData",
-        "SolidURI",
-        "SolidNumeric",
-        "SolidTempo",
+        "SolidID",
         "SolidJSON",
         "SolidNet",
+        "SolidNumeric",
+        "SolidTempo",
+        "SolidURI",
         .product(name: "Collections", package: "swift-collections"),
       ],
       path: "Sources/Solid/Schema",
@@ -221,6 +222,15 @@ let package = Package(
       dependencies: [
         "SolidIO",
         "SolidTesting",
+      ],
+      plugins: [
+        .plugin(name: "Lint", package: "swiftformatplugins")
+      ]
+    ),
+    .testTarget(
+      name: "SolidNetTests",
+      dependencies: [
+        "SolidNet",
       ],
       plugins: [
         .plugin(name: "Lint", package: "swiftformatplugins")

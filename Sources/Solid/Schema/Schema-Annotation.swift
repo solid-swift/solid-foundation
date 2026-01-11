@@ -35,8 +35,27 @@ extension Schema {
 }
 
 extension Schema.Annotation: Sendable {}
-extension Schema.Annotation: Hashable {}
-extension Schema.Annotation: Equatable {}
+
+extension Schema.Annotation: Hashable {
+
+  public func hash(into hasher: inout Hasher) {
+    hasher.combine(keyword)
+    hasher.combine(value)
+    hasher.combine(instanceLocation)
+    hasher.combine(keywordLocation)
+    hasher.combine(absoluteKeywordLocation)
+  }
+
+}
+
+extension Schema.Annotation: Equatable {
+
+  public static func == (lhs: Self, rhs: Self) -> Bool {
+    lhs.keyword == rhs.keyword && lhs.value == rhs.value && lhs.instanceLocation == rhs.instanceLocation
+      && lhs.keywordLocation == rhs.keywordLocation && lhs.absoluteKeywordLocation == rhs.absoluteKeywordLocation
+  }
+
+}
 
 extension Schema.Annotation: CustomStringConvertible {
 

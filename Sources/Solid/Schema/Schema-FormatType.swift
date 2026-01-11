@@ -16,15 +16,6 @@ extension Schema {
 
     func validate(_ value: Value) -> Bool
 
-    func convert(_ value: Value) -> Value?
-  }
-
-}
-
-extension Schema.FormatType {
-
-  public func convert(_ value: Value) -> Value? {
-    return nil
   }
 
 }

@@ -23,7 +23,6 @@ extension MetaSchema {
       Draft2020_12.Vocabularies.content: true,
       Draft2020_12.Vocabularies.metadata: true,
     ],
-    localTypes: [],
     localKeywordBehaviors: [
       .dependencies: Schema.Objects.Dependencies.self
     ],
@@ -241,8 +240,6 @@ extension MetaSchema {
       /// The JSON Schema Draft 2020-12 **core** vocabulary.
       public static let core = Vocabulary(
         id: URI(valid: "https://json-schema.org/draft/2020-12/vocab/core"),
-        schemaId: URI(valid: "https://json-schema.org/draft/2020-12/meta/core"),
-        types: [],
         keywordBehaviors: [
           Schema.Identifiers.Id$.self,
           Schema.Identifiers.Schema$.self,
@@ -312,8 +309,6 @@ extension MetaSchema {
       /// The JSON Schema Draft 2020-12 **applicator** vocabulary.
       public static let applicator = Vocabulary(
         id: URI(valid: "https://json-schema.org/draft/2020-12/vocab/applicator"),
-        schemaId: URI(valid: "https://json-schema.org/draft/2020-12/meta/applicator"),
-        types: [],
         keywordBehaviors: [
           Schema.Arrays.PrefixItems.self,
           Schema.Arrays.Items.self,
@@ -386,7 +381,6 @@ extension MetaSchema {
       /// The JSON Schema Draft 2020-12 **validation** vocabulary.
       public static let validation = Vocabulary(
         id: URI(valid: "https://json-schema.org/draft/2020-12/vocab/validation"),
-        schemaId: URI(valid: "https://json-schema.org/draft/2020-12/meta/validation"),
         types: [.array, .boolean, .integer, .null, .number, .object, .string],
         keywordBehaviors: [
           Schema.Generic.Types.self,
@@ -515,8 +509,6 @@ extension MetaSchema {
       /// The JSON Schema Draft 2020-12 **unevaluated** vocabulary.
       public static let unevaluated = Vocabulary(
         id: URI(valid: "https://json-schema.org/draft/2020-12/vocab/unevaluated"),
-        schemaId: URI(valid: "https://json-schema.org/draft/2020-12/meta/unevaluated"),
-        types: [],
         keywordBehaviors: [
           Schema.Arrays.UnevaluatedItems.self,
           Schema.Objects.UnevaluatedProperties.self,
@@ -543,8 +535,6 @@ extension MetaSchema {
       /// The JSON Schema Draft 2020-12 **format annotation** vocabulary.
       public static let formatAnnotation = Vocabulary(
         id: URI(valid: "https://json-schema.org/draft/2020-12/vocab/format-annotation"),
-        schemaId: URI(valid: "https://json-schema.org/draft/2020-12/meta/format-annotation"),
-        types: [],
         keywordBehaviors: [
           Schema.Annotations.Format.self
         ]
@@ -569,8 +559,6 @@ extension MetaSchema {
       /// The JSON Schema Draft 2020-12 **format assertion** vocabulary.
       public static let formatAssertion = Vocabulary(
         id: URI(valid: "https://json-schema.org/draft/2020-12/vocab/format-assertion"),
-        schemaId: URI(valid: "https://json-schema.org/draft/2020-12/meta/format-assertion"),
-        types: [],
         keywordBehaviors: [
           Schema.Strings.Format.self
         ]
@@ -595,11 +583,9 @@ extension MetaSchema {
       /// The JSON Schema Draft 2020-12 **content** vocabulary.
       public static let content = Vocabulary(
         id: URI(valid: "https://json-schema.org/draft/2020-12/vocab/content"),
-        schemaId: URI(valid: "https://json-schema.org/draft/2020-12/meta/content"),
-        types: [],
         keywordBehaviors: [
           Schema.Contents.ContentMediaType.self,
-          Schema.Contents.ContentMediaEncoding.self,
+          Schema.Contents.ContentEncoding.self,
           Schema.Contents.ContentSchema.self,
         ]
       )
@@ -625,8 +611,6 @@ extension MetaSchema {
       /// The JSON Schema Draft 2020-12 **meta-data** vocabulary.
       public static let metadata = Vocabulary(
         id: URI(valid: "https://json-schema.org/draft/2020-12/vocab/meta-data"),
-        schemaId: URI(valid: "https://json-schema.org/draft/2020-12/meta/meta-data"),
-        types: [],
         keywordBehaviors: [
           Schema.Annotations.Title.self,
           Schema.Annotations.Description.self,

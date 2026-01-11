@@ -15,7 +15,7 @@ public struct Hostname {
   public let labels: [String]
 
   /// The fully qualified hostname string.
-  public var value: String {
+  public var encoded: String {
     labels.joined(separator: ".")
   }
 
@@ -40,7 +40,7 @@ public struct Hostname {
   /// - Returns: A Hostname instance if valid; otherwise, nil.
   public static func parse(string: String) -> Hostname? {
 
-    guard let labels = extractLabelsIfValid(string: string, maxLength: maxLength) else {
+    guard let labels = extractLabels(string: string, maxLength: maxLength) else {
       return nil
     }
 
@@ -79,7 +79,7 @@ public struct Hostname {
   ///   - maxLength: The maximum allowed length of the hostname
   /// - Returns: An array of substrings representing the individual labels if valid,
   ///           otherwise nil
-  public static func extractLabelsIfValid(string: String, maxLength: Int) -> [Substring]? {
+  public static func extractLabels(string: String, maxLength: Int) -> [Substring]? {
     // Handle empty string
     guard !string.isEmpty else {
       return nil
@@ -134,4 +134,16 @@ public struct Hostname {
 
     return asciiLabel.wholeMatch(of: asciiRegex) != nil
   }
+}
+
+extension Hostname: Equatable {}
+
+extension Hostname: Hashable {}
+
+extension Hostname: Sendable {}
+
+extension Hostname: CustomStringConvertible {
+
+  public var description: String { encoded }
+
 }

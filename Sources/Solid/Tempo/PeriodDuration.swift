@@ -17,6 +17,18 @@ public struct PeriodDuration {
 
 }
 
+extension PeriodDuration: Hashable {}
+
+extension PeriodDuration: Equatable {}
+
+extension PeriodDuration: Sendable {}
+
+extension PeriodDuration: CustomStringConvertible {
+
+  public var description: String { "P\(period)T\(duration)" }
+
+}
+
 extension PeriodDuration {
 
   private nonisolated(unsafe) static let parseRegex =

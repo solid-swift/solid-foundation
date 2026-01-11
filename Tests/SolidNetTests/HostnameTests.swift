@@ -12,7 +12,7 @@ import Testing
 @Suite("Hostname Tests")
 final class HostnameTests {
 
-  // MARK: - Valid Hostname Tests
+  // MARK: - Valid
 
   @Test("Valid hostnames should parse successfully")
   func validHostname() {
@@ -39,7 +39,7 @@ final class HostnameTests {
     #expect(Hostname.parse(string: "example1.example2.com") != nil)
   }
 
-  // MARK: - Invalid Hostname Tests
+  // MARK: - Invalid
 
   @Test("Hostnames exceeding maximum length should fail to parse")
   func invalidHostnameLength() {
@@ -72,14 +72,14 @@ final class HostnameTests {
     #expect(Hostname.parse(string: "xn--example@.com") == nil)    // Invalid character
   }
 
-  // MARK: - Hostname Properties Tests
+  // MARK: - Properties
 
   @Test("Hostname properties should be correctly set")
   func hostnameProperties() throws {
     let hostname = try #require(Hostname.parse(string: "sub.example.com"))
 
     #expect(hostname.labels == ["sub", "example", "com"])
-    #expect(hostname.value == "sub.example.com")
+    #expect(hostname.encoded == "sub.example.com")
   }
 
   @Test("Hostname with trailing dot should be handled correctly")
@@ -87,7 +87,7 @@ final class HostnameTests {
     let hostname = try #require(Hostname.parse(string: "sub.example.com."))
 
     #expect(hostname.labels == ["sub", "example", "com"])
-    #expect(hostname.value == "sub.example.com")
+    #expect(hostname.encoded == "sub.example.com")
   }
 
   // MARK: - Edge Cases

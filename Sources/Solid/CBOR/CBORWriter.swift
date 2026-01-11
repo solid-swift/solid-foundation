@@ -184,11 +184,11 @@ public struct CBORWriter {
           } else {
             try encodeBignum(integer)
           }
-        } else if let float: Float16 = text.float() {
+        } else if let float = text.float(as: Float16.self) {
           try encodeHalf(float)
-        } else if let float: Float32 = text.float() {
+        } else if let float = text.float(as: Float32.self) {
           try encodeFloat(float)
-        } else if let float: Float64 = text.float() {
+        } else if let float = text.float(as: Float64.self) {
           try encodeDouble(float)
         } else {
           try encodeDecimalFraction(text.decimal)

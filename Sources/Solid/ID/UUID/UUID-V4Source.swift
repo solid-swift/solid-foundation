@@ -28,12 +28,8 @@ public extension UUID {
     public func generate() -> UUID { q.sync(execute: unsafeGenerate) }
 
     private func unsafeGenerate() -> UUID {
-      do {
-        return try UUID { out in
-          V4Format.pack(randomGenerator: &randomGenerator, out: &out)
-        }
-      } catch let e {
-        fatalError("Failed to initialize UUID: \(e)")
+      return UUID { out in
+        V4Format.pack(randomGenerator: &randomGenerator, out: &out)
       }
     }
   }

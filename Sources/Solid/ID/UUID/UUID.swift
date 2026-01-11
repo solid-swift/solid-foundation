@@ -20,7 +20,7 @@ public struct UUID: UniqueID {
     self.storage = storage
   }
 
-  public init(initializer: (inout OutputSpan<UInt8>) throws -> Void) throws {
+  public init<E>(initializer: (inout OutputSpan<UInt8>) throws(E) -> Void) throws(E) {
     self.storage = try Storage(initializingWith: initializer)
   }
 

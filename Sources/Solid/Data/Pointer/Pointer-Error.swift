@@ -23,6 +23,12 @@ extension Pointer {
 
 }
 
+extension Pointer.Error: Sendable {}
+
+extension Pointer.Error: Equatable {}
+
+extension Pointer.Error: Hashable {}
+
 extension Pointer.Error: LocalizedError {
 
   /// Human-readable description of the error.

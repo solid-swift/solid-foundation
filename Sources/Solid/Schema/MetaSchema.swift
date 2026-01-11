@@ -82,8 +82,8 @@ public final class MetaSchema {
   public init(
     id: URI,
     vocabularies: OrderedDictionary<Vocabulary, Bool>,
-    localTypes: OrderedSet<Schema.InstanceType>,
-    localKeywordBehaviors: OrderedDictionary<Keyword, any Schema.KeywordBehaviorBuilder.Type>,
+    localTypes: OrderedSet<Schema.InstanceType> = [],
+    localKeywordBehaviors: OrderedDictionary<Keyword, any Schema.KeywordBehaviorBuilder.Type> = [:],
     schemaLocator: SchemaLocator,
     options: [URI: any Sendable] = [:]
   ) {

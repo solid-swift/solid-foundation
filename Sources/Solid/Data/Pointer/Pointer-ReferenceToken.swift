@@ -25,6 +25,7 @@ extension Pointer {
 extension Pointer.ReferenceToken: Sendable {}
 
 extension Pointer.ReferenceToken: Hashable {}
+
 extension Pointer.ReferenceToken: Equatable {}
 
 extension Pointer.ReferenceToken: CustomStringConvertible {

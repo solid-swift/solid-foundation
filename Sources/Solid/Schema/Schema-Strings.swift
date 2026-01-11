@@ -1,11 +1,12 @@
 //
-//  StringSchemas.swift
+//  Schema-Strings.swift
 //  SolidFoundation
 //
 //  Created by Kevin Wooten on 1/25/25.
 //
 
 import SolidData
+import SolidURI
 
 
 extension Schema {
@@ -50,7 +51,7 @@ extension Schema {
           return .valid
         }
 
-        if stringInstance.count < minLength {
+        if stringInstance.unicodeScalars.count < minLength {
           return .invalid("Must be a minimum of \(minLength) characters")
         }
 
@@ -142,10 +143,10 @@ extension Schema {
       public enum Mode: Sendable {
         case annotate
         case assert
-        case convert
       }
 
       public static let keyword: Keyword = .format
+      public static let formatAssertionVocabularyId = MetaSchema.Draft2020_12.Vocabularies.formatAssertion.id
 
       public let formatType: FormatType
       public let mode: Mode
@@ -157,8 +158,13 @@ extension Schema {
         }
 
         let mode: Mode =
-          context.schema.vocabularies.contains { $0.key.id == MetaSchema.Draft2020_12.Vocabularies.formatAssertion.id }
-          ? .assert : .annotate
+          if let override = context.options.formatModeOverride {
+            override
+          } else if context.schema.vocabularies.contains(where: { $0.key.id == Self.formatAssertionVocabularyId }) {
+            .assert
+          } else {
+            .annotate
+          }
 
         do {
           let formatType = try context.options.formatTypeLocator.locate(formatType: format)
@@ -183,15 +189,6 @@ extension Schema {
           return valid
             ? .annotation(.string(formatType.identifier))
             : .invalid("Must be a valid \(formatType.identifier)")
-
-        case .convert:
-          guard let converted = formatType.convert(instance) else {
-            return .invalid("Must be a valid \(formatType.identifier)")
-          }
-          return .annotation([
-            "format": .string(formatType.identifier),
-            "result": converted,
-          ])
         }
       }
     }

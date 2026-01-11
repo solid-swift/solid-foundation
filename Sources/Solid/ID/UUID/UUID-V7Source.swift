@@ -37,20 +37,16 @@ public extension UUID {
 
       let (timestamp, clockSequence) = timestampSource.current(randomGenerator: &randomGenerator)
 
-      do {
-        return try UUID { out in
+      return UUID { out in
 
-          V7Format.pack(
-            timestamp: timestamp,
-            clockSequence: clockSequence,
-            randomGenerator: &randomGenerator,
-            out: &out
-          )
+        V7Format.pack(
+          timestamp: timestamp,
+          clockSequence: clockSequence,
+          randomGenerator: &randomGenerator,
+          out: &out
+        )
 
-          assert(out.count == 16)
-        }
-      } catch let e {
-        fatalError("Failed to initialize UUID: \(e)")
+        assert(out.count == 16)
       }
     }
   }

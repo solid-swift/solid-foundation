@@ -5,6 +5,7 @@
 //  Created by Kevin Wooten on 2/25/25.
 //
 
+import Foundation
 import SolidData
 
 
@@ -45,7 +46,7 @@ public struct JSONValueWriter {
     self.options = options
   }
 
-  func writeValue(_ value: Value) {
+  public func writeValue(_ value: Value) {
     switch value {
 
     case .null:
@@ -107,5 +108,9 @@ public struct JSONValueWriter {
         writeValue([tag: value])
       }
     }
+  }
+
+  public func data() -> Data {
+    Data(tokenWriter.output.value.utf8)
   }
 }

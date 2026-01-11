@@ -12,7 +12,7 @@ import Testing
 @Suite("IPv4 Address Tests")
 final class IPv4AddressTests {
 
-  // MARK: - Initialization Tests
+  // MARK: - Initialization
 
   @Test("Initialize with octets")
   func testInitWithOctets() {
@@ -33,7 +33,7 @@ final class IPv4AddressTests {
     #expect(address.d == octets.3)
   }
 
-  // MARK: - Parsing Tests
+  // MARK: - Parsing
 
   @Test(arguments: [
     "0.0.0.0",
@@ -84,7 +84,30 @@ final class IPv4AddressTests {
     #expect(maxAddress?.d == 255)
   }
 
-  // MARK: - Property Tests
+  // MARK: - Formatting
+
+  @Test("Formats as a.b.c.d from octets")
+  func testDescriptionFromOctets() {
+    let addr = IPv4Address(a: 192, b: 168, c: 1, d: 42)
+    #expect(addr.encoded == "192.168.1.42")
+  }
+
+  @Test("Formats parsed address as a.b.c.d")
+  func testDescriptionFromParse() {
+    let parsed = try! #require(IPv4Address.parse(string: "10.0.0.7"))
+    #expect(parsed.encoded == "10.0.0.7")
+  }
+
+  @Test("Edge values format correctly")
+  func testDescriptionEdgeValues() {
+    let minAddr = IPv4Address(a: 0, b: 0, c: 0, d: 0)
+    #expect(minAddr.encoded == "0.0.0.0")
+
+    let maxAddr = IPv4Address(a: 255, b: 255, c: 255, d: 255)
+    #expect(maxAddr.encoded == "255.255.255.255")
+  }
+
+  // MARK: - Properties
 
   @Test("Octets property")
   func testOctetsProperty() {
@@ -102,4 +125,5 @@ final class IPv4AddressTests {
     #expect(mutableAddress.c == 0)
     #expect(mutableAddress.d == 1)
   }
+
 }

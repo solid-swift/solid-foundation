@@ -128,46 +128,46 @@ extension Value.BinaryNumber: Value.Number {
     }
   }
 
-  public func int<T: FixedWidthInteger>() -> T? {
+  public func int<T: FixedWidthInteger>(as type: T.Type) -> T? {
     switch self {
-    case .int8(let value): T(exactly: value)
-    case .int16(let value): T(exactly: value)
-    case .int32(let value): T(exactly: value)
-    case .int64(let value): T(exactly: value)
-    case .int128(let value): T(exactly: value)
-    case .uint8(let value): T(exactly: value)
-    case .uint16(let value): T(exactly: value)
-    case .uint32(let value): T(exactly: value)
-    case .uint64(let value): T(exactly: value)
-    case .uint128(let value): T(exactly: value)
-    case .int(let value): T(exactly: value)
-    case .decimal(let value): T(exactly: value)
-    case .float16(let value): T(exactly: value)
-    case .float32(let value): T(exactly: value)
-    case .float64(let value): T(exactly: value)
+    case .int8(let value): type.init(exactly: value)
+    case .int16(let value): type.init(exactly: value)
+    case .int32(let value): type.init(exactly: value)
+    case .int64(let value): type.init(exactly: value)
+    case .int128(let value): type.init(exactly: value)
+    case .uint8(let value): type.init(exactly: value)
+    case .uint16(let value): type.init(exactly: value)
+    case .uint32(let value): type.init(exactly: value)
+    case .uint64(let value): type.init(exactly: value)
+    case .uint128(let value): type.init(exactly: value)
+    case .int(let value): type.init(exactly: value)
+    case .decimal(let value): type.init(exactly: value)
+    case .float16(let value): type.init(exactly: value)
+    case .float32(let value): type.init(exactly: value)
+    case .float64(let value): type.init(exactly: value)
     }
   }
 
-  public func float<F>() -> F? where F: BinaryFloatingPoint {
+  public func float<F>(as type: F.Type) -> F? where F: BinaryFloatingPoint {
     switch self {
-    case .int8(let value): F(exactly: value)
-    case .int16(let value): F(exactly: value)
-    case .int32(let value): F(exactly: value)
-    case .int64(let value): F(exactly: value)
-    case .int128(let value): F(exactly: value)
-    case .uint8(let value): F(exactly: value)
-    case .uint16(let value): F(exactly: value)
-    case .uint32(let value): F(exactly: value)
-    case .uint64(let value): F(exactly: value)
-    case .uint128(let value): F(exactly: value)
-    case .int(let value): F(exactly: value)
+    case .int8(let value): type.init(exactly: value)
+    case .int16(let value): type.init(exactly: value)
+    case .int32(let value): type.init(exactly: value)
+    case .int64(let value): type.init(exactly: value)
+    case .int128(let value): type.init(exactly: value)
+    case .uint8(let value): type.init(exactly: value)
+    case .uint16(let value): type.init(exactly: value)
+    case .uint32(let value): type.init(exactly: value)
+    case .uint64(let value): type.init(exactly: value)
+    case .uint128(let value): type.init(exactly: value)
+    case .int(let value): type.init(exactly: value)
     case .float16(let value):
       if value.isNaN {
         F.nan
       } else if value.isInfinite {
         value.sign == .plus ? F.infinity : -F.infinity
       } else {
-        F(exactly: value)
+        type.init(exactly: value)
       }
     case .float32(let value):
       if value.isNaN {
@@ -175,7 +175,7 @@ extension Value.BinaryNumber: Value.Number {
       } else if value.isInfinite {
         value.sign == .plus ? F.infinity : -F.infinity
       } else {
-        F(exactly: value)
+        type.init(exactly: value)
       }
     case .float64(let value):
       if value.isNaN {
@@ -183,7 +183,7 @@ extension Value.BinaryNumber: Value.Number {
       } else if value.isInfinite {
         value.sign == .plus ? F.infinity : -F.infinity
       } else {
-        F(exactly: value)
+        type.init(exactly: value)
       }
     case .decimal(let value):
       if value.isNaN {
@@ -191,7 +191,7 @@ extension Value.BinaryNumber: Value.Number {
       } else if value.isInfinite {
         value.sign == .plus ? F.infinity : -F.infinity
       } else {
-        F(exactly: value)
+        type.init(exactly: value)
       }
     }
   }

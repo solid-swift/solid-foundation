@@ -12,7 +12,7 @@ import Algorithms
 /// arbitrary‑precision unsigned integer.
 ///
 /// An arbitrary-precision unsigned integer that implements Swift's numeric protocols.
-/// The value is backed by a little‑endian array of machine words (`UInt`).
+/// The value is backed by an array of machine words (`UInt`).
 /// The array never contains leading‑zero words *unless* the value is exactly zero
 /// (represented by a single `0` word).
 ///

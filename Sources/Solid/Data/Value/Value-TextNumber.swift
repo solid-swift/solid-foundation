@@ -43,12 +43,12 @@ extension Value.TextNumber: Value.Number {
     return decimal.integer()
   }
 
-  public func int<T: BinaryInteger>() -> T? {
-    return T(exactly: decimal.rounded(.towardZero))
+  public func int<T: BinaryInteger>(as type: T.Type) -> T? {
+    return type.init(exactly: decimal.rounded(.towardZero))
   }
 
-  public func float<T: BinaryFloatingPoint>() -> T? {
-    return T(exactly: decimal)
+  public func float<T: BinaryFloatingPoint>(as type: T.Type) -> T? {
+    return type.init(exactly: decimal)
   }
 
   public var isNaN: Bool {
