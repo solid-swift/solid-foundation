@@ -1,6 +1,7 @@
-// swift-tools-version: 6.0
+// swift-tools-version: 6.2
 
 import PackageDescription
+import CompilerPluginSupport
 import class Foundation.ProcessInfo
 
 let package = Package(
@@ -21,6 +22,7 @@ let package = Package(
     .library(name: "SolidID", targets: ["SolidID"]),
     .library(name: "SolidData", targets: ["SolidData"]),
     .library(name: "SolidSchema", targets: ["SolidSchema"]),
+    .library(name: "SolidCoding", targets: ["SolidCoding"]),
     .library(name: "SolidJSON", targets: ["SolidJSON"]),
     .library(name: "SolidYAML", targets: ["SolidYAML"]),
     .library(name: "SolidCBOR", targets: ["SolidCBOR"]),
@@ -33,6 +35,7 @@ let package = Package(
     .package(url: "https://github.com/apple/swift-argument-parser.git", from: "1.7.0"),
     .package(url: "https://github.com/StarLard/SwiftFormatPlugins.git", from: "1.1.1"),
     .package(url: "https://github.com/ordo-one/package-benchmark", .upToNextMajor(from: "1.29.7")),
+    .package(url: "https://github.com/apple/swift-syntax.git", exact: "600.0.1"),
   ],
   targets: [
     .target(
@@ -45,6 +48,7 @@ let package = Package(
         "SolidTempo",
         "SolidData",
         "SolidSchema",
+        "SolidCoding",
         "SolidJSON",
         "SolidYAML",
         "SolidCBOR",
@@ -178,6 +182,35 @@ let package = Package(
       plugins: [
         .plugin(name: "Lint", package: "swiftformatplugins")
       ]
+    ),
+    .target(
+      name: "SolidCoding",
+      dependencies: [
+        "SolidCore",
+        "SolidNumeric",
+        "SolidURI",
+        "SolidData",
+        "SolidSchema",
+        "SolidTempo",
+        "SolidJSON",
+        "SolidYAML",
+        "SolidCBOR",
+        "SolidCodingMacros",
+      ],
+      path: "Sources/Solid/Coding",
+      plugins: [
+        .plugin(name: "Lint", package: "swiftformatplugins")
+      ]
+    ),
+    .macro(
+      name: "SolidCodingMacros",
+      dependencies: [
+        .product(name: "SwiftSyntax", package: "swift-syntax"),
+        .product(name: "SwiftSyntaxBuilder", package: "swift-syntax"),
+        .product(name: "SwiftSyntaxMacros", package: "swift-syntax"),
+        .product(name: "SwiftCompilerPlugin", package: "swift-syntax"),
+      ],
+      path: "Sources/Solid/CodingMacros"
     ),
     .target(
       name: "SolidTesting",
