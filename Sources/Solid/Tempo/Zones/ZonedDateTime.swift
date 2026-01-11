@@ -277,6 +277,12 @@ extension ZonedDateTime: LinkedComponentContainer, ComponentBuildable {
     ComponentKeyPathLink(.nanosecondOfSecond, to: \.dateTime.time.nanosecond),
     ComponentKeyPathLink(.zoneOffset, to: \.offset.totalSeconds),
     ComponentKeyPathLink(.zoneId, to: \.zone.identifier),
+    ComputedComponentLink(.dayOfYear) { GregorianCalendarSystem.default.dayOfYear(for: $0) },
+    ComputedComponentLink(.dayOfWeek) { GregorianCalendarSystem.default.dayOfWeek(for: $0) },
+    ComputedComponentLink(.weekOfYear) { GregorianCalendarSystem.default.weekOfYear(for: $0) },
+    ComputedComponentLink(.weekOfMonth) { GregorianCalendarSystem.default.weekOfMonth(for: $0) },
+    ComputedComponentLink(.yearForWeekOfYear) { GregorianCalendarSystem.default.yearForWeekOfYear(for: $0) },
+    ComputedComponentLink(.dayOfWeekForMonth) { ($0.day - 1) / 7 + 1 },
   ]
 
   public init(components: some ComponentContainer) {
