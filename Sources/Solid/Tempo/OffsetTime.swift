@@ -49,6 +49,16 @@ extension OffsetTime: CustomStringConvertible {
 
 extension OffsetTime {
 
+  public static func of(instant: Instant, zone: Zone) -> Self {
+    let offset = zone.offset(at: instant)
+    let time = LocalTime(durationSinceMidnight: ((instant.durationSinceEpoch + offset.duration) % .days(1)))
+    return Self(time: time, offset: offset)
+  }
+
+}
+
+extension OffsetTime {
+
   private nonisolated(unsafe) static let parseRegex =
     /^(?<hour>[01]\d|2[0-3]):(?<minute>[0-5]\d):((?<second>[0-5]\d|60)(\.(?<nanosecond>[0-9]{1,9}))?)(?<offset>Z|[+\-](?:[012]\d):[0-5]\d)$/
     .asciiOnlyDigits()
@@ -117,9 +127,9 @@ extension OffsetTime {
         return nil
       }
       // Convert local time to UTC by applying the timezone offset
-      let timeSeconds = (((hour * 3600 + minute * 60 - offset.totalSeconds) % 86400) + 86400) % 86400
-      zHour = timeSeconds / 3600
-      zMinute = (timeSeconds % 3600) / 60
+      let time: Duration = ((((.hours(hour) + .minutes(minute)) - offset.duration) % .days(1)) + .days(1)) % .days(1)
+      zHour = time[.numberOfHours]
+      zMinute = time[.numberOfMinutes]
       tzOffset = offset
     }
 

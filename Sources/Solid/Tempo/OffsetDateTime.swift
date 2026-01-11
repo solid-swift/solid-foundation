@@ -210,9 +210,7 @@ public struct OffsetDateTime: DateTime {
   /// - Returns: A new instance of ``OffsetDateTime`` sourced from the provided `clock`.
   ///
   public static func now(clock: some Clock = .system, in calendarSystem: GregorianCalendarSystem = .default) -> Self {
-    let instant = clock.instant
-    let offset = clock.zone.offset(at: instant)
-    return Self(dateTime: calendarSystem.localDateTime(instant: instant, at: offset), offset: offset)
+    return of(instant: clock.instant, zone: clock.zone)
   }
 
 }
@@ -260,6 +258,20 @@ extension OffsetDateTime: LinkedComponentContainer, ComponentBuildable {
       dateTime: LocalDateTime(components: components),
       offset: ZoneOffset(availableComponents: components)
     )
+  }
+
+}
+
+extension OffsetDateTime {
+
+  public static func of(
+    instant: Instant,
+    zone: Zone,
+    in calendarSystem: CalendarSystem = .default
+  ) -> OffsetDateTime {
+    let offset = zone.offset(at: instant)
+    let localDateTime = calendarSystem.localDateTime(instant: instant, at: offset)
+    return OffsetDateTime(dateTime: localDateTime, offset: offset)
   }
 
 }

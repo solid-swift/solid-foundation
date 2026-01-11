@@ -226,7 +226,7 @@ public struct ZonedDateTime: DateTime {
       return try with(zone: zone, resolving: resolving)
     case .sameInstant:
       let instant = try calendarSystem.instant(from: self, resolution: resolving.strategy)
-      return try calendarSystem.components(from: instant, in: zone)
+      return try Self.of(instant: instant, zone: zone, in: calendarSystem)
     }
   }
 
@@ -239,7 +239,7 @@ public struct ZonedDateTime: DateTime {
   /// - Throws: A ``TempoError`` if the conversion fails due to an unresolvable local-time.
   ///
   public static func now(clock: some Clock = .system, in calendarSystem: CalendarSystem = .default) throws -> Self {
-    return try calendarSystem.components(from: clock.instant, in: clock.zone)
+    return try of(instant: clock.instant, zone: clock.zone)
   }
 }
 
@@ -285,6 +285,18 @@ extension ZonedDateTime: LinkedComponentContainer, ComponentBuildable {
       zone: Zone(availableComponents: [.zoneId(components.value(for: .zoneId))]),
       offset: ZoneOffset(availableComponents: [.zoneOffset(components.value(for: .zoneOffset))]),
     )
+  }
+
+}
+
+extension ZonedDateTime {
+
+  public static func of(
+    instant: Instant,
+    zone: Zone,
+    in calendarSystem: CalendarSystem = .default
+  ) throws -> ZonedDateTime {
+    return try calendarSystem.components(from: instant, in: zone)
   }
 
 }
