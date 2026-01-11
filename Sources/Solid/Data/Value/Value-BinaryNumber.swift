@@ -23,6 +23,7 @@ extension Value {
     case uint64(UInt64)
     case uint128(UInt128)
     case int(BigInt)
+    case uint(BigUInt)
     case float16(Float16)
     case float32(Float32)
     case float64(Float64)
@@ -48,6 +49,7 @@ extension Value.BinaryNumber: Value.Number {
     case .uint64(let value): BigDecimal(value)
     case .uint128(let value): BigDecimal(value)
     case .int(let value): BigDecimal(value)
+    case .uint(let value): BigDecimal(value)
     case .float16(let value): BigDecimal(Float64(value))
     case .float32(let value): BigDecimal(Float64(value))
     case .float64(let value): BigDecimal(value)
@@ -57,7 +59,7 @@ extension Value.BinaryNumber: Value.Number {
 
   public var isInteger: Bool {
     switch self {
-    case .int,
+    case .int, .uint,
       .int8, .int16, .int32, .int64, .int128,
       .uint8, .uint16, .uint32, .uint64, .uint128:
       return true
@@ -99,8 +101,8 @@ extension Value.BinaryNumber: Value.Number {
     case .int32(let value): value < 0
     case .int64(let value): value < 0
     case .int128(let value): value < 0
-    case .uint8, .uint16, .uint32, .uint64, .uint128: false
     case .int(let value): value.isNegative
+    case .uint8, .uint16, .uint32, .uint64, .uint128, .uint: false
     case .float16(let value): value < 0
     case .float32(let value): value < 0
     case .float64(let value): value < 0
@@ -121,6 +123,7 @@ extension Value.BinaryNumber: Value.Number {
     case .uint64(let value): BigInt(value)
     case .uint128(let value): BigInt(value)
     case .int(let value): value
+    case .uint(let value): BigInt(value)
     case .float16(let value): BigInt(value)
     case .float32(let value): BigInt(value)
     case .float64(let value): BigInt(value)
@@ -141,6 +144,7 @@ extension Value.BinaryNumber: Value.Number {
     case .uint64(let value): type.init(exactly: value)
     case .uint128(let value): type.init(exactly: value)
     case .int(let value): type.init(exactly: value)
+    case .uint(let value): type.init(exactly: value)
     case .decimal(let value): type.init(exactly: value)
     case .float16(let value): type.init(exactly: value)
     case .float32(let value): type.init(exactly: value)
@@ -161,6 +165,7 @@ extension Value.BinaryNumber: Value.Number {
     case .uint64(let value): type.init(exactly: value)
     case .uint128(let value): type.init(exactly: value)
     case .int(let value): type.init(exactly: value)
+    case .uint(let value): type.init(exactly: value)
     case .float16(let value):
       if value.isNaN {
         F.nan
@@ -205,10 +210,12 @@ extension Value.BinaryNumber: CustomStringConvertible {
   private static let int16Style = IntegerFormatStyle<Int16>.number.locale(Self.numLocale)
   private static let int32Style = IntegerFormatStyle<Int32>.number.locale(Self.numLocale)
   private static let int64Style = IntegerFormatStyle<Int64>.number.locale(Self.numLocale)
+  private static let intStyle = IntegerFormatStyle<BigInt>.number.locale(Self.numLocale)
   private static let uint8Style = IntegerFormatStyle<UInt8>.number.locale(Self.numLocale)
   private static let uint16Style = IntegerFormatStyle<UInt16>.number.locale(Self.numLocale)
   private static let uint32Style = IntegerFormatStyle<UInt32>.number.locale(Self.numLocale)
   private static let uint64Style = IntegerFormatStyle<UInt64>.number.locale(Self.numLocale)
+  private static let uintStyle = IntegerFormatStyle<BigUInt>.number.locale(Self.numLocale)
   private static let float16Style = FloatingPointFormatStyle<Float16>.number.locale(Self.numLocale)
   private static let float32Style = FloatingPointFormatStyle<Float32>.number.locale(Self.numLocale)
   private static let float64Style = FloatingPointFormatStyle<Float64>.number.locale(Self.numLocale)
@@ -225,7 +232,8 @@ extension Value.BinaryNumber: CustomStringConvertible {
     case .uint32(let value): value.formatted(Self.uint32Style)
     case .uint64(let value): value.formatted(Self.uint64Style)
     case .uint128(let value): value.formatted()
-    case .int(let value): value.formatted()
+    case .int(let value): value.formatted(Self.intStyle)
+    case .uint(let value): value.formatted(Self.uintStyle)
     case .float16(let value): value.formatted(Self.float16Style)
     case .float32(let value): value.formatted(Self.float32Style)
     case .float64(let value): value.formatted(Self.float64Style)
@@ -260,6 +268,8 @@ extension Value.BinaryNumber: Hashable {
       hasher.combine(value)
     case .int(let value):
       hasher.combine(value)
+    case .uint(let value):
+      hasher.combine(value)
     case .float16(let value):
       hasher.combine(value)
     case .float32(let value):
@@ -287,6 +297,8 @@ extension Value.BinaryNumber: Equatable {
       return l == r
     case (.int128(let l), .int128(let r)):
       return l == r
+    case (.int(let l), .int(let r)):
+      return l == r
     case (.uint8(let l), .uint8(let r)):
       return l == r
     case (.uint16(let l), .uint16(let r)):
@@ -296,6 +308,8 @@ extension Value.BinaryNumber: Equatable {
     case (.uint64(let l), .uint64(let r)):
       return l == r
     case (.uint128(let l), .uint128(let r)):
+      return l == r
+    case (.uint(let l), .uint(let r)):
       return l == r
     case (.float16(let l), .float16(let r)):
       return l == r

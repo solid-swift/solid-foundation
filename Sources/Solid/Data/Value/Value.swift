@@ -378,6 +378,14 @@ extension Value {
     return .number(Value.BinaryNumber.int64(value))
   }
 
+  /// Creates a number value from a 128-bit integer.
+  ///
+  /// - Parameter value: The 128-bit integer value
+  /// - Returns: A number value representing the 128-bit integer
+  public static func number(_ value: Int128) -> Value {
+    return .number(Value.BinaryNumber.int128(value))
+  }
+
   /// Creates a number value from an 8-bit unsigned integer.
   ///
   /// - Parameter value: The 8-bit unsigned integer value
@@ -410,6 +418,14 @@ extension Value {
     return .number(Value.BinaryNumber.uint64(value))
   }
 
+  /// Creates a number value from a 128-bit unsigned integer.
+  ///
+  /// - Parameter value: The 128-bit unsigned integer value
+  /// - Returns: A number value representing the 128-bit unsigned integer
+  public static func number(_ value: UInt128) -> Value {
+    return .number(Value.BinaryNumber.uint128(value))
+  }
+
   /// Creates a number value from a 16-bit floating-point number.
   ///
   /// - Parameter value: The 16-bit floating-point value
@@ -439,7 +455,15 @@ extension Value {
   /// - Parameter value: The big integer value
   /// - Returns: A number value representing the big integer
   public static func number(_ value: BigInt) -> Value {
-    return .number(Value.TextNumber(decimal: .init(value)))
+    return .number(Value.BinaryNumber.int(value))
+  }
+
+  /// Creates a number value from a big unsigned integer.
+  ///
+  /// - Parameter value: The big unsigned integer value
+  /// - Returns: A number value representing the big unsigned integer
+  public static func number(_ value: BigUInt) -> Value {
+    return .number(Value.BinaryNumber.uint(value))
   }
 
   /// Creates a number value from a big decimal.

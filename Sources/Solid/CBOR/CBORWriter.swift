@@ -146,6 +146,8 @@ public struct CBORWriter {
 
         case .int(let int):
           try encodeBignum(int)
+        case .uint(let uint):
+          try encodeBignum(uint)
 
         case .float16(let float16):
           try encodeHalf(float16)
@@ -474,6 +476,20 @@ public struct CBORWriter {
 
     // Encode with appropriate tag
     try encodeTagged(tag: value.isNegative ? 3 : 2, value: .bytes(Data(bytes)))
+  }
+
+  /// Encodes a bignum value.
+  ///
+  /// - Parameter value: The bignum value to encode
+  /// - Throws: A `Swift.Error` If any I/O error occurs
+  ///
+  private func encodeBignum(_ value: BigUInt) throws {
+
+    // Get bytes magnitude (absolute value) in big-endian order
+    let bytes = value.magnitude.encode()
+
+    // Encode with appropriate tag
+    try encodeTagged(tag: 2, value: .bytes(Data(bytes)))
   }
 
   /// Encodes a decimal fraction value.
