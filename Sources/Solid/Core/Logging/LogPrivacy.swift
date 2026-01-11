@@ -36,7 +36,6 @@ public enum LogPrivacy: Int, Hashable, Sendable {
   }
 }
 
-
 extension LogPrivacy {
 
   private func redact(_ value: String) -> String {
@@ -98,4 +97,17 @@ extension LogPrivacy: EnvironmentVariableDiscoverable {
     }
     self = value
   }
+}
+
+private let defaultPrivacyStorage = Atomic<LogPrivacy>(
+  ProcessEnvironment.instance.value(for: LogPrivacy.self) ?? .private
+)
+
+extension LogPrivacy {
+
+  public static var `default`: LogPrivacy {
+    get { defaultPrivacyStorage.load(ordering: .acquiring) }
+    set { defaultPrivacyStorage.store(newValue, ordering: .releasing) }
+  }
+
 }

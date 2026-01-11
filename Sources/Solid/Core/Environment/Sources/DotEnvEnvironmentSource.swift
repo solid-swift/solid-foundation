@@ -10,7 +10,7 @@ import Foundation
 
 public struct DotEnvEnvironmentSource: ProcessEnvironmentSource {
 
-  public static let log = LogFactory.for(type: Self.self)
+  public static let log = LogFactory.for(type: Self.self, level: .warning, privacy: .private)
 
   public enum Error: Swift.Error {
     case malformedKeyPair(file: URL, line: Int)
@@ -24,7 +24,7 @@ public struct DotEnvEnvironmentSource: ProcessEnvironmentSource {
       self.priority = priority
       self.entries = try Self.load(from: url, delimiter: delimiter)
     } catch {
-      Self.log.error("Failed to load dotenv file: \(error)")
+      Self.log.info("Failed to load dotenv file: \(error)")
       self.entries = [:]
     }
   }

@@ -17,7 +17,7 @@ public protocol EnvironmentVariableDiscoverable: EnvironmentVariableInitializabl
 
 extension EnvironmentVariableDiscoverable {
 
-  public static func interrogateEnvironment(_ environment: ProcessEnvironment) -> LogPrivacy? {
+  public static func interrogateEnvironment(_ environment: ProcessEnvironment) -> Self? {
     return nil
   }
 

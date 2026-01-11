@@ -10,27 +10,31 @@
   import Logging
   import Synchronization
 
-  private let defaultPrivacyStorage = Atomic<LogPrivacy>(
-    ProcessEnvironment.instance.value(for: LogPrivacy.self) ?? .private
-  )
-
   public extension LogFactory {
 
-    static var defaultPrivacy: LogPrivacy {
-      get { defaultPrivacyStorage.load(ordering: .acquiring) }
-      set { defaultPrivacyStorage.store(newValue, ordering: .releasing) }
+    static func `for`(category: String, name: String, level: LogLevel, privacy: LogPrivacy) -> SwiftLogLog {
+      .init(label: "\(category).\(name)", level: level, privacy: privacy)
     }
 
-    static func `for`(category: String, name: String) -> SwiftLogLog { .init(label: "\(category).\(name)") }
   }
 
+  extension LogLevel {
 
-  public struct SwiftLogLog: Log {
+    init(swiftLog: Logger.Level) {
+      self =
+        switch swiftLog {
+        case .trace: .trace
+        case .debug: .debug
+        case .info: .info
+        case .notice: .notice
+        case .warning: .warning
+        case .error: .error
+        case .critical: .critical
+        }
+    }
 
-    public let destination: Logger
-    public let privacy: LogPrivacy
-    public var level: LogLevel {
-      switch destination.logLevel {
+    var swiftLog: Logger.Level {
+      switch self {
       case .trace: .trace
       case .debug: .debug
       case .info: .info
@@ -41,8 +45,18 @@
       }
     }
 
-    public init(label: String, privacy: LogPrivacy = LogFactory.defaultPrivacy) {
+  }
+
+
+  public struct SwiftLogLog: Log {
+
+    public var destination: Logger
+    public var privacy: LogPrivacy
+    public var level: LogLevel { .init(swiftLog: destination.logLevel) }
+
+    public init(label: String, level: LogLevel, privacy: LogPrivacy) {
       self.destination = Logger(label: label)
+      self.destination.logLevel = level.swiftLog
       self.privacy = privacy
     }
 

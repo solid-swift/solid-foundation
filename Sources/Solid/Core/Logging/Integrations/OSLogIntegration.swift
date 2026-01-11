@@ -13,9 +13,9 @@
 
   public extension LogFactory {
 
-    static func `for`(category: String, name: String) -> OSLogLog {
+    static func `for`(category: String, name: String, level: LogLevel, privacy: LogPrivacy) -> OSLogLog {
       let logger = Logger(subsystem: category, category: name)
-      return OSLogLog(destination: logger)
+      return OSLogLog(destination: logger, level: level, privacy: privacy)
     }
 
   }
@@ -23,11 +23,13 @@
 
   public struct OSLogLog: Log {
 
-    public let level = LogLevel.trace
-    public let privacy = LogPrivacy.private
+    public let level: LogLevel
+    public let privacy: LogPrivacy
     public let destination: Logger
 
-    public init(destination: Logger) {
+    public init(destination: Logger, level: LogLevel, privacy: LogPrivacy) {
+      self.level = level
+      self.privacy = privacy
       self.destination = destination
     }
 

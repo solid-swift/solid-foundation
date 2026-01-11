@@ -19,7 +19,12 @@ public enum LogFactory: Sendable {
     case name(String)
   }
 
-  public static func `for`(category: Category = .bundle(.module), type: Any.Type) -> Log {
+  public static func `for`(
+    category: Category = .bundle(.module),
+    type: Any.Type,
+    level: LogLevel = .default,
+    privacy: LogPrivacy = .default
+  ) -> Log {
     let typeName = String(describing: type)
     let name =
       if let lastDot = typeName.lastIndex(of: ".") {
@@ -27,11 +32,16 @@ public enum LogFactory: Sendable {
       } else {
         typeName
       }
-    return Self.for(category: category.fullName, name: name)
+    return Self.for(category: category.fullName, name: name, level: level, privacy: privacy)
   }
 
-  public static func `for`(category: Category = .bundle(.module), name: String) -> Log {
-    return Self.for(category: category.fullName, name: name)
+  public static func `for`(
+    category: Category = .bundle(.module),
+    name: String,
+    level: LogLevel = .default,
+    privacy: LogPrivacy = .default
+  ) -> Log {
+    return Self.for(category: category.fullName, name: name, level: level, privacy: privacy)
   }
 
 }
