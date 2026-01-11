@@ -41,9 +41,12 @@ public final class TzDb: ZoneRulesLoader {
     URL(filePath: "/usr/share/zoneinfo/")
   ]
 
-  /// Possible names for  the `zoneinfo` version stamp file.
-  public static let versionFileName = "+VERSION"
+  // Possible names for  the `zoneinfo` .
+
+  /// Name of the standard tzdata parameters file (which includes the version)
   public static let tzDataFileName = "tzdata.zi"
+  /// Name of the legacy version stamp file
+  public static let versionFileName = "+VERSION"
 
   final class ZoneEntry: Sendable {
 
