@@ -32,11 +32,11 @@ extension Schema {
       }
     }
 
-    public struct ContentMediaEncoding: AnnotationBehavior, BuildableKeywordBehavior {
+    public struct ContentEncoding: AnnotationBehavior, BuildableKeywordBehavior {
 
-      public static let keyword: Keyword = .contentMediaEncoding
+      public static let keyword: Keyword = .contentEncoding
 
-      public let contentMediaEncoding: String
+      public let contentEncoding: String
 
       public static func build(from keywordInstance: Value, context: inout Builder.Context) throws -> Self? {
 
@@ -44,11 +44,11 @@ extension Schema {
           try context.invalidType(requiredType: .string)
         }
 
-        return Self(contentMediaEncoding: stringInstance)
+        return Self(contentEncoding: stringInstance)
       }
 
       public func annotate(context: inout Validator.Context) -> Value? {
-        return .string(contentMediaEncoding)
+        return .string(contentEncoding)
       }
     }
 

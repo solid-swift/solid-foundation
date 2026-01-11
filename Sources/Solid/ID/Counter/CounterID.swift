@@ -21,9 +21,11 @@ public struct CounterID<Count: FixedWidthInteger & AtomicRepresentable & Sendabl
 
   public init(initializer: (inout OutputSpan<UInt8>) throws -> Void) throws {
     var value: Count = 0
-    try withUnsafeMutableBytes(of: &value) { ptr in
-      var out = OutputSpan<UInt8>(buffer: ptr.assumingMemoryBound(to: UInt8.self), initializedCount: 0)
+    try withUnsafeMutableBytes(of: &value) { rawBuf in
+      let buf = rawBuf.assumingMemoryBound(to: UInt8.self)
+      var out = OutputSpan<UInt8>(buffer: buf, initializedCount: 0)
       try initializer(&out)
+      _ = out.finalize(for: buf)
     }
     self.storage = value
   }

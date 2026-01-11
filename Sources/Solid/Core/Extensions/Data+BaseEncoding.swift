@@ -18,13 +18,12 @@ extension Data {
   public init?(baseEncodedString string: String, encoding: BaseEncoding) {
     do {
       let size = try encoding.decodedSize(of: string)
-      var data = Data(count: size)
-      try data.withUnsafeMutableBytes { raw in
-        var out = OutputSpan<UInt8>(
-          buffer: raw.bindMemory(to: UInt8.self),
-          initializedCount: 0
-        )
+      var data = Data(repeating: 0, count: size)
+      try data.withUnsafeMutableBytes { rawBuf in
+        let buf = rawBuf.bindMemory(to: UInt8.self)
+        var out = OutputSpan<UInt8>(buffer: buf, initializedCount: 0)
         try encoding.decode(string, into: &out)
+        _ = out.finalize(for: buf)
       }
       self = data
     } catch {

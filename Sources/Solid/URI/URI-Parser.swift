@@ -490,7 +490,7 @@ extension URI {
             )
             return nil
           }
-          return .hostPort(host: host.value, port: port)
+          return .hostPort(host: host.encoded, port: port)
         }
         guard let host = Hostname.parse(string: String(hostToken)) else {
           error = .init(
@@ -500,7 +500,7 @@ extension URI {
           )
           return nil
         }
-        return .hostPort(host: host.value, port: port)
+        return .hostPort(host: host.encoded, port: port)
       case .pathRoot:
         guard !components.isEmpty || allowedKinds.contains(.relativeReference) else {
           return nil

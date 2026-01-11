@@ -45,7 +45,7 @@ extension Schema {
 
         let types = try typeStrings.enumerated()
           .compactMap { (idx, typeString) in
-            guard let type = context.schema.types.first(where: { $0.keyword.rawValue == typeString }) else {
+            guard let type = context.schema.types.first(where: { $0.name == typeString }) else {
               try context.invalidValue(options: context.schema.types, at: idx)
             }
             return type
@@ -57,7 +57,7 @@ extension Schema {
       public func assert(instance: Value, context: inout Validator.Context) -> Assertion {
 
         guard !types.intersection(instance.schemaTypes).isEmpty else {
-          return .invalid(options: types.map(\.keyword))
+          return .invalid(options: types.map(\.name))
         }
 
         return .valid

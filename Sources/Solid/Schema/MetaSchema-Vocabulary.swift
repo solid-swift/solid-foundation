@@ -14,18 +14,15 @@ extension MetaSchema {
   public struct Vocabulary {
 
     public let id: URI
-    public let schemaId: URI
     public let types: OrderedSet<Schema.InstanceType>
     public let keywordBehaviors: OrderedDictionary<Keyword, any Schema.KeywordBehaviorBuilder.Type>
 
     public init(
       id: URI,
-      schemaId: URI,
-      types: OrderedSet<Schema.InstanceType>,
-      keywordBehaviors: [any Schema.KeywordBehaviorBuilder.Type]
+      types: OrderedSet<Schema.InstanceType> = [],
+      keywordBehaviors: [any Schema.KeywordBehaviorBuilder.Type] = []
     ) {
       self.id = id
-      self.schemaId = schemaId
       self.types = types
       self.keywordBehaviors = keywordBehaviors.reduce(into: [:]) { $0[$1.keyword] = $1 }
     }

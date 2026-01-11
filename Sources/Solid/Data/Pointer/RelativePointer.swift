@@ -22,11 +22,11 @@ import RegexBuilder
 ///     relative-json-pointer = non-negative-integer ( ("#") / ( "/" json-pointer ) )
 ///
 /// This struct uses the existing `Pointer` type (defined in Pointer.swift) to represent the JSON pointer portion.
-public struct RelativePointer: Equatable, Hashable, CustomStringConvertible {
+public struct RelativePointer {
 
   /// The tail of a relative pointer, which is either a key indicator ("#")
   /// or a JSON pointer.
-  public enum Tail: Equatable, Hashable {
+  public enum Tail {
     /// Indicates that the relative pointer ends with "#". This form is used to
     /// return the key (or index) of the current location in its parent.
     case keyIndicator
@@ -43,7 +43,7 @@ public struct RelativePointer: Equatable, Hashable, CustomStringConvertible {
   public let tail: Tail?
 
   /// Returns the encoded relative pointer string.
-  public var description: String {
+  public var encoded: String {
     guard let tail else {
       guard let up else {
         fatalError("Invalid relative pointer: \(self)")
@@ -57,11 +57,6 @@ public struct RelativePointer: Equatable, Hashable, CustomStringConvertible {
     case .pointer(let pointer):
       return "\(upString)\(pointer.encoded)"
     }
-  }
-
-  /// The encoded form of the relative pointer.
-  public var encoded: String {
-    description
   }
 
   /// Initializes a RelativePointer from an encoded relative pointer string.
@@ -150,3 +145,21 @@ public struct RelativePointer: Equatable, Hashable, CustomStringConvertible {
     }
   }
 }
+
+extension RelativePointer: Equatable {}
+
+extension RelativePointer: Hashable {}
+
+extension RelativePointer: Sendable {}
+
+extension RelativePointer: CustomStringConvertible {
+
+  public var description: String { encoded }
+
+}
+
+extension RelativePointer.Tail: Equatable {}
+
+extension RelativePointer.Tail: Hashable {}
+
+extension RelativePointer.Tail: Sendable {}

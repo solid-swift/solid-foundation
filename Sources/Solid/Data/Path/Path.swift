@@ -137,6 +137,7 @@ public struct Path {
 extension Path: Sendable {}
 
 extension Path: Hashable {}
+
 extension Path: Equatable {}
 
 extension Path: CustomStringConvertible {

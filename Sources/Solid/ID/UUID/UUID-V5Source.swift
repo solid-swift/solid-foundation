@@ -26,12 +26,8 @@ public extension UUID {
     }
 
     public func generate() -> UUID {
-      do {
-        return try UUID { out in
-          Self.format.pack(namespace: namespace, name: name, out: &out)
-        }
-      } catch let e {
-        fatalError("Failed to initialize UUID: \(e)")
+      return UUID { out in
+        Self.format.pack(namespace: namespace, name: name, out: &out)
       }
     }
   }

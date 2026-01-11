@@ -25,10 +25,26 @@ extension Schema {
         return false
       }
     }
+
+    public var annotation: Value? {
+      guard case .annotation(let value) = self else {
+        return nil
+      }
+      return value
+    }
+
+    public var invalidReason: String? {
+      guard case .invalid(let reason) = self else {
+        return nil
+      }
+      return reason
+    }
   }
 
 }
 
 extension Schema.Validation: Sendable {}
+
 extension Schema.Validation: Equatable {}
+
 extension Schema.Validation: Hashable {}

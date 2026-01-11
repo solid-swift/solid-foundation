@@ -6,7 +6,7 @@
 //
 
 /// A structure representing an SMTP mailbox.
-public struct EmailAddress: CustomStringConvertible {
+public struct EmailAddress {
   /// Maibox local identifier.
   ///
   /// Local identifiers are before the "@" in a mailbox address and can consist of a dot-string or a quoted-string.
@@ -27,7 +27,7 @@ public struct EmailAddress: CustomStringConvertible {
   }
 
   /// A string representation of the mailbox.
-  public var description: String {
+  public var encoded: String {
     "\(local)@\(domain)"
   }
 
@@ -196,5 +196,17 @@ public struct EmailAddress: CustomStringConvertible {
     }
     return true
   }
+
+}
+
+extension EmailAddress: Equatable {}
+
+extension EmailAddress: Hashable {}
+
+extension EmailAddress: Sendable {}
+
+extension EmailAddress: CustomStringConvertible {
+
+  public var description: String { encoded }
 
 }

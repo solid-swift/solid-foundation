@@ -15,7 +15,7 @@ public struct IDNHostname {
   public let labels: [String]
 
   /// The fully qualified hostname string.
-  public var value: String {
+  public var encoded: String {
     labels.joined(separator: ".")
   }
 
@@ -516,4 +516,16 @@ public struct IDNHostname {
 
     return foundBefore && foundAfter
   }
+}
+
+extension IDNHostname: Equatable {}
+
+extension IDNHostname: Hashable {}
+
+extension IDNHostname: Sendable {}
+
+extension IDNHostname: CustomStringConvertible {
+
+  public var description: String { encoded }
+
 }

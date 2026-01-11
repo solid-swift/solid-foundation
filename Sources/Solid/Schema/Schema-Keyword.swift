@@ -45,15 +45,7 @@ extension Schema {
     public static let `else` = Self(rawValue: "else")
     public static let dependentSchemas = Self(rawValue: "dependentSchemas")
 
-    // Null
-    public static let null = Self(rawValue: "null")
-
-    // Boolean
-    public static let boolean = Self(rawValue: "boolean")
-
     // Number
-    public static let number = Self(rawValue: "number")
-    public static let integer = Self(rawValue: "integer")
     public static let multipleOf = Self(rawValue: "multipleOf")
     public static let minimum = Self(rawValue: "minimum")
     public static let maximum = Self(rawValue: "maximum")
@@ -61,16 +53,14 @@ extension Schema {
     public static let exclusiveMaximum = Self(rawValue: "exclusiveMaximum")
 
     // String
-    public static let string = Self(rawValue: "string")
     public static let minLength = Self(rawValue: "minLength")
     public static let maxLength = Self(rawValue: "maxLength")
     public static let pattern = Self(rawValue: "pattern")
     public static let contentMediaType = Self(rawValue: "contentMediaType")
-    public static let contentMediaEncoding = Self(rawValue: "contentMediaEncoding")
+    public static let contentEncoding = Self(rawValue: "contentEncoding")
     public static let contentSchema = Self(rawValue: "contentSchema")
 
     // Array
-    public static let array = Self(rawValue: "array")
     public static let items = Self(rawValue: "items")
     public static let prefixItems = Self(rawValue: "prefixItems")
     public static let additionalItems = Self(rawValue: "additionalItems")
@@ -83,7 +73,6 @@ extension Schema {
     public static let unevaluatedItems = Self(rawValue: "unevaluatedItems")
 
     // Object
-    public static let object = Self(rawValue: "object")
     public static let properties = Self(rawValue: "properties")
     public static let patternProperties = Self(rawValue: "patternProperties")
     public static let additionalProperties = Self(rawValue: "additionalProperties")
@@ -114,10 +103,16 @@ extension Schema {
     public static let definitions = Self(rawValue: "definitions")
     public static let dependencies = Self(rawValue: "dependencies")
 
-    // - MARK: Custom
+    // - MARK: Solid
 
     // Bytes
-    public static let bytes = Self(rawValue: "bytes")
+    public static let minSize = Self(rawValue: "minSize")
+    public static let maxSize = Self(rawValue: "maxSize")
+
+    // Coding
+    public static let units = Self(rawValue: "units")
+    public static let bitWidth = Self(rawValue: "bitWidth")
+    public static let encoding = Self(rawValue: "encoding")
   }
 
 }

@@ -50,6 +50,20 @@ public struct IPv4Address {
     self.d = octets.3
   }
 
+  public init(initializer: (inout OutputSpan<UInt8>) -> Void) {
+    var address = Self(a: 0, b: 0, c: 0, d: 0)
+    withUnsafeMutableBytes(of: &address) { rawBuf in
+      let buf = rawBuf.assumingMemoryBound(to: UInt8.self)
+      var out = OutputSpan(buffer: buf, initializedCount: 0)
+      initializer(&out)
+      _ = out.finalize(for: buf)
+    }
+    self = address
+  }
+
+  /// Encoded string representation of the address.
+  public var encoded: String { "\(a).\(b).\(c).\(d)" }
+
   private static nonisolated(unsafe) let parseRegex =
     #/^(?<a>25[0-5]|2[0-4]\d|1\d{2}|[1-9]\d|\d)\.(?<b>25[0-5]|2[0-4]\d|1\d{2}|[1-9]\d|\d)\.(?<c>25[0-5]|2[0-4]\d|1\d{2}|[1-9]\d|\d)\.(?<d>25[0-5]|2[0-4]\d|1\d{2}|[1-9]\d|\d)$/#
 
@@ -83,4 +97,16 @@ public struct IPv4Address {
 
     return IPv4Address(octets: (a, b, c, d))
   }
+}
+
+extension IPv4Address: Equatable {}
+
+extension IPv4Address: Hashable {}
+
+extension IPv4Address: Sendable {}
+
+extension IPv4Address: CustomStringConvertible {
+
+  public var description: String { encoded }
+
 }

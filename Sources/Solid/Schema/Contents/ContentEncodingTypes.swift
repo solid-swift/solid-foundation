@@ -5,8 +5,10 @@
 //  Created by Kevin Wooten on 2/11/25.
 //
 
+import SolidCore
 import SolidData
 import Foundation
+
 
 public final class ContentEncodingTypes: ContentEncodingLocator, @unchecked Sendable {
 
@@ -20,13 +22,15 @@ public final class ContentEncodingTypes: ContentEncodingLocator, @unchecked Send
       case invalidData
     }
 
-    case contentEncodingNotFound(String)
+    case notFound(String)
     case decodeError(reason: DecodeReason, encoding: String)
     case encodeError(reason: EncodeReason, encoding: String)
   }
 
+  private static let log = LogFactory.for(type: ContentMediaTypeTypes.self)
+
   public private(set) var contentEncodings: [String: Schema.ContentEncodingType] = [:]
-  private let lock = NSLock()
+  private let lock = ReadersWriterLock()
 
   public init() {
     // Register the default encodings
@@ -39,17 +43,19 @@ public final class ContentEncodingTypes: ContentEncodingLocator, @unchecked Send
   }
 
   public func locate(contentEncoding id: String) throws -> Schema.ContentEncodingType {
-    try lock.withLock {
+    try lock.withReadLock {
       guard let contentType = contentEncodings[id] else {
-        throw Error.contentEncodingNotFound(id)
+        throw Error.notFound(id)
       }
       return contentType
     }
   }
 
   public func register(contentEncoding: Schema.ContentEncodingType) {
-    lock.withLock {
-      contentEncodings[contentEncoding.identifier] = contentEncoding
+    lock.withWriteLock {
+      if contentEncodings.updateValue(contentEncoding, forKey: contentEncoding.identifier) != nil {
+        Self.log.warning("Duplicate content encoding registered: \(contentEncoding.identifier)")
+      }
     }
   }
 

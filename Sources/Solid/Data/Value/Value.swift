@@ -308,6 +308,12 @@ extension Value: ExpressibleByStringLiteral {
   }
 }
 
+extension Value: ExpressibleByStringInterpolation {
+  public init(stringInterpolation: DefaultStringInterpolation) {
+    self = .string(stringInterpolation.description)
+  }
+}
+
 extension Value: ExpressibleByArrayLiteral {
   public init(arrayLiteral elements: Value...) {
     self = .array(elements)

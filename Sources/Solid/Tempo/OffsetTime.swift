@@ -28,6 +28,25 @@ public struct OffsetTime {
 
 }
 
+extension OffsetTime: Sendable {}
+extension OffsetTime: Hashable {}
+extension OffsetTime: Equatable {}
+
+extension OffsetTime: Comparable {
+
+  public static func < (lhs: Self, rhs: Self) -> Bool {
+    return lhs.time < rhs.time
+  }
+
+}
+
+extension OffsetTime: CustomStringConvertible {
+
+  public var description: String {
+    "\(time)\(offset)"
+  }
+}
+
 extension OffsetTime {
 
   private nonisolated(unsafe) static let parseRegex =

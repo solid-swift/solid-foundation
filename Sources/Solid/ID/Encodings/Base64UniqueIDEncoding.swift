@@ -5,7 +5,6 @@
 //  Created by Kevin Wooten on 10/18/25.
 //
 
-import Foundation
 import SolidCore
 
 
@@ -13,7 +12,7 @@ public enum Base64UniqueIDEncoding<ID: UniqueID>: UniqueIDEncoding {
   case instance
 
   public func encode(_ id: ID) -> String {
-    id.withUnsafeBytes(BaseEncoding.base64Url.encode)
+    id.withUnsafeBytes(BaseEncoding.base64.encode)
   }
 
   public func decode(_ string: String) throws -> ID {

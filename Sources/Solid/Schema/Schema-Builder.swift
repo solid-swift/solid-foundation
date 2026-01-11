@@ -5,6 +5,7 @@
 //  Created by Kevin Wooten on 2/5/25.
 //
 
+import SolidCore
 import SolidData
 import SolidURI
 
@@ -16,6 +17,8 @@ extension Schema {
     public static let defaultId = URI(encoded: "local://schema").neverNil()
 
     public typealias Keyword = Schema.Keyword
+
+    private static let log = LogFactory.for(type: Self.self)
 
     public static func build(
       constant schemaInstance: Value,
@@ -136,10 +139,8 @@ extension Schema {
           isUnknown: true
         )
 
-      } catch {
-        // TODO: Need to log failures like this as informational at least. This is a hail mary to locate
-        // a resource schema instead of just failing outright. In any case it would be nice to know
-        // what the failure was.
+      } catch let e {
+        log.error("Failed to build dynamic sub-schema for \(schemaId): \(e)")
         return nil
       }
     }

@@ -28,6 +28,9 @@ public struct IDNEmailAddress {
     self.domain = domain
   }
 
+  /// A string representation of the mailbox.
+  public var encoded: String { "\(local)@\(domain)" }
+
   private static nonisolated(unsafe) let parseRegex =
     #/^(?<local>(?:[\p{L}\p{N}!#$%&'*+/=?^_`{|}~\-]+(?:\.[\p{L}\p{N}!#$%&'*+/=?^_`{|}~\-]+)*|"(?:[^"\\\r\n]|\\.)*"))@(?<domain>(?:[\p{L}\p{N}\-\.]+|\[.+\]))$/#
 
@@ -185,4 +188,16 @@ public struct IDNEmailAddress {
     }
     return true
   }
+}
+
+extension IDNEmailAddress: Equatable {}
+
+extension IDNEmailAddress: Hashable {}
+
+extension IDNEmailAddress: Sendable {}
+
+extension IDNEmailAddress: CustomStringConvertible {
+
+  public var description: String { encoded }
+
 }
