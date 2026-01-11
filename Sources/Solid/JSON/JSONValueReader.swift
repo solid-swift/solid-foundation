@@ -8,7 +8,7 @@
 import SolidData
 import Foundation
 
-public struct JSONValueReader {
+public struct JSONValueReader: FormatReader {
 
   let tokenReader: JSONTokenReader
 
@@ -20,7 +20,9 @@ public struct JSONValueReader {
     self.tokenReader = JSONTokenReader(string: string)
   }
 
-  public func readValue() throws -> Value {
+  public var format: Format { JSON.format }
+
+  public func read() throws -> Value {
     return try tokenReader.readValue(converter: ValueConverter.instance)
   }
 

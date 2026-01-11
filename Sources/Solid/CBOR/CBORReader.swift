@@ -13,17 +13,22 @@ import SolidNumeric
 import Foundation
 
 
-public struct CBORReader {
+public struct CBORReader: FormatReader {
 
   public typealias Error = CBOR.Error
 
   public struct Options {
+
     public enum Undefined {
       case throwError
       case convertToNull
     }
 
-    public var undefined: Undefined = .throwError
+    public var undefined: Undefined
+
+    public init(undefined: Undefined = .throwError) {
+      self.undefined = undefined
+    }
   }
 
   private enum VarUIntSize: UInt8 {
@@ -48,9 +53,19 @@ public struct CBORReader {
   private let stream: CBORInputStream
   private let options: Options
 
-  init(stream: CBORInputStream, options: Options = Options()) {
+  public init(stream: CBORInputStream, options: Options = Options()) {
     self.stream = stream
     self.options = options
+  }
+
+  public init(data: Data, options: Options = Options()) {
+    self.init(stream: CBORDataStream(data: data), options: options)
+  }
+
+  public var format: Format { CBOR.format }
+
+  public func read() throws -> Value {
+    try decodeRequiredItem()
   }
 
   private func readHalf() throws -> Float16 {
