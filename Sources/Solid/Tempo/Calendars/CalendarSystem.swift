@@ -73,6 +73,24 @@ public protocol CalendarSystem {
   ///
   func instant(from dateTime: some DateTime, at offset: ZoneOffset) -> Instant
 
+  /// Computes the local date/time for the *UTC* instant adjusted by `offset`.
+  ///
+  /// - Parameters:
+  ///   - instant: The UTC instant to compute the local date/time for.
+  ///   - offset:  The fixed offset associated with the instant.
+  /// - Returns: The local date/time for the given instant.
+  ///
+  func localDateTime(instant: Instant, at offset: ZoneOffset) -> LocalDateTime
+
+  /// Computes the date (year, month, day) for the *UTC* instant adjusted by `offset`.
+  ///
+  /// - Parameters:
+  ///   - instant: The UTC instant.
+  ///   - offset:  The fixed offset associated with the instant.
+  /// - Returns: The (year, month, day) in the proleptic Gregorian calendar.
+  ///
+  func localDate(instant: Instant, at offset: ZoneOffset) -> LocalDate
+
   /// Determines the valid range of values for the specified component at a given instant.
   ///
   /// - Parameters:

@@ -22,15 +22,19 @@ public struct ZoneOffset {
     set { storage = Storage(newValue) }
   }
 
-  internal var hours: Int {
+  public var duration: Duration {
+    .seconds(totalSeconds)
+  }
+
+  public var hours: Int {
     return Int(totalSeconds / 3600)
   }
 
-  internal var minutes: Int {
+  public var minutes: Int {
     return Int((totalSeconds / 60) % 60)
   }
 
-  internal var seconds: Int {
+  public var seconds: Int {
     return Int(totalSeconds % 60)
   }
 
