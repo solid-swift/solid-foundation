@@ -91,10 +91,21 @@ struct FileStreamsTests {
 
     let source = try FileSource(url: fileURL)
 
+    let firstReadCompleted = AsyncStream<Void>.makeStream()
+
     let reader = Task {
+      var isFirstRead = true
       for try await _ in source.buffers(size: 133) {
+        if isFirstRead {
+          isFirstRead = false
+          firstReadCompleted.continuation.yield()
+        }
         withUnsafeCurrentTask { $0!.cancel() }
       }
+    }
+
+    for await _ in firstReadCompleted.stream {
+      break
     }
 
     await #expect(throws: CancellationError.self) {
@@ -124,12 +135,22 @@ struct FileStreamsTests {
 
     let source = try FileSource(url: fileURL)
 
+    let taskReady = AsyncStream<Void>.makeStream()
+    let proceedSignal = AsyncStream<Void>.makeStream()
+
     let reader = Task {
+      taskReady.continuation.yield()
+      for await _ in proceedSignal.stream {
+        break
+      }
       for try await _ /* data */ in source.buffers(size: 3079) {
         // print("Read \(data.count) bytes of data")
       }
     }
 
+    for await _ in taskReady.stream {
+      break
+    }
 
     await #expect(throws: CancellationError.self) {
       reader.cancel()
@@ -246,6 +267,9 @@ struct FileStreamsTests {
 
     await #expect(throws: CancellationError.self) {
       reader.cancel()
+      for await _ in proceedSignal.stream {
+        break
+      }
       try await reader.value
     }
 
