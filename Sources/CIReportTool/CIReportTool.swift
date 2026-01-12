@@ -41,12 +41,13 @@ struct CIReportTool: AsyncParsableCommand {
           for suite in module.suites {
             for repeatableTest in suite.repeatableTests {
               for test in repeatableTest.tests {
+                let durationInSeconds = test.duration.converted(to: .seconds).value
                 let result = TestResult(
                   module: module.name,
                   suite: suite.name,
                   name: repeatableTest.name,
                   status: mapStatus(test.status),
-                  duration: test.duration,
+                  duration: durationInSeconds,
                   message: test.message
                 )
                 testResults.append(result)
@@ -62,8 +63,8 @@ struct CIReportTool: AsyncParsableCommand {
             var coveredLines = 0
             for file in module.files {
               if let fileCoverage = file.coverage {
-                totalLines += fileCoverage.linesTotal
-                coveredLines += fileCoverage.linesCovered
+                totalLines += fileCoverage.totalLines
+                coveredLines += fileCoverage.coveredLines
               }
             }
             if totalLines > 0 {
