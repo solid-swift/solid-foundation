@@ -33,6 +33,7 @@ let package = Package(
     .package(url: "https://github.com/apple/swift-argument-parser.git", from: "1.7.0"),
     .package(url: "https://github.com/StarLard/SwiftFormatPlugins.git", from: "1.1.1"),
     .package(url: "https://github.com/ordo-one/package-benchmark", .upToNextMajor(from: "1.29.7")),
+    .package(url: "https://github.com/dodobrands/Peekie.git", from: "4.0.0"),
   ],
   targets: [
     .target(
@@ -284,6 +285,27 @@ let package = Package(
       plugins: [
         .plugin(name: "Lint", package: "swiftformatplugins")
       ]
+    ),
+    .executableTarget(
+      name: "ci-report-tool",
+      dependencies: [
+        .product(name: "ArgumentParser", package: "swift-argument-parser"),
+        .product(name: "PeekieSDK", package: "Peekie", condition: .when(platforms: [.macOS])),
+      ],
+      path: "Sources/CIReportTool"
+    ),
+    .plugin(
+      name: "CIReportPlugin",
+      capability: .command(
+        intent: .custom(verb: "ci-report", description: "Generate CI reports from test results"),
+        permissions: [
+          .writeToPackageDirectory(reason: "Write test reports and coverage data")
+        ]
+      ),
+      dependencies: [
+        .target(name: "ci-report-tool")
+      ],
+      path: "Plugins/CIReportPlugin"
     ),
   ],
   swiftLanguageModes: [.v6],

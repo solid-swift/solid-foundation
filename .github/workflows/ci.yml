@@ -1,0 +1,307 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test-macos:
+    name: Test (macOS)
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+
+      - name: Build
+        run: swift build
+
+      - name: Run Tests with Coverage
+        run: |
+          set -o pipefail
+          xcodebuild test \
+            -scheme SolidFoundation \
+            -destination 'platform=macOS' \
+            -enableCodeCoverage YES \
+            -enableThreadSanitizer YES \
+            -enableUndefinedBehaviorSanitizer YES \
+            -resultBundlePath TestResults.xcresult \
+            | xcpretty || true
+
+      - name: Build CI Report Tool
+        run: swift build --product ci-report-tool
+
+      - name: Generate Reports
+        run: |
+          mkdir -p reports
+          .build/debug/ci-report-tool \
+            --xcresult TestResults.xcresult \
+            --output reports \
+            --platform macOS
+
+      - name: Upload Test Results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results-macos
+          path: |
+            reports/test-results-macOS.md
+            reports/test-details-macOS.md
+            reports/results-macOS.json
+          retention-days: 30
+
+      - name: Upload Coverage Report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage-macos
+          path: |
+            reports/coverage-macOS.md
+          retention-days: 30
+
+      - name: Upload Failed Tests Report
+        uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: failed-tests-macos
+          path: reports/failed-tests-macOS.md
+          retention-days: 30
+
+      - name: Upload xcresult Bundle
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: xcresult-macos
+          path: TestResults.xcresult
+          retention-days: 7
+
+      - name: Save Reports for PR Comment
+        if: github.event_name == 'pull_request'
+        run: |
+          mkdir -p pr-reports
+          cp reports/*.md pr-reports/ 2>/dev/null || true
+          cp reports/*.json pr-reports/ 2>/dev/null || true
+
+      - name: Upload PR Reports
+        uses: actions/upload-artifact@v4
+        if: github.event_name == 'pull_request'
+        with:
+          name: pr-reports-macos
+          path: pr-reports/
+          retention-days: 1
+
+  test-linux:
+    name: Test (Linux)
+    runs-on: ubuntu-latest
+    container:
+      image: swift:latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build
+        run: swift build
+
+      - name: Run Tests with Sanitizers
+        run: |
+          swift test \
+            --sanitize=thread \
+            --sanitize=undefined \
+            2>&1 | tee test-output.txt || true
+
+      - name: Parse Test Results
+        run: |
+          mkdir -p reports
+          
+          # Extract test results from output
+          PASSED=$(grep -c "Test Case.*passed" test-output.txt 2>/dev/null || echo "0")
+          FAILED=$(grep -c "Test Case.*failed" test-output.txt 2>/dev/null || echo "0")
+          TOTAL=$((PASSED + FAILED))
+          
+          # Generate test results markdown
+          cat > reports/test-results-Linux.md << EOF
+          ## Test Results - Linux
+          
+          | Passed | Failed | Total |
+          |--------|--------|-------|
+          | $PASSED | $FAILED | $TOTAL |
+          EOF
+          
+          # Generate detailed test results
+          cat > reports/test-details-Linux.md << EOF
+          ## Detailed Test Results - Linux
+          
+          \`\`\`
+          $(grep -E "(Test Case|Test Suite)" test-output.txt || echo "No test output captured")
+          \`\`\`
+          EOF
+          
+          # Check for failures and generate failed tests report
+          if [ "$FAILED" -gt 0 ]; then
+            cat > reports/failed-tests-Linux.md << EOF
+          ## Failed Tests - Linux
+          
+          \`\`\`
+          $(grep -A 5 "Test Case.*failed" test-output.txt || echo "No failure details")
+          \`\`\`
+          EOF
+          fi
+          
+          # Generate JSON results
+          cat > reports/results-Linux.json << EOF
+          {
+            "platform": "Linux",
+            "passed": $PASSED,
+            "failed": $FAILED,
+            "total": $TOTAL
+          }
+          EOF
+
+      - name: Upload Test Results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results-linux
+          path: |
+            reports/test-results-Linux.md
+            reports/test-details-Linux.md
+            reports/results-Linux.json
+          retention-days: 30
+
+      - name: Upload Failed Tests Report
+        uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: failed-tests-linux
+          path: reports/failed-tests-Linux.md
+          retention-days: 30
+
+      - name: Save Reports for PR Comment
+        if: github.event_name == 'pull_request'
+        run: |
+          mkdir -p pr-reports
+          cp reports/*.md pr-reports/ 2>/dev/null || true
+          cp reports/*.json pr-reports/ 2>/dev/null || true
+
+      - name: Upload PR Reports
+        uses: actions/upload-artifact@v4
+        if: github.event_name == 'pull_request'
+        with:
+          name: pr-reports-linux
+          path: pr-reports/
+          retention-days: 1
+
+  pr-comment:
+    name: PR Comment
+    runs-on: ubuntu-latest
+    needs: [test-macos, test-linux]
+    if: github.event_name == 'pull_request' && always()
+    permissions:
+      pull-requests: write
+    steps:
+      - name: Download macOS Reports
+        uses: actions/download-artifact@v4
+        with:
+          name: pr-reports-macos
+          path: macos-reports
+        continue-on-error: true
+
+      - name: Download Linux Reports
+        uses: actions/download-artifact@v4
+        with:
+          name: pr-reports-linux
+          path: linux-reports
+        continue-on-error: true
+
+      - name: Generate PR Comment
+        id: generate-comment
+        run: |
+          COMMENT=""
+          HAS_FAILURES=false
+          
+          # Add test results summary
+          COMMENT+="## Test Results Summary\n\n"
+          
+          # macOS results
+          if [ -f "macos-reports/test-results-macOS.md" ]; then
+            COMMENT+="### macOS\n\n"
+            COMMENT+="$(cat macos-reports/test-results-macOS.md | tail -n +3)\n\n"
+          fi
+          
+          # Linux results
+          if [ -f "linux-reports/test-results-Linux.md" ]; then
+            COMMENT+="### Linux\n\n"
+            COMMENT+="$(cat linux-reports/test-results-Linux.md | tail -n +3)\n\n"
+          fi
+          
+          # Add coverage overview (macOS only)
+          if [ -f "macos-reports/coverage-macOS.md" ]; then
+            COMMENT+="\n---\n\n"
+            COMMENT+="$(cat macos-reports/coverage-macOS.md)\n\n"
+          fi
+          
+          # Check for failed tests
+          if [ -f "macos-reports/failed-tests-macOS.md" ]; then
+            HAS_FAILURES=true
+            COMMENT+="\n---\n\n"
+            COMMENT+="<details>\n<summary>Failed Tests (macOS)</summary>\n\n"
+            COMMENT+="$(cat macos-reports/failed-tests-macOS.md)\n\n"
+            COMMENT+="</details>\n\n"
+          fi
+          
+          if [ -f "linux-reports/failed-tests-Linux.md" ]; then
+            HAS_FAILURES=true
+            COMMENT+="\n---\n\n"
+            COMMENT+="<details>\n<summary>Failed Tests (Linux)</summary>\n\n"
+            COMMENT+="$(cat linux-reports/failed-tests-Linux.md)\n\n"
+            COMMENT+="</details>\n\n"
+          fi
+          
+          # Write comment to file
+          echo -e "$COMMENT" > pr-comment.md
+          
+          # Set output
+          echo "has_failures=$HAS_FAILURES" >> $GITHUB_OUTPUT
+
+      - name: Post PR Comment
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const comment = fs.readFileSync('pr-comment.md', 'utf8');
+            
+            // Find existing comment
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+            
+            const botComment = comments.find(c => 
+              c.user.type === 'Bot' && 
+              c.body.includes('## Test Results Summary')
+            );
+            
+            if (botComment) {
+              // Update existing comment
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: botComment.id,
+                body: comment
+              });
+            } else {
+              // Create new comment
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body: comment
+              });
+            }
