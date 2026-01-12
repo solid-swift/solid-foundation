@@ -187,13 +187,22 @@ struct FileStreamsTests {
     let source = DataSource(data: Data(count: 1024 * 1024))
     let sink = try FileSink(url: fileURL)
 
+    let firstWriteCompleted = AsyncStream<Void>.makeStream()
+
     let reader = Task {
+      var isFirstWrite = true
       for try await buffer in source.buffers(size: 113) {
         try await sink.write(data: buffer)
+        if isFirstWrite {
+          isFirstWrite = false
+          firstWriteCompleted.continuation.yield()
+        }
       }
     }
 
-    try await Task.sleep(nanoseconds: 5_000_000)
+    for await _ in firstWriteCompleted.stream {
+      break
+    }
 
     await #expect(throws: CancellationError.self) {
       reader.cancel()
