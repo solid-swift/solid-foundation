@@ -303,11 +303,9 @@ public final class TzDb: ZoneRulesLoader {
   /// - Returns: A dictionary mapping zone identifiers to a tuple of (validStartYear, firstTransitionYear).
   ///   The firstTransitionYear is the year of the first actual transition after the initial LMT period.
   ///
-  public static func loadZoneValidRanges(
-    zoneInfoURL: URL
-  ) -> [String: (validStartYear: Int, firstTransitionYear: Int)] {
+  public func loadZoneValidRanges() -> [String: (validStartYear: Int, firstTransitionYear: Int)] {
     do {
-      let tzDataURL = zoneInfoURL.appending(path: tzDataFileName)
+      let tzDataURL = url.appending(path: Self.tzDataFileName)
       let tzDataContent = try String(contentsOf: tzDataURL, encoding: .utf8)
 
       var validRanges: [String: (validStartYear: Int, firstTransitionYear: Int)] = [:]
@@ -362,22 +360,9 @@ public final class TzDb: ZoneRulesLoader {
 
       return validRanges
     } catch {
-      log.error("Failed to load zone valid ranges from tzdata.zi: \(error)")
+      Self.log.error("Failed to load zone valid ranges from tzdata.zi: \(error)")
       return [:]
     }
-  }
-
-  /// Returns the valid start year for the specified zone identifier.
-  ///
-  /// This method parses the `tzdata.zi` file to determine the earliest year
-  /// for which the zone has recorded data. If the zone is not found or the
-  /// `tzdata.zi` file cannot be parsed, `nil` is returned.
-  ///
-  /// - Parameter identifier: The zone identifier (e.g., "Pacific/Midway").
-  /// - Returns: The valid start year for the zone, or `nil` if not found.
-  ///
-  public func validStartYear(for identifier: String) -> Int? {
-    return Self.loadZoneValidRanges(zoneInfoURL: url)[identifier]?.validStartYear
   }
 }
 
