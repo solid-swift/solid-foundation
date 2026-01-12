@@ -19,14 +19,22 @@ jobs:
         with:
           xcode-version: '16'
 
-      - name: Install swift-format
-        run: brew install swift-format
+      - name: Install swiftly and nightly toolchain
+        run: |
+          curl -L https://swiftlang.github.io/swiftly/swiftly-install.sh | bash -s -- -y
+          . ~/.local/share/swiftly/env.sh
+          swiftly install main-snapshot
+          swiftly use main-snapshot
+          echo "$HOME/.local/share/swiftly/toolchains/$(swiftly list | grep main-snapshot | head -1)/usr/bin" >> $GITHUB_PATH
 
       - name: Build
-        run: swift build
+        run: |
+          . ~/.local/share/swiftly/env.sh
+          swift build
 
       - name: Run Tests with Coverage and Sanitizers
         run: |
+          . ~/.local/share/swiftly/env.sh
           swift test \
             --enable-code-coverage \
             --sanitize thread \
@@ -35,7 +43,9 @@ jobs:
             || true
 
       - name: Build CI Report Tool
-        run: swift build --product ci-report-tool
+        run: |
+          . ~/.local/share/swiftly/env.sh
+          swift build --product ci-report-tool
 
       - name: Generate Reports
         run: |
