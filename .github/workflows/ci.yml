@@ -19,6 +19,9 @@ jobs:
         with:
           xcode-version: '16'
 
+      - name: Install swift-format
+        run: brew install swift-format
+
       - name: Build
         run: swift build
 
