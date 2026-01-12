@@ -287,25 +287,12 @@ let package = Package(
       ]
     ),
     .executableTarget(
-      name: "ci-report-tool",
+      name: "test-report",
       dependencies: [
         .product(name: "ArgumentParser", package: "swift-argument-parser"),
         .product(name: "Markdown", package: "swift-markdown"),
       ],
-      path: "Sources/CIReportTool"
-    ),
-    .plugin(
-      name: "CIReportPlugin",
-      capability: .command(
-        intent: .custom(verb: "ci-report", description: "Generate CI reports from test results"),
-        permissions: [
-          .writeToPackageDirectory(reason: "Write test reports and coverage data")
-        ]
-      ),
-      dependencies: [
-        .target(name: "ci-report-tool")
-      ],
-      path: "Plugins/CIReportPlugin"
+      path: "Tools/TestReport"
     ),
   ],
   swiftLanguageModes: [.v6],
