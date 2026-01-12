@@ -33,7 +33,6 @@ let package = Package(
     .package(url: "https://github.com/apple/swift-argument-parser.git", from: "1.7.0"),
     .package(url: "https://github.com/StarLard/SwiftFormatPlugins.git", from: "1.1.1"),
     .package(url: "https://github.com/ordo-one/package-benchmark", .upToNextMajor(from: "1.29.7")),
-    .package(url: "https://github.com/dodobrands/Peekie.git", from: "4.0.0"),
     .package(url: "https://github.com/swiftlang/swift-markdown.git", from: "0.7.3"),
   ],
   targets: [
@@ -292,7 +291,6 @@ let package = Package(
       dependencies: [
         .product(name: "ArgumentParser", package: "swift-argument-parser"),
         .product(name: "Markdown", package: "swift-markdown"),
-        .product(name: "PeekieSDK", package: "Peekie", condition: .when(platforms: [.macOS])),
       ],
       path: "Sources/CIReportTool"
     ),

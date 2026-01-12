@@ -5,9 +5,6 @@ import Foundation
   import FoundationXML
 #endif
 
-#if canImport(PeekieSDK)
-  import PeekieSDK
-#endif
 
 @main
 struct CIReportTool: AsyncParsableCommand {
@@ -15,9 +12,6 @@ struct CIReportTool: AsyncParsableCommand {
     commandName: "ci-report-tool",
     abstract: "Generate CI reports from test results and coverage data"
   )
-
-  @Option(name: .long, parsing: .upToNextOption, help: "Paths to .xcresult files")
-  var xcresult: [String] = []
 
   @Option(name: .long, help: "Output directory for reports")
   var output: String = "."
@@ -56,61 +50,6 @@ struct CIReportTool: AsyncParsableCommand {
     if let xunitPath = xunit {
       testResults = try parseXUnitXML(at: xunitPath)
     }
-
-    #if canImport(PeekieSDK)
-      if testResults.isEmpty {
-        for xcresultPath in xcresult {
-          let xcresultURL = URL(fileURLWithPath: xcresultPath)
-          let report = try await Report(xcresultPath: xcresultURL)
-
-          for module in report.modules {
-            for suite in module.suites {
-              for repeatableTest in suite.repeatableTests {
-                for test in repeatableTest.tests {
-                  let durationInSeconds = test.duration.converted(to: .seconds).value
-                  let result = TestResult(
-                    module: module.name,
-                    suite: suite.name,
-                    name: repeatableTest.name,
-                    status: mapStatus(test.status),
-                    duration: durationInSeconds,
-                    message: test.message
-                  )
-                  testResults.append(result)
-                }
-              }
-            }
-          }
-
-          if let coverage = report.coverage {
-            var moduleCoverages: [ModuleCoverage] = []
-            for module in report.modules {
-              var totalLines = 0
-              var coveredLines = 0
-              for file in module.files {
-                if let fileCoverage = file.coverage {
-                  totalLines += fileCoverage.totalLines
-                  coveredLines += fileCoverage.coveredLines
-                }
-              }
-              if totalLines > 0 {
-                moduleCoverages.append(
-                  ModuleCoverage(
-                    name: module.name,
-                    linesCovered: coveredLines,
-                    linesTotal: totalLines
-                  )
-                )
-              }
-            }
-            coverageData = CoverageData(
-              totalCoverage: coverage,
-              modules: moduleCoverages
-            )
-          }
-        }
-      }
-    #endif
 
     if let coverageJsonPath = coverageJson {
       let jsonURL = URL(fileURLWithPath: coverageJsonPath)
@@ -155,19 +94,6 @@ struct CIReportTool: AsyncParsableCommand {
 
     print("Reports generated in \(output)")
   }
-
-  #if canImport(PeekieSDK)
-    func mapStatus(_ status: Report.Module.Suite.RepeatableTest.Test.Status) -> TestStatus {
-      switch status {
-      case .success: return .success
-      case .failure: return .failure
-      case .skipped: return .skipped
-      case .expectedFailure: return .expectedFailure
-      case .mixed: return .mixed
-      case .unknown: return .unknown
-      }
-    }
-  #endif
 
   func parseXUnitXML(at path: String) throws -> [TestResult] {
     let url = URL(fileURLWithPath: path)

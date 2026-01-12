@@ -1,5 +1,5 @@
 {
-  "originHash" : "abb9272e82281649e89be039151dd92ab85640bd3d7c67e014886d1e247f2e91",
+  "originHash" : "da01518f0f2177bff876b51179ec72857053b63958fd102905f6eb1aa672b477",
   "pins" : [
     {
       "identity" : "hdrhistogram-swift",
@@ -26,15 +26,6 @@
       "state" : {
         "revision" : "e8a5db026963f5bfeac842d9d3f2cc8cde323b49",
         "version" : "1.0.0"
-      }
-    },
-    {
-      "identity" : "peekie",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/dodobrands/Peekie.git",
-      "state" : {
-        "revision" : "b6706a6c2950be1a10ebb57543dbf59a7fe99db0",
-        "version" : "4.0.2"
       }
     },
     {
@@ -128,15 +119,6 @@
       }
     },
     {
-      "identity" : "swift-subprocess",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/swiftlang/swift-subprocess.git",
-      "state" : {
-        "revision" : "44922dfe46380cd354ca4b0208e717a3e92b13dd",
-        "version" : "0.2.1"
-      }
-    },
-    {
       "identity" : "swift-system",
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/apple/swift-system",
@@ -161,15 +143,6 @@
       "state" : {
         "revision" : "a27a07300cf4ae322e0079ca0a475c5583dd575f",
         "version" : "0.0.2"
-      }
-    },
-    {
-      "identity" : "xmlcoder",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/CoreOffice/XMLCoder.git",
-      "state" : {
-        "revision" : "5e1ada828d2618ecb79c974e03f79c8f4df90b71",
-        "version" : "0.18.0"
       }
     }
   ],
