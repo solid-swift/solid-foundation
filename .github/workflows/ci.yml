@@ -14,9 +14,13 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - uses: swift-actions/setup-swift@v3
+      - name: Setup Swift
+        uses: swift-actions/setup-swift@v3
         with:
           swift-version: "6.2.3"
+
+      - name: Install JEMalloc
+        run: brew install jemalloc
 
       - name: Build
         run: >
@@ -44,7 +48,7 @@ jobs:
             COVERAGE_ARG="--coverage-path $COVERAGE_JSON"
           fi
           swift run test-report \
-          --all \
+          --all --mergeable \
           --output test-reports \
           --xunit-path .build/test-results-swift-testing.xml \
           $COVERAGE_ARG
@@ -68,9 +72,16 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - uses: swift-actions/setup-swift@v3
+      - name: Setup Swift
+        uses: swift-actions/setup-swift@v3
         with:
-          swift-version: "6.2"
+          swift-version: "6.2.3"
+          skip-verify-signature: true
+
+      - name: Install JEMalloc
+        run: |
+          sudo apt update
+          sudo apt install libjemalloc2 
 
       - name: Build
         run: >
@@ -88,7 +99,7 @@ jobs:
         run: |
           mkdir -p test-reports
           swift run test-report \
-          --all \
+          --all --mergeable \
           --output test-reports \
           --xunit-path .build/test-results-swift-testing.xml
 
@@ -156,26 +167,26 @@ jobs:
 
           RESULTS=""
           
-          # Add test results summary
-          COMMENT+="## Test Results\n\n"
+          # Add test result details
+          RESULTS+="## Test Results\n\n"
           
           # macOS results
           if [ -f "test-reports-macos/test-detail.md" ]; then
-            COMMENT+="### macOS\n\n"
-            COMMENT+="$(cat test-reports-macos/test-detail.md | tail -n +3)\n\n"
+            RESULTS+="### macOS\n\n"
+            RESULTS+="$(cat test-reports-macos/test-detail.md | tail -n +3)\n\n"
           fi
           
           # Linux results
           if [ -f "test-reports-linux/test-detail.md" ]; then
-            COMMENT+="### Linux\n\n"
-            COMMENT+="$(cat test-reports-linux/test-detail.md | tail -n +3)\n\n"
+            RESULTS+="### Linux\n\n"
+            RESULTS+="$(cat test-reports-linux/test-detail.md | tail -n +3)\n\n"
           fi
           
           # Add coverage (macOS only)
           if [ -f "test-reports-macos/coverage-detail.md" ]; then
-            COMMENT+="\n---\n\n"
-            COMMENT+="### Coverage\n\n"
-            COMMENT+="$(cat test-reports-macos/coverage-detail.md)\n\n"
+            RESULTS+="\n---\n\n"
+            RESULTS+="### Coverage\n\n"
+            RESULTS+="$(cat test-reports-macos/coverage-detail.md)\n\n"
           fi
 
           # Set output
