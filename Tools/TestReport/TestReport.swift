@@ -46,27 +46,43 @@ struct TestReport: AsyncParsableCommand {
 
     try FileManager.default.createDirectory(at: outputURL, withIntermediateDirectories: true)
 
-    var testResults: [TestResult] = []
-    var coverageData: CoverageData?
-
+    let testResults: [TestResult]
     if let xunitPath {
+
+      print("Parsing (xUnit) test results from '\(xunitPath)'")
+
       testResults = try parseXUnitXML(at: xunitPath)
+
+    } else {
+      testResults = []
     }
 
+    let coverageData: CoverageData?
     if let coveragePath {
+
+      print("Parsing (JSON) code coverage from '\(coveragePath)'")
+
       let jsonURL = URL(fileURLWithPath: coveragePath)
       let jsonData = try Data(contentsOf: jsonURL)
       let llvmCoverage = try JSONDecoder().decode(LLVMCoverageExport.self, from: jsonData)
+
       coverageData = parseLLVMCoverage(llvmCoverage)
+
+    } else {
+      coverageData = nil
     }
 
+    print("Generating reports in '\(output)'")
+
     if testSummary || all {
+      print("  Generating\(mergeable ? " (mergeable)" : "") test summary report")
       let testSummaryReport = generateTestSummary(results: testResults, mergeable: mergeable)
       let testSummaryReportURL = outputURL.appendingPathComponent("test-summary.md")
       try testSummaryReport.write(to: testSummaryReportURL, atomically: true, encoding: .utf8)
     }
 
     if testDetail || all  {
+      print("  Generating\(mergeable ? " (mergeable)" : "") test detail report")
       let testDetailReport = generateTestDetail(results: testResults, mergeable: mergeable)
       let testDetailReportURL = outputURL.appendingPathComponent("test-detail.md")
       try testDetailReport.write(to: testDetailReportURL, atomically: true, encoding: .utf8)
@@ -75,12 +91,14 @@ struct TestReport: AsyncParsableCommand {
     if let coverage = coverageData {
 
       if coverageSummary || all  {
+        print("  Generating\(mergeable ? " (mergeable)" : "") code coverage summary report")
         let coverageSummaryReport = generateCoverageSummary(coverage: coverage, mergeable: mergeable)
         let coverageSummaryReportURL = outputURL.appendingPathComponent("coverage-summary.md")
         try coverageSummaryReport.write(to: coverageSummaryReportURL, atomically: true, encoding: .utf8)
       }
 
       if coverageDetail || all  {
+        print("  Generating\(mergeable ? " (mergeable)" : "") code coverage detail report")
         let coverageDetailReport = generateCoverageDetail(coverage: coverage, mergeable: mergeable)
         let coverageDetailReportURL = outputURL.appendingPathComponent("coverage-detail.md")
         try coverageDetailReport.write(to: coverageDetailReportURL, atomically: true, encoding: .utf8)
@@ -94,8 +112,6 @@ struct TestReport: AsyncParsableCommand {
     let jsonData = try JSONEncoder().encode(jsonResults)
     let jsonURL = outputURL.appendingPathComponent("results.json")
     try jsonData.write(to: jsonURL)
-
-    print("Reports generated in \(output)")
   }
 
   func parseXUnitXML(at path: String) throws -> [TestResult] {
