@@ -305,12 +305,12 @@ struct TestReport: AsyncParsableCommand {
     if failed > 0 {
       report += "| Status | Count |\n"
       report += "|--------|-------|\n"
-      report += "| Passed | \(passed) |\n"
-      report += "| Failed | \(failed) |\n"
-      report += "| Skipped | \(skipped) |\n"
+      report += "| ✅ | \(passed) |\n"
+      report += "| ⚠️ | \(failed) |\n"
+      report += "| ➡️ | \(skipped) |\n"
       report += "| **Total** | **\(total)** |\n"
     } else {
-      report += "| Passed | Failed | Skipped | Total |\n"
+      report += "| ✅ | ⚠️ | ➡️ | Total |\n"
       report += "|--------|--------|---------|-------|\n"
       report += "| \(passed) | \(failed) | \(skipped) | \(total) |\n"
     }
@@ -412,12 +412,12 @@ enum TestStatus: String, Codable {
 
   var icon: String {
     switch self {
-    case .success: return "Passed"
-    case .failure: return "Failed"
-    case .skipped: return "Skipped"
-    case .expectedFailure: return "Expected Failure"
-    case .mixed: return "Mixed"
-    case .unknown: return "Unknown"
+    case .success: return "✅"
+    case .failure: return "⚠️"
+    case .skipped: return "➡️"
+    case .expectedFailure: return "☑️"
+    case .mixed: return "✅⚠️"
+    case .unknown: return "❔"
     }
   }
 }
