@@ -164,33 +164,39 @@ jobs:
 
           # Write comment to file
           echo -e "$COMMENT" > pr-comment.md
-
-          RESULTS=""
           
-          # Add test result details
-          RESULTS+="## Test Results\n\n"
+          # Add test result details to summary
+          
+          echo "## Test Results" >> $GITHUB_STEP_SUMMARY
           
           # macOS results
           if [ -f "test-reports-macos/test-detail.md" ]; then
-            RESULTS+="### macOS\n\n"
-            RESULTS+="$(cat test-reports-macos/test-detail.md | tail -n +3)\n\n"
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "### macOS" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "$(cat test-reports-macos/test-detail.md)" >> $GITHUB_STEP_SUMMARY
           fi
           
           # Linux results
           if [ -f "test-reports-linux/test-detail.md" ]; then
-            RESULTS+="### Linux\n\n"
-            RESULTS+="$(cat test-reports-linux/test-detail.md | tail -n +3)\n\n"
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "### Linux" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "$(cat test-reports-linux/test-detail.md)\n\n" >> $GITHUB_STEP_SUMMARY
           fi
           
           # Add coverage (macOS only)
           if [ -f "test-reports-macos/coverage-detail.md" ]; then
-            RESULTS+="\n---\n\n"
-            RESULTS+="### Coverage\n\n"
-            RESULTS+="$(cat test-reports-macos/coverage-detail.md)\n\n"
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "---" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "### Coverage" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "$(cat test-reports-macos/coverage-detail.md)" >> $GITHUB_STEP_SUMMARY
           fi
-
-          # Set output
-          echo "$RESULTS" >> $GITHUB_OUTPUT
 
       - name: Post PR Comment
         uses: actions/github-script@v7
