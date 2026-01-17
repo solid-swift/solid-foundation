@@ -79,10 +79,10 @@ public struct AtomicCounter: ~Copyable {
     self.storage = Atomic(value)
   }
 
-  public var wrappedValue: Int { storage.load(ordering: .relaxed) }
+  public var wrappedValue: Int { storage.load(ordering: .acquiring) }
 
   public var projectedValue: Int {
-    get { storage.load(ordering: .relaxed) }
+    get { storage.load(ordering: .acquiring) }
   }
 
   public mutating func add(_ count: Int) {
@@ -105,12 +105,12 @@ public struct AtomicFlag: ~Copyable {
   }
 
   public var wrappedValue: Bool {
-    get { storage.load(ordering: .sequentiallyConsistent) }
+    get { storage.load(ordering: .acquiring) }
   }
 
   @discardableResult
   public func signal() -> Bool {
-    storage.compareExchange(expected: false, desired: true, ordering: .sequentiallyConsistent).original
+    storage.compareExchange(expected: false, desired: true, ordering: .acquiringAndReleasing).original
   }
 
 }
