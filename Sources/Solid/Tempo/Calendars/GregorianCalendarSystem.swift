@@ -234,14 +234,7 @@ public struct GregorianCalendarSystem: CalendarSystem, Sendable {
       return K.Value(weekOfMonth(for: components))
 
     case .dayOfYear:
-      let year = components.valueIfPresent(for: .year) ?? 0
-      let month = components.valueIfPresent(for: .monthOfYear) ?? 1
-      let day = components.valueIfPresent(for: .dayOfMonth) ?? 1
-      var total = day
-      for m in 1..<month {
-        total += daysInMonth(year: year, month: m)
-      }
-      return K.Value(total)
+      return K.Value(dayOfYear(for: components))
 
     case .dayOfWeek:
       return K.Value(dayOfWeek(for: components))
