@@ -66,20 +66,7 @@ The `Solid` module re-exports all other modules, so you can import everything at
 
 The foundation of the foundation. SolidCore provides the building blocks that other modules depend on: collections, base encodings, logging, synchronization primitives, and parsing utilities.
 
-```swift
-import SolidCore
-import Foundation
-
-  // Base encodings for all your encoding needs
-  let data = "Hello, World!".data(using: .utf8)!
-  let base64 = BaseEncoding.base64.encode(data: data)
-  let base32 = BaseEncoding.base32.encode(data: data)
-
-  // Thread-safe logging with privacy controls
-  let log = LogFactory.for(name: "MyApp")
-  log.info("Application started")
-  log.debug("Processing data...")
-```
+<!-- snippet: SolidCoreExample -->
 
 **Standout Features:**
 
@@ -91,20 +78,7 @@ The logging system integrates with both OSLog (on Apple platforms) and swift-log
 
 Arbitrary-precision arithmetic that doesn't care how big your numbers get. `BigInt`, `BigUInt`, and `BigDecimal` implement all the standard Swift numeric protocols, so they work exactly like you'd expect.
 
-```swift
-import SolidNumeric
-
-  // Arbitrary-precision integers
-  let bigNumber: BigInt = 123456789012345678901234567890
-  let doubled = bigNumber * 2
-  let factorial = (1...100).reduce(BigInt.one) { $0 * BigInt($1) }
-
-  // Arbitrary-precision decimals for when Float64 isn't precise enough
-  let price = BigDecimal("19.99")
-  let taxRate = BigDecimal("0.0825")
-  let total = price * (BigDecimal.one + taxRate)
-  print(total.rounded(places: 2)) // 21.64
-```
+<!-- snippet: SolidNumericExample -->
 
 **Standout Features:**
 
@@ -116,24 +90,7 @@ import SolidNumeric
 
 Date and time handling that doesn't make you want to flip a table. Built in the style of Java Time and JS Temporal (why reinvent good API design?), with full IANA timezone database support, proper DST handling, and a type system that prevents you from accidentally comparing a `LocalDateTime` to a `ZonedDateTime`.
 
-```swift
-import SolidTempo
-
-  // Get the current time in a specific timezone
-  let now = try ZonedDateTime.now()
-  let tokyo = try now.at(zone: Zone(identifier: "Asia/Tokyo"))
-
-  // Create specific dates and times
-  let meeting = try ZonedDateTime(
-      year: 2026, month: 3, day: 15,
-      hour: 14, minute: 30, second: 0, nanosecond: 0,
-      zone: Zone(identifier: "America/New_York")
-  )
-
-  // Duration arithmetic that makes sense
-  let duration = Duration.hours(2) + Duration.minutes(30)
-  let later = Instant.now() + duration
-```
+<!-- snippet: SolidTempoExample -->
 
 **Standout Features:**
 
@@ -147,21 +104,7 @@ The `ResolutionStrategy` system even handles DST transition edge cases, letting 
 
 Async I/O streams built on Swift concurrency. Read from files, write to networks, pipe data through compression filters, and never think about buffer management again.
 
-```swift
-import SolidIO
-
-  // Read a file asynchronously
-  let source = try FileSource(path: "/path/to/file.txt")
-  for try await chunk in source.buffers() {
-      // Process each chunk
-      _ = chunk
-  }
-
-  // Pipe data between streams
-  let input = try FileSource(path: "/path/to/input.txt")
-  let output = try FileSink(path: "/path/to/output.txt")
-  try await input.pipe(to: output)
-```
+<!-- snippet: SolidIOExample -->
 
 **Standout Features:**
 
@@ -173,26 +116,7 @@ The filter system lets you chain transformations: compress, hash, encrypt, all i
 
 The building block for SolidSchema and format modules like SolidJSON and SolidCBOR. The universal `Value` type can represent any structured data and serves as the interchange format between serialization and validation.
 
-```swift
-import SolidData
-import SolidNumeric
-
-  // Values work like you'd expect
-  let user: Value = [
-      "name": "Alice",
-      "age": 30,
-      "active": true,
-      "tags": ["admin", "verified"]
-  ]
-
-  // Access nested data
-  if let name = user[.string("name")]?.string {
-      print("Hello, \(name)")
-  }
-
-  // Numbers preserve precision
-  let precise: Value = .number(BigDecimal("123.456789012345678901234567890"))
-```
+<!-- snippet: SolidDataExample -->
 
 **Standout Features:**
 
@@ -204,21 +128,7 @@ import SolidNumeric
 
 JSON serialization that plays nicely with the `Value` type. Nothing fancy, just JSON that works.
 
-```swift
-import SolidJSON
-import SolidData
-import Foundation
-
-  // Parse JSON to Value
-  let json = """
-  {"name": "Bob", "scores": [95, 87, 92]}
-  """
-  let reader = JSONValueReader(string: json)
-  let value = try reader.read()
-
-  // Write Value to JSON
-  let output = JSONValueWriter.write(value)
-```
+<!-- snippet: SolidJSONExample -->
 
 ---
 
@@ -226,18 +136,7 @@ import Foundation
 
 CBOR (Concise Binary Object Representation) is an IETF standard that can losslessly represent both JSON and YAML in a compact binary format. It's the foundation for other IETF standards like CWT (CBOR Web Tokens) and COSE (CBOR Object Signing and Encryption).
 
-```swift
-import SolidCBOR
-import SolidData
-
-  // Encode to CBOR
-  let value: Value = ["temperature": 23.5, "humidity": 65]
-  let output = try CBORWriter.write(value)
-
-  // Decode from CBOR
-  let reader = CBORReader(data: output)
-  let decoded = try reader.read()
-```
+<!-- snippet: SolidCBORExample -->
 
 ---
 
@@ -245,33 +144,7 @@ import SolidData
 
 JSON Schema validation that works with any format, not just JSON. Built on SolidData, it can validate data from JSON, CBOR, or any other source that produces `Value` instances.
 
-```swift
-import SolidSchema
-import SolidData
-
-  // Build a schema
-  let schema = Schema.Builder.build(constant: [
-      "type": "object",
-      "properties": [
-          "name": ["type": "string", "minLength": 1],
-          "age": ["type": "integer", "minimum": 0],
-          "email": ["type": "string", "format": "email"]
-      ],
-      "required": ["name", "email"]
-  ])
-
-  // Validate data
-  let userData: Value = [
-      "name": "Alice",
-      "age": 30,
-      "email": "alice@example.com"
-  ]
-
-  let result = try schema.validate(instance: userData)
-  if result.isValid {
-      print("Data is valid!")
-  }
-```
+<!-- snippet: SolidSchemaExample -->
 
 **Standout Features:**
 
@@ -283,46 +156,13 @@ Because it validates `Value` instances rather than raw JSON, you can validate CB
 
 RFC 3986 URI and IRI parsing, resolution, and manipulation. Handle absolute URIs, relative references, internationalized identifiers, and all the edge cases the specs throw at you.
 
-```swift
-import SolidURI
-
-  // Parse URIs
-  let uri = URI(encoded: "https://example.com/path?query=value#fragment")!
-
-  // Access components
-  print(uri.scheme ?? "")       // "https"
-  print(uri.authority?.host ?? "")  // "example.com"
-  print(uri.encodedPath)        // "/path"
-
-  // Resolve relative references
-  let base = URI(valid: "https://example.com/a/b/c")
-  let relative = URI(encoded: "../d")!
-  let resolved = relative.resolved(against: base)
-  print(resolved.encoded)  // "https://example.com/a/d"
-
-  // Build URIs programmatically
-  let newUri = URI.absolute(
-      scheme: "https",
-      authority: .host("api.example.com", port: 8080),
-      path: [.decoded("v1"), .decoded("users")],
-      query: [URI.QueryItem(name: "limit", value: "10")]
-  )
-```
+<!-- snippet: SolidURIExample -->
 
 **Standout Features:**
 
 The component system makes URI manipulation a breeze. Update or remove individual parts without rebuilding the entire URI:
 
-```swift
-import SolidURI
-
-  // Update components individually
-  let uri = URI(encoded: "http://example.com/path?query=value#fragment")!
-
-  let secured = uri.updating(.scheme("https"))
-  let newHost = uri.updating(.host("api.example.com"), .port(8080))
-  let cleaned = uri.removing(.query, .fragment)
-```
+<!-- snippet: SolidURIComponentsExample -->
 
 ---
 
@@ -330,22 +170,7 @@ import SolidURI
 
 Network identifier parsing and validation: email addresses, hostnames, IPv4, IPv6, with full internationalized domain name (IDN) support.
 
-```swift
-import SolidNet
-
-  // Parse and validate email addresses
-  if let email = EmailAddress.parse(string: "user@example.com") {
-      print("Local: \(email.local)")   // "user"
-      print("Domain: \(email.domain)") // "example.com"
-  }
-
-  // Hostnames with IDN support
-  let hostname = IDNHostname.parse(string: "münchen.example.com")
-
-  // IP addresses
-  let ipv4 = IPv4Address.parse(string: "192.168.1.1")
-  let ipv6 = IPv6Address.parse(string: "2001:db8::1")
-```
+<!-- snippet: SolidNetExample -->
 
 ---
 
@@ -353,20 +178,7 @@ import SolidNet
 
 Unique identifier generation from simple local counters to globally unique UUIDs. Supports UUID versions 1, 3, 4, 5, 6, and 7, with multiple encoding options.
 
-```swift
-import SolidID
-
-  // Local counter IDs for simple sequential identifiers
-  let counter = AtomicCounterSource<UInt64>()
-  let localId = counter.next()  // 1, 2, 3, ...
-
-  // Generate UUIDs
-  let v4 = UUID.v4()  // Random UUID
-  let v7 = UUID.v7()  // Time-ordered UUID (great for databases)
-
-  // Version 5: Name-based with SHA-1
-  let domainId = UUID.v5(namespace: .dns, name: "example.com")
-```
+<!-- snippet: SolidIDExample -->
 
 **Standout Features:**
 
