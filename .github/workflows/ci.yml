@@ -21,8 +21,29 @@ jobs:
         with:
           swift-version: "6.2.3"
 
+      - name: Install zstd
+        run: brew install zstd
+
+      - name: Cache Homebrew packages
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/Library/Caches/Homebrew
+            /opt/homebrew/Cellar/jemalloc
+          key: homebrew-${{ runner.os }}-jemalloc-v1
+
       - name: Install JEMalloc
         run: brew install jemalloc
+
+      - name: Restore SPM cache
+        id: cache-spm
+        uses: actions/cache/restore@v4
+        with:
+          path: .build
+          key: spm-${{ runner.os }}-${{ hashFiles('Package.resolved') }}-${{ github.sha }}
+          restore-keys: |
+            spm-${{ runner.os }}-${{ hashFiles('Package.resolved') }}-
+            spm-${{ runner.os }}-
 
       - name: Build
         run: >
@@ -30,6 +51,13 @@ jobs:
           --enable-code-coverage
           --sanitize thread
           --sanitize undefined
+
+      - name: Save SPM cache
+        if: steps.cache-spm.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: .build
+          key: spm-${{ runner.os }}-${{ hashFiles('Package.resolved') }}-${{ github.sha }}
 
       - name: Test
         run: >
@@ -77,15 +105,41 @@ jobs:
           swift-version: "6.2.3"
           skip-verify-signature: true
 
+      - name: Install zstd
+        run: sudo apt-get install -y zstd
+
+      - name: Cache apt packages
+        uses: actions/cache@v4
+        with:
+          path: /var/cache/apt/archives
+          key: apt-${{ runner.os }}-jemalloc-v1
+
       - name: Install JEMalloc
         run: |
-          sudo apt update
-          sudo apt install libjemalloc2 
+          sudo apt-get update
+          sudo apt-get install -y libjemalloc2
+
+      - name: Restore SPM cache
+        id: cache-spm
+        uses: actions/cache/restore@v4
+        with:
+          path: .build
+          key: spm-${{ runner.os }}-${{ hashFiles('Package.resolved') }}-${{ github.sha }}
+          restore-keys: |
+            spm-${{ runner.os }}-${{ hashFiles('Package.resolved') }}-
+            spm-${{ runner.os }}-
 
       - name: Build
         run: >
           swift build
           --sanitize thread
+
+      - name: Save SPM cache
+        if: steps.cache-spm.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: .build
+          key: spm-${{ runner.os }}-${{ hashFiles('Package.resolved') }}-${{ github.sha }}
 
       - name: Test
         run: >
@@ -110,7 +164,7 @@ jobs:
 
   validate-readme:
     name: Validate README
-    runs-on: macos-26
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -121,9 +175,30 @@ jobs:
         uses: swift-actions/setup-swift@v3
         with:
           swift-version: "6.2.3"
+          skip-verify-signature: true
+
+      - name: Install zstd
+        run: sudo apt-get install -y zstd
+
+      - name: Restore SPM cache
+        id: cache-spm
+        uses: actions/cache/restore@v4
+        with:
+          path: .build
+          key: spm-readme-${{ runner.os }}-${{ hashFiles('Package.resolved') }}-${{ github.sha }}
+          restore-keys: |
+            spm-readme-${{ runner.os }}-${{ hashFiles('Package.resolved') }}-
+            spm-readme-${{ runner.os }}-
 
       - name: Build Snippets
         run: swift build --target Snippets
+
+      - name: Save SPM cache
+        if: steps.cache-spm.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: .build
+          key: spm-readme-${{ runner.os }}-${{ hashFiles('Package.resolved') }}-${{ github.sha }}
 
       - name: Validate README is up to date
         run: swift run readme-build --check
