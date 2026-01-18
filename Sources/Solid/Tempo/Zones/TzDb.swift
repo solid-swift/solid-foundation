@@ -43,9 +43,9 @@ public final class TzDb: ZoneRulesLoader {
 
   // Possible names for  the `zoneinfo` .
 
-  /// Name of the standard tzdata parameters file (which includes the version)
+  /// Name of the standard tzdata parameters file (which includes the version).
   public static let tzDataFileName = "tzdata.zi"
-  /// Name of the legacy version stamp file
+  /// Name of the legacy version stamp file.
   public static let versionFileName = "+VERSION"
 
   final class ZoneEntry: Sendable {
@@ -83,29 +83,31 @@ public final class TzDb: ZoneRulesLoader {
 
     let url: URL
     let retainParsed: Bool
-    let state: AtomicLazyReference<State>
+    let state = Mutex<State?>(nil)
 
     init(url: URL, retainParsed: Bool = false) {
       self.url = url
       self.retainParsed = retainParsed
-      self.state = AtomicLazyReference<State>()
     }
 
     func load() throws -> ZoneRules {
-      if let state = state.load() {
+      try state.withLock { state in
+        if let state {
+          return try state.rules
+        }
+
+        // Load rules and initialize state
+        let state: State
+        do {
+          let tzIfRules = try TzIf.load(url: url)
+          let zoneRules = try TzIf.buildZoneRules(rules: tzIfRules)
+          state = .init(.loaded(zoneRules, parsed: retainParsed ? tzIfRules : nil))
+        } catch {
+          state = .init(.failed(error))
+        }
+
         return try state.rules
       }
-
-      // Load rules and initialize state
-      let state: State
-      do {
-        let tzIfRules = try TzIf.load(url: url)
-        let zoneRules = try TzIf.buildZoneRules(rules: tzIfRules)
-        state = self.state.storeIfNil(.init(.loaded(zoneRules, parsed: retainParsed ? tzIfRules : nil)))
-      } catch {
-        state = self.state.storeIfNil(.init(.failed(error)))
-      }
-      return try state.rules
     }
   }
 
@@ -225,16 +227,16 @@ public final class TzDb: ZoneRulesLoader {
     }
 
     #if os(Linux)
-    // Manually relativize paths because linux FileManager
-    // doesn't currently respect `producesRelativePathURLs` option
-    let zoneContents = contents.map {
-      URL(
-        filePath: ($0 as! URL).path().replacingOccurrences(of: zoneInfoURL.path(), with: ""),
-        relativeTo: zoneInfoURL
-      )
-    }
+      // Manually relativize paths because linux FileManager
+      // doesn't currently respect `producesRelativePathURLs` option
+      let zoneContents = contents.map {
+        URL(
+          filePath: ($0 as URL).path().replacingOccurrences(of: zoneInfoURL.path(), with: ""),
+          relativeTo: zoneInfoURL
+        )
+      }
     #else
-    let zoneContents = contents.compactMap { $0 as? URL }
+      let zoneContents = contents.compactMap { $0 as? URL }
     #endif
 
     var urls: [URL] = []
@@ -299,7 +301,6 @@ public final class TzDb: ZoneRulesLoader {
   /// The `<until>` field (if present) indicates when the first transition starts,
   /// which represents the earliest year for which the zone has recorded data.
   ///
-  /// - Parameter zoneInfoURL: The URL of the `zoneinfo` directory.
   /// - Returns: A dictionary mapping zone identifiers to a tuple of (validStartYear, firstTransitionYear).
   ///   The firstTransitionYear is the year of the first actual transition after the initial LMT period.
   ///
