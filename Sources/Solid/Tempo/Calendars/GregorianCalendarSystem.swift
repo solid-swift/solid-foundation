@@ -303,47 +303,48 @@ public struct GregorianCalendarSystem: CalendarSystem, Sendable {
       if let value = components.valueIfPresent(for: component) {
         return value
       }
-      return 0 as! K.Value
+      return knownSafeCast(0)
 
     case .monthOfYear, .dayOfMonth:
       if let value = components.valueIfPresent(for: component) {
         return value
       }
-      return 1 as! K.Value
+      return knownSafeCast(1)
 
     case .weekOfYear:
-      return weekOfYear(for: components) as! K.Value
+      return knownSafeCast(weekOfYear(for: components))
 
     case .weekOfMonth:
-      return weekOfMonth(for: components) as! K.Value
+      return knownSafeCast(weekOfMonth(for: components))
 
     case .dayOfYear:
-      return dayOfYear(for: components) as! K.Value
+      return knownSafeCast(dayOfYear(for: components))
 
     case .dayOfWeek:
-      return dayOfWeek(for: components) as! K.Value
+      return knownSafeCast(dayOfWeek(for: components))
 
     case .dayOfWeekForMonth:
       let day = components.valueIfPresent(for: .dayOfMonth) ?? 1
-      return ((day - 1) / 7 + 1) as! K.Value
+      let dayOfWeek = ((day - 1) / 7 + 1)
+      return knownSafeCast(dayOfWeek)
 
     case .yearForWeekOfYear:
-      return yearForWeekOfYear(for: components) as! K.Value
+      return knownSafeCast(yearForWeekOfYear(for: components))
 
     case .isLeapMonth:
-      return false as! K.Value
+      return knownSafeCast(false)
 
     case .zoneId:
       if let value = components.valueIfPresent(for: component) {
         return value
       }
-      return "UTC" as! K.Value
+      return knownSafeCast("UTC")
 
     case .zoneOffset:
       if let value = components.valueIfPresent(for: component) {
         return value
       }
-      return 0 as! K.Value
+      return knownSafeCast(0)
 
     default:
       fatalError("Unsupported component kind: \(component)")
