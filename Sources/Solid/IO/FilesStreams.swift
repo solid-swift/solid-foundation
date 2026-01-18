@@ -16,7 +16,9 @@ import Synchronization
 ///
 public class FileSource: FileStream, Source, @unchecked Sendable {
 
-  @AtomicCounter public var bytesRead: Int
+  private let _bytesRead = Atomic<Int>(0)
+
+  public var bytesRead: Int { _bytesRead.load(ordering: .acquiring) }
 
   /// Initialize the source from a file `URL`.
   ///
@@ -41,46 +43,55 @@ public class FileSource: FileStream, Source, @unchecked Sendable {
 
   public func read(max: Int) async throws -> Data? {
 
-    let dispatchIO = try self.dispatchIO
+    repeat {
+      do {
+        let dispatchIO = try self.dispatchIO
 
-    let data: Data? = try await withTaskCancellationHandler {
+        let data: Data? = try await withTaskCancellationHandler {
 
-      try await withCheckedThrowingContinuation { continuation in
+          try await withCheckedThrowingContinuation { continuation in
 
-        var collectedData = Data()
+            var collectedData = Data()
 
-        dispatchIO.read(offset: 0, length: max, queue: .taskPriorityQueue) { done, data, error in
+            dispatchIO.read(offset: 0, length: max, queue: .taskPriorityQueue) { done, data, error in
 
-          if error == ECANCELED {
+              if error == ECANCELED {
 
-            return continuation.resume(throwing: CancellationError())
+                return continuation.resume(throwing: CancellationError())
+              }
+
+              if let data, !data.isEmpty {
+
+                collectedData.append(Data(data))
+              }
+
+              if error != 0 {
+
+                return continuation.resume(throwing: POSIXError(POSIXError.Code(rawValue: error) ?? .EIO))
+              } else if done {
+
+                return continuation.resume(returning: collectedData.isEmpty ? nil : collectedData)
+              }
+
+            }
           }
 
-          if let data, !data.isEmpty {
-
-            collectedData.append(Data(data))
-          }
-
-          if error != 0 {
-
-            return continuation.resume(throwing: POSIXError(POSIXError.Code(rawValue: error) ?? .EIO))
-          } else if done {
-
-            return continuation.resume(returning: collectedData.isEmpty ? nil : collectedData)
-          }
+        } onCancel: {
+          cancel()
         }
 
+        if let data {
+          _bytesRead.add(data.count, ordering: .acquiringAndReleasing)
+        }
+
+        return data
+
+      } catch is CancellationError {
+        // retry
       }
+    } while !Task.isCancelled
 
-    } onCancel: {
-      cancel()
-    }
-
-    if let data {
-      _bytesRead.add(data.count)
-    }
-
-    return data
+    throw CancellationError()
   }
 
 }
@@ -92,7 +103,9 @@ public class FileSource: FileStream, Source, @unchecked Sendable {
 ///
 public final class FileSink: FileStream, Sink, @unchecked Sendable {
 
-  public private(set) var bytesWritten: Int = 0
+  private let _bytesWritten = Atomic<Int>(0)
+
+  public var bytesWritten: Int { _bytesWritten.load(ordering: .acquiring) }
 
   /// Initialize the sink from a file `URL`.
   ///
@@ -116,43 +129,56 @@ public final class FileSink: FileStream, Sink, @unchecked Sendable {
   }
 
   public func write(data: Data) async throws {
-    let dispatchIO = try self.dispatchIO
 
-    try await withTaskCancellationHandler {
+    repeat {
+      do {
+        let dispatchIO = try self.dispatchIO
 
-      try await withCheckedThrowingContinuation { continuation in
+        try await withTaskCancellationHandler {
 
-        data.withUnsafeBytes { dataPtr in
+          try await withCheckedThrowingContinuation { continuation in
 
-          let data = DispatchData(bytes: dataPtr)
+            data.withUnsafeBytes { dataPtr in
 
-          dispatchIO.write(offset: 0, data: data, queue: .taskPriorityQueue) { done, _, error in
+              let data = DispatchData(bytes: dataPtr)
 
-            if error == ECANCELED {
-              continuation.resume(throwing: CancellationError())
-              return
+              let handler: @Sendable (Bool, DispatchData?, Int32) -> Void = { done, _, error in
+
+                if error == ECANCELED {
+                  continuation.resume(throwing: CancellationError())
+                  return
+                }
+
+                guard done else {
+                  return
+                }
+
+                if error != 0 {
+                  let code = POSIXError.Code(rawValue: error) ?? .EIO
+                  continuation.resume(throwing: POSIXError(code))
+                } else {
+                  continuation.resume(returning: ())
+                }
+              }
+
+              dispatchIO.write(offset: 0, data: data, queue: .taskPriorityQueue, ioHandler: handler)
             }
+          } as Void
 
-            guard done else {
-              return
-            }
-
-            if error != 0 {
-              let code = POSIXError.Code(rawValue: error) ?? .EIO
-              continuation.resume(throwing: POSIXError(code))
-            } else {
-              continuation.resume()
-            }
-          }
-
+        } onCancel: {
+          cancel()
         }
-      } as Void
 
-    } onCancel: {
-      cancel()
-    }
+        _bytesWritten.add(data.count, ordering: .acquiringAndReleasing)
 
-    bytesWritten += Int(data.count)
+        return
+
+      } catch is CancellationError {
+        // retry
+      }
+    } while !Task.isCancelled
+
+    throw CancellationError()
   }
 
 }
@@ -172,11 +198,12 @@ public class FileStream: Stream, @unchecked Sendable {
 
   fileprivate enum State {
     case open(DispatchIO)
-    case closed(Error?)
+    case closing([CheckedContinuation<Void, Error>])
+    case closed
   }
 
-  fileprivate let fileHandle: FileHandle
-  fileprivate let state: Mutex<State>
+  internal let fileHandle: FileHandle
+  fileprivate let state = Mutex<State>(.closed)
 
   /// Initialize the stream from a file handle.
   ///
@@ -185,9 +212,7 @@ public class FileStream: Stream, @unchecked Sendable {
   public required init(fileHandle: FileHandle) {
 
     self.fileHandle = fileHandle
-    self.state = .init(.closed(nil))
-
-    reset()
+    self.state.withLock { $0 = .open(createDispatchIO()) }
   }
 
   fileprivate var dispatchIO: DispatchIO {
@@ -212,25 +237,28 @@ public class FileStream: Stream, @unchecked Sendable {
     }
   }
 
-  fileprivate func reset() {
-    state.withLock { state in
-      state = .open(createDispatchIO())
-    }
-  }
-
   fileprivate func createDispatchIO() -> DispatchIO {
 
     let dispatchIO =
-      DispatchIO(type: .stream, fileDescriptor: fileHandle.fileDescriptor, queue: .taskPriorityQueue) { error in
-
-        let closeError: Error? =
-          if error != 0 {
-            POSIXError(.init(rawValue: error) ?? .EIO)
-          } else {
-            nil
+      DispatchIO(type: .stream, fileDescriptor: fileHandle.fileDescriptor, queue: .global(qos: .utility)) { error in
+        self.state.withLock { state in
+          guard case .closing(let waiting) = state else {
+            return
           }
 
-        self.close(error: closeError)
+          let result: Result<Void, Error> =
+            if error != 0 {
+              .failure(POSIXError(.init(rawValue: error) ?? .EIO))
+            } else {
+              .success(())
+            }
+
+          for waiter in waiting {
+            waiter.resume(with: result)
+          }
+
+          state = .closed
+        }
       }
 
     // Ensure handlers are called frequently to allow timely cancellation
@@ -240,30 +268,21 @@ public class FileStream: Stream, @unchecked Sendable {
     return dispatchIO
   }
 
-  fileprivate func close(error: Error?) {
-    state.withLock { state in
+  public func close() async throws {
+    try await withCheckedThrowingContinuation { continuation in
 
-      guard case .open(let dispatchIO) = state else {
-        return
-      }
+      state.withLock { state in
+        switch state {
 
-      dispatchIO.close(flags: [.stop])
-      state = .closed(error)
-    }
-  }
+        case .open(let dispatchIO):
+          state = .closing([continuation])
+          dispatchIO.close(flags: [.stop])
 
-  public func close() throws {
-    try state.withLock { state in
+        case .closing(let waiting):
+          state = .closing(waiting + [continuation])
 
-      switch state {
-
-      case .open(let dispatchIO):
-        dispatchIO.close(flags: [.stop])
-
-      case .closed(let error):
-        if let error {
-          state = .closed(nil)
-          throw error
+        case .closed:
+          continuation.resume()
         }
       }
     }

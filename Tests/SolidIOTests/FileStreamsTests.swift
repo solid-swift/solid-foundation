@@ -50,7 +50,7 @@ struct FileStreamsTests {
       throw CocoaError(.fileWriteUnknown)
     }
 
-    let fileSize = 256 * 1024
+    let fileSize = 1024 * 1024
     let fileHandle = try FileHandle(forUpdating: fileURL)
     try fileHandle.truncate(atOffset: UInt64(fileSize))
     try fileHandle.seek(toOffset: 0)
@@ -59,17 +59,16 @@ struct FileStreamsTests {
     let source = try FileSource(url: fileURL)
 
     let reader = Task {
-      for try await _ /* data */ in source.buffers(size: 3079) {
-        // print("Read \(data.count) bytes of data")
-      }
+      _ = try await source.read(max: 256 * 1024)
     }
 
-    do {
-      reader.cancel()
+    reader.cancel()
+    await #expect(throws: CancellationError.self) {
       try await reader.value
-    } catch is CancellationError {}
+    }
 
     #expect(source.bytesRead == 0)
+    #expect(try source.fileHandle.offset() == 0)
   }
 
   @Test("Source cancels after start")
@@ -83,40 +82,31 @@ struct FileStreamsTests {
       throw CocoaError(.fileWriteUnknown)
     }
 
-    let fileSize = 1 * 1024 * 1024
+    let fileSize = 1024 * 1024
     let fileHandle = try FileHandle(forUpdating: fileURL)
     try fileHandle.truncate(atOffset: UInt64(fileSize))
     try fileHandle.seek(toOffset: 0)
     try fileHandle.close()
 
+    let readSize = 64 * 1024
     let source = try FileSource(url: fileURL)
 
-    let firstReadCompleted = AsyncStream<Void>.makeStream()
-
     let reader = Task {
-      var isFirstRead = true
-      for try await _ in source.buffers(size: 133) {
-        if isFirstRead {
-          isFirstRead = false
-          firstReadCompleted.continuation.yield()
-        }
-        withUnsafeCurrentTask { $0!.cancel() }
+      while true {
+        _ = try await source.read(max: readSize)
+        withUnsafeCurrentTask { $0?.cancel() }
       }
-    }
-
-    for await _ in firstReadCompleted.stream {
-      break
     }
 
     await #expect(throws: CancellationError.self) {
       try await reader.value
     }
 
-    #expect(source.bytesRead > 0, "Data should have been read from source")
-    #expect(source.bytesRead < fileSize, "Source should have cancelled iteration")
+    #expect(source.bytesRead == readSize, "Data should have been read from source")
+    #expect(try source.fileHandle.offset() == readSize)
   }
 
-  @Test("Source continues after cancel")
+  @Test("Source continues after cancelled read")
   func sourceContinuesAfterCancel() async throws {
     let fileURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
     defer {
@@ -127,43 +117,35 @@ struct FileStreamsTests {
       throw CocoaError(.fileWriteUnknown)
     }
 
-    let fileSize = 256 * 1024
+    let fileSize = 1024 * 1024
     let fileHandle = try FileHandle(forUpdating: fileURL)
     try fileHandle.truncate(atOffset: UInt64(fileSize))
     try fileHandle.seek(toOffset: 0)
     try fileHandle.close()
 
+    let readSize = 256 * 1024
     let source = try FileSource(url: fileURL)
 
-    let taskReady = AsyncStream<Void>.makeStream()
-    let proceedSignal = AsyncStream<Void>.makeStream()
-
-    let reader = Task {
-      taskReady.continuation.yield()
-      for await _ in proceedSignal.stream {
-        break
-      }
-      for try await _ /* data */ in source.buffers(size: 3079) {
-        // print("Read \(data.count) bytes of data")
-      }
+    let readerA = Task {
+      _ = try await source.read(max: readSize)
+    }
+    let readerB = Task {
+      _ = try await source.read(max: readSize)
     }
 
-    for await _ in taskReady.stream {
-      break
-    }
-
+    readerA.cancel()
     await #expect(throws: CancellationError.self) {
-      reader.cancel()
-      try await reader.value
+      try await readerA.value
     }
 
-    #expect(source.bytesRead == 0)
+    #expect(source.bytesRead <= readSize)
+    #expect(try source.fileHandle.offset() <= readSize)
 
-    await #expect(throws: Never.self) {
-      _ = try await source.read(exactly: 1000)
-    }
+    try await readerB.value
+    try await source.close()
 
-    #expect(source.bytesRead == 1000)
+    #expect(source.bytesRead == readSize, "Second read should have succeeded")
+    #expect(try source.fileHandle.offset() == readSize)
   }
 
   @Test("Sink cancels")
@@ -177,21 +159,20 @@ struct FileStreamsTests {
       throw CocoaError(.fileWriteUnknown)
     }
 
-    let source = DataSource(data: Data(count: 1024 * 1024))
+    let data = Data(repeating: 0, count: 256 * 1024)
     let sink = try FileSink(url: fileURL)
 
-    let reader = Task {
-      for try await buffer in source.buffers() {
-        try await sink.write(data: buffer)
-      }
+    let writer = Task {
+      try await sink.write(data: data)
     }
 
+    writer.cancel()
     await #expect(throws: CancellationError.self) {
-      reader.cancel()
-      try await reader.value
+      try await writer.value
     }
 
     #expect(sink.bytesWritten == 0)
+    #expect(try sink.fileHandle.offset() == 0)
   }
 
   @Test("Sink cancels after start")
@@ -205,38 +186,27 @@ struct FileStreamsTests {
       throw CocoaError(.fileWriteUnknown)
     }
 
-    let source = DataSource(data: Data(count: 1024 * 1024))
+    let data = Data(repeating: 0, count: 64 * 1024)
     let sink = try FileSink(url: fileURL)
 
-    let firstWriteCompleted = AsyncStream<Void>.makeStream()
-
-    let reader = Task {
-      var isFirstWrite = true
-      for try await buffer in source.buffers(size: 113) {
-        try await sink.write(data: buffer)
-        if isFirstWrite {
-          isFirstWrite = false
-          firstWriteCompleted.continuation.yield()
-        }
+    let writer = Task {
+      while true {
+        try await sink.write(data: data)
+        withUnsafeCurrentTask { $0?.cancel() }
       }
     }
 
-    for await _ in firstWriteCompleted.stream {
-      break
-    }
-
     await #expect(throws: CancellationError.self) {
-      reader.cancel()
-      try await reader.value
+      try await writer.value
     }
 
-    #expect(sink.bytesWritten > 0, "Data should have been written to sink")
-    #expect(sink.bytesWritten < source.data.count, "Sink should have cancelled iteration")
+    #expect(sink.bytesWritten == data.count, "Sink should have cancelled iteration")
+    #expect(try sink.fileHandle.offset() == data.count)
   }
 
-  @Test("Sink continues after cancel")
+  @Test("Sink continues after cancelled write")
   func sinkContinuesAfterCancel() async throws {
-    var fileURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    let fileURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
     defer {
       try? FileManager.default.removeItem(at: fileURL)
     }
@@ -245,43 +215,29 @@ struct FileStreamsTests {
       throw CocoaError(.fileWriteUnknown)
     }
 
-    let source = DataSource(data: Data(count: 1024 * 1024))
+    let data = Data(repeating: 0, count: 256 * 1024)
     let sink = try FileSink(url: fileURL)
 
-    let taskReady = AsyncStream<Void>.makeStream()
-    let proceedSignal = AsyncStream<Void>.makeStream()
-
-    let reader = Task {
-      taskReady.continuation.yield()
-      for await _ in proceedSignal.stream {
-        break
-      }
-      for try await buffer in source.buffers(size: 100) {
-        try await sink.write(data: buffer)
-      }
+    let writerA = Task {
+      try await sink.write(data: data)
+    }
+    let writerB = Task {
+      try await sink.write(data: data)
     }
 
-    for await _ in taskReady.stream {
-      break
-    }
-
+    writerA.cancel()
     await #expect(throws: CancellationError.self) {
-      reader.cancel()
-      for await _ in proceedSignal.stream {
-        break
-      }
-      try await reader.value
+      try await writerA.value
     }
 
-    #expect(sink.bytesWritten == 0)
-    #expect(try fileURL.resourceValues(forKeys: [.fileSizeKey]).fileSize == 0)
+    #expect(sink.bytesWritten <= data.count)
+    #expect(try sink.fileHandle.offset() <= data.count)
 
-    try await sink.write(data: Data(count: 1000))
-    try sink.close()
+    try await writerB.value
+    try await sink.close()
 
-    #expect(sink.bytesWritten == 1000)
-    fileURL.removeAllCachedResourceValues()
-    #expect(try fileURL.resourceValues(forKeys: [.fileSizeKey]).fileSize == 1000)
+    #expect(sink.bytesWritten == data.count, "Second write should have succeeded")
+    #expect(try sink.fileHandle.offset() == data.count)
   }
 
   @Test("Invalid file source throws")

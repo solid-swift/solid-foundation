@@ -66,8 +66,8 @@ struct TzIfTests {
     #expect(db.zones["Asia/Calcutta"] != nil)
 
     // Check that the each zone's rules are not actually loaded
-    #expect(db.zones["America/New_York"]?.state.load() == nil)
-    #expect(db.zones["UTC"]?.state.load() == nil)
+    #expect(db.zones["America/New_York"]?.state.withLock { $0 == nil } == true)
+    #expect(db.zones["UTC"]?.state.withLock { $0 == nil } == true)
   }
 
   @Test("Region based zone loading")
