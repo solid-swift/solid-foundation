@@ -40,8 +40,9 @@ let package = Package(
       name: "Solid",
       dependencies: [
         "SolidCore",
-        "SolidID",
         "SolidNumeric",
+        "SolidIO",
+        "SolidID",
         "SolidURI",
         "SolidTempo",
         "SolidData",
@@ -290,7 +291,6 @@ let package = Package(
       name: "Snippets",
       dependencies: [
         "Solid",
-        "SolidIO",
       ],
       path: "Snippets"
     ),
