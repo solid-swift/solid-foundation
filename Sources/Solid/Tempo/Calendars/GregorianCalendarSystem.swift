@@ -727,17 +727,17 @@ public struct GregorianCalendarSystem: CalendarSystem, Sendable {
   }
 
   public func dayOfYear(for components: some ComponentContainer) -> Int {
-    return dayOfYear(
-      year: components.valueIfPresent(for: .year) ?? 0,
-      month: components.valueIfPresent(for: .monthOfYear) ?? 1,
-      day: components.valueIfPresent(for: .dayOfMonth) ?? 1
-    )
+    let year = components.valueIfPresent(for: .year) ?? 0
+    let month = components.valueIfPresent(for: .monthOfYear) ?? 1
+    let day = components.valueIfPresent(for: .dayOfMonth) ?? 1
+    return dayOfYear(year: year, month: month, day: day)
   }
 
   public func dayOfYear(year: Int, month: Int, day: Int) -> Int {
-    let adjustedMonth = month <= 2 ? month + 12 : month
-
-    return (Consts.daysIn5MarchMonths * (adjustedMonth - 3) + 2) / 5 + day - 1
+    let cumulativeDays = isLeapYear(year)
+      ? Consts.cumulativeDayOfLeapYearMonths
+      : Consts.cumulativeDayOfStandardYearMonths
+    return cumulativeDays[month - 1] + day
   }
 
   public func dayOfWeek(for components: some ComponentContainer) -> Int {
