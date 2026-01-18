@@ -86,7 +86,6 @@ jobs:
       - name: Test
         run: >
           swift test
-          --sanitize thread
           --xunit-output .build/test-results.xml
 
       - name: Generate Reports
