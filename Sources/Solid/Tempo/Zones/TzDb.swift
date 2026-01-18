@@ -231,7 +231,7 @@ public final class TzDb: ZoneRulesLoader {
       // doesn't currently respect `producesRelativePathURLs` option
       let zoneContents = contents.map {
         URL(
-          filePath: ($0 as URL).path().replacingOccurrences(of: zoneInfoURL.path(), with: ""),
+          filePath:  knownSafeCast($0, to: URL.self).path().replacingOccurrences(of: zoneInfoURL.path(), with: ""),
           relativeTo: zoneInfoURL
         )
       }
