@@ -134,7 +134,7 @@ extension LocalDate: LinkedComponentContainer, ComponentBuildable {
     ComputedComponentLink(.weekOfYear) { GregorianCalendarSystem.default.weekOfYear(for: $0) },
     ComputedComponentLink(.weekOfMonth) { GregorianCalendarSystem.default.weekOfMonth(for: $0) },
     ComputedComponentLink(.yearForWeekOfYear) { GregorianCalendarSystem.default.yearForWeekOfYear(for: $0) },
-    ComputedComponentLink(.dayOfWeekForMonth) { ($0.day - 1) / 7 + 1 },
+    ComputedComponentLink(.dayOfWeekForMonth) { GregorianCalendarSystem.default.dayOfWeekForMonth(for: $0) },
   ]
 
   public init(components: some ComponentContainer) {

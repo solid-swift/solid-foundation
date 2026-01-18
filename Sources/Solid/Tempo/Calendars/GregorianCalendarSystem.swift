@@ -240,8 +240,7 @@ public struct GregorianCalendarSystem: CalendarSystem, Sendable {
       return K.Value(dayOfWeek(for: components))
 
     case .dayOfWeekForMonth:
-      let day = components.valueIfPresent(for: .dayOfMonth) ?? 1
-      return K.Value((day - 1) / 7 + 1)
+      return K.Value(dayOfWeekForMonth(for: components))
 
     case .yearForWeekOfYear:
       return K.Value(yearForWeekOfYear(for: components))
@@ -324,9 +323,7 @@ public struct GregorianCalendarSystem: CalendarSystem, Sendable {
       return knownSafeCast(dayOfWeek(for: components))
 
     case .dayOfWeekForMonth:
-      let day = components.valueIfPresent(for: .dayOfMonth) ?? 1
-      let dayOfWeek = ((day - 1) / 7 + 1)
-      return knownSafeCast(dayOfWeek)
+      return knownSafeCast(dayOfWeekForMonth(for: components))
 
     case .yearForWeekOfYear:
       return knownSafeCast(yearForWeekOfYear(for: components))
@@ -740,6 +737,11 @@ public struct GregorianCalendarSystem: CalendarSystem, Sendable {
 
   public func yearForWeekOfYear(for components: some ComponentContainer) -> Int {
     return variant.yearForWeekOfYear(for: components, in: self)
+  }
+
+  public func dayOfWeekForMonth(for components: some ComponentContainer) -> Int {
+    let day = components.valueIfPresent(for: .dayOfMonth) ?? 1
+    return (day - 1) / 7 + 1
   }
 
   // Constants used for Gregorian calculations
