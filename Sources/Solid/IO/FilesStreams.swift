@@ -16,7 +16,9 @@ import Synchronization
 ///
 public class FileSource: FileStream, Source, @unchecked Sendable {
 
-  @AtomicCounter public var bytesRead: Int
+  private let _bytesRead = Atomic<Int>(0)
+
+  public var bytesRead: Int { _bytesRead.load(ordering: .acquiring) }
 
   /// Initialize the source from a file `URL`.
   ///
@@ -79,7 +81,7 @@ public class FileSource: FileStream, Source, @unchecked Sendable {
         }
 
         if let data {
-          _bytesRead.add(data.count)
+          _bytesRead.add(data.count, ordering: .acquiringAndReleasing)
         }
 
         return data
@@ -101,7 +103,9 @@ public class FileSource: FileStream, Source, @unchecked Sendable {
 ///
 public final class FileSink: FileStream, Sink, @unchecked Sendable {
 
-  @AtomicCounter public var bytesWritten: Int
+  private let _bytesWritten = Atomic<Int>(0)
+
+  public var bytesWritten: Int { _bytesWritten.load(ordering: .acquiring) }
 
   /// Initialize the sink from a file `URL`.
   ///
@@ -165,7 +169,7 @@ public final class FileSink: FileStream, Sink, @unchecked Sendable {
           cancel()
         }
 
-        _bytesWritten.add(data.count)
+        _bytesWritten.add(data.count, ordering: .acquiringAndReleasing)
 
         return
 
