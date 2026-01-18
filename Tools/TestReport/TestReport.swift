@@ -324,23 +324,22 @@ struct Merge: AsyncParsableCommand {
   func generateActionsSummary(platformResults: [(name: String, results: TestResultsJSON)]) -> String {
     var report = "## Test Results\n\n"
 
-    for (platformName, results) in platformResults {
+    for (index, (platformName, results)) in platformResults.enumerated() {
       let passed = results.results.filter { $0.status == .success }.count
       let failed = results.results.filter { $0.status == .failure }.count
       let skipped = results.results.filter { $0.status == .skipped }.count
       let total = results.results.count
 
+      if index > 0 {
+        report += "---\n\n"
+      }
+
       let platformIcon = failed > 0 ? "🔴" : "🟢"
       report += "### \(platformIcon) \(platformName)\n\n"
 
-      report += "**\(passed)** passed"
-      if failed > 0 {
-        report += " · **\(failed)** failed"
-      }
-      if skipped > 0 {
-        report += " · **\(skipped)** skipped"
-      }
-      report += " · **\(total)** total\n\n"
+      report += "| 🟢 Passed | 🔴 Failed | ⏭️ Skipped | Total |\n"
+      report += "|----------:|----------:|-----------:|------:|\n"
+      report += "| \(passed) | \(failed) | \(skipped) | \(total) |\n\n"
 
       let failedTests = results.results.filter { $0.status == .failure }
       if !failedTests.isEmpty {
