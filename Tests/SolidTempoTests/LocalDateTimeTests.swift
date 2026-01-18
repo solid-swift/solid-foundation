@@ -231,4 +231,60 @@ struct LocalDateTimeTests {
     #expect(abs(fdComps.nanosecond! - now.nanosecond) < 100_000_000)
     print(abs(fdComps.nanosecond! - now.nanosecond))
   }
+
+  @Test("LocalDateTime computed components via subscripting")
+  func testComputedComponents() throws {
+    // March 15, 2024 14:30:45 is a Friday (day 5 in ISO week, where Monday=1)
+    // It's the 75th day of the year (31 Jan + 29 Feb leap + 15 Mar)
+    let dateTime = try LocalDateTime(
+      year: 2024,
+      month: 3,
+      day: 15,
+      hour: 14,
+      minute: 30,
+      second: 45,
+      nanosecond: 0
+    )
+
+    #expect(dateTime[.dayOfYear] == 75)
+    #expect(dateTime[.dayOfWeek] == 5)  // Friday
+
+    // Week calculations - March 15, 2024 is in week 11 of the year
+    #expect(dateTime[.weekOfYear] == 11)
+    #expect(dateTime[.weekOfMonth] == 3)  // 3rd week of March
+    #expect(dateTime[.yearForWeekOfYear] == 2024)
+    #expect(dateTime[.dayOfWeekForMonth] == 3)  // 3rd Friday of the month
+  }
+
+  @Test("LocalDateTime computed components for edge cases")
+  func testComputedComponentsEdgeCases() throws {
+    // January 1, 2024 00:00:00 (Monday, first day of year)
+    let jan1 = try LocalDateTime(
+      year: 2024,
+      month: 1,
+      day: 1,
+      hour: 0,
+      minute: 0,
+      second: 0,
+      nanosecond: 0
+    )
+    #expect(jan1[.dayOfYear] == 1)
+    #expect(jan1[.dayOfWeek] == 1)  // Monday
+    #expect(jan1[.weekOfYear] == 1)
+    #expect(jan1[.weekOfMonth] == 1)
+    #expect(jan1[.dayOfWeekForMonth] == 1)  // 1st Monday of the month
+
+    // December 31, 2024 23:59:59 (Tuesday, last day of leap year)
+    let dec31 = try LocalDateTime(
+      year: 2024,
+      month: 12,
+      day: 31,
+      hour: 23,
+      minute: 59,
+      second: 59,
+      nanosecond: 999_999_999
+    )
+    #expect(dec31[.dayOfYear] == 366)  // Leap year
+    #expect(dec31[.dayOfWeek] == 2)  // Tuesday
+  }
 }
