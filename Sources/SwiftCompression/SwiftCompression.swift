@@ -23,9 +23,6 @@
     /// The LZ4 compression algorithm for fast compression.
     case lz4
 
-    /// The LZ4 compression algorithm, without frame headers.
-    case lz4Raw
-
     /// The LZMA compression algorithm, which is recommended for high-compression ratio.
     ///
     /// - Note: On non-Apple platforms, LZMA only supports decompression.
@@ -55,7 +52,7 @@
     case lzbitmap
 
     public static var allCases: [Algorithm] {
-      [.lz4, .lz4Raw, .lzma, .zlib]
+      [.lz4, .lzma, .zlib]
     }
   }
 
@@ -165,7 +162,7 @@
 
     private func compress(data: Data, algorithm: Algorithm) throws -> Data {
       switch algorithm {
-      case .lz4, .lz4Raw:
+      case .lz4:
         return LZ4.compress(data: data)
       case .lzma:
         // LZMA compression is not supported by SWCompression
@@ -180,7 +177,7 @@
 
     private func decompress(data: Data, algorithm: Algorithm) throws -> Data {
       switch algorithm {
-      case .lz4, .lz4Raw:
+      case .lz4:
         return try LZ4.decompress(data: data)
       case .lzma:
         return try LZMA.decompress(data: data)
