@@ -6,9 +6,7 @@
 //
 
 import Foundation
-
-#if canImport(Compression)
-import Compression
+import SwiftCompression
 
 /// Compressing or decompressing ``Sink``.
 ///
@@ -162,6 +160,3 @@ public extension Sink {
   }
 
 }
-
-#endif
-

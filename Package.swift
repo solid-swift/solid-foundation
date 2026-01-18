@@ -34,6 +34,7 @@ let package = Package(
     .package(url: "https://github.com/StarLard/SwiftFormatPlugins.git", from: "1.1.1"),
     .package(url: "https://github.com/ordo-one/package-benchmark", .upToNextMajor(from: "1.29.7")),
     .package(url: "https://github.com/swiftlang/swift-markdown.git", from: "0.7.3"),
+    .package(url: "https://github.com/tsolomko/SWCompression.git", from: "4.8.0"),
   ],
   targets: [
     .target(
@@ -122,9 +123,17 @@ let package = Package(
       ]
     ),
     .target(
+      name: "SwiftCompression",
+      dependencies: [
+        .product(name: "SWCompression", package: "SWCompression", condition: .when(platforms: [.linux])),
+      ],
+      path: "Sources/SwiftCompression"
+    ),
+    .target(
       name: "SolidIO",
       dependencies: [
         "SolidCore",
+        "SwiftCompression",
       ],
       path: "Sources/Solid/IO",
       plugins: [
