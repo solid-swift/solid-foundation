@@ -11,3 +11,4 @@ DerivedData/
 .editorconfig
 .cursor
 .readme-examples
+*.xcscheme
