@@ -63,19 +63,8 @@ extension OffsetTime: LinkedComponentContainer, ComponentBuildable {
       return
     }
 
-    let hour = components.value(for: .hourOfDay)
-    let minute = components.value(for: .minuteOfHour)
-    let second = components.value(for: .secondOfMinute)
-    let nanosecond = components.value(for: .nanosecondOfSecond)
-    let offsetSeconds = components.value(for: .zoneOffset)
-
-    self.time = LocalTime(
-      hour: hour,
-      minute: minute,
-      second: second,
-      nanosecond: nanosecond
-    )
-    self.offset = ZoneOffset(totalSeconds: offsetSeconds)
+    self.time = LocalTime(components: components)
+    self.offset = ZoneOffset(availableComponents: components)
   }
 
   public init(availableComponents components: some ComponentContainer) {
@@ -84,19 +73,8 @@ extension OffsetTime: LinkedComponentContainer, ComponentBuildable {
       return
     }
 
-    let hour = components.valueIfPresent(for: .hourOfDay) ?? 0
-    let minute = components.valueIfPresent(for: .minuteOfHour) ?? 0
-    let second = components.valueIfPresent(for: .secondOfMinute) ?? 0
-    let nanosecond = components.valueIfPresent(for: .nanosecondOfSecond) ?? 0
-    let offsetSeconds = components.valueIfPresent(for: .zoneOffset) ?? 0
-
-    self.time = LocalTime(
-      hour: hour,
-      minute: minute,
-      second: second,
-      nanosecond: nanosecond
-    )
-    self.offset = ZoneOffset(totalSeconds: offsetSeconds)
+    self.time = LocalTime(availableComponents: components)
+    self.offset = ZoneOffset(availableComponents: components)
   }
 }
 
