@@ -14,7 +14,7 @@ struct ReadmeBuild: AsyncParsableCommand {
   var template: String = "Documentation/README.template.md"
 
   @Option(name: .long, help: "Path to snippets directory")
-  var snippets: String = "ReadmeExamples"
+  var snippets: String = "Snippets"
 
   @Option(name: .long, help: "Output README path")
   var output: String = "README.md"
@@ -132,7 +132,7 @@ struct ReadmeBuild: AsyncParsableCommand {
   func compileSnippets() async throws -> Bool {
     let process = Process()
     process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
-    process.arguments = ["swift", "build", "--target", "ReadmeExamples"]
+    process.arguments = ["swift", "build", "--target", "Snippets"]
     process.currentDirectoryURL = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
 
     let pipe = Pipe()

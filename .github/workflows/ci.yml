@@ -122,8 +122,8 @@ jobs:
         with:
           swift-version: "6.2.3"
 
-      - name: Build ReadmeExamples
-        run: swift build --target ReadmeExamples
+      - name: Build Snippets
+        run: swift build --target Snippets
 
       - name: Validate README is up to date
         run: swift run readme-build --check
