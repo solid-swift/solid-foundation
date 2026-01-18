@@ -295,17 +295,66 @@ public struct GregorianCalendarSystem: CalendarSystem, Sendable {
     }
   }
 
-  /// Default implementation for computing date/time components that fails.
+  /// Default implementation for computing date/time components.
   ///
-  /// This is a fallback for the generic system and shouldn't be called directly. Nor
-  /// should it ever get called indirectly since all date/time components should have
-  /// specialized implementations.
+  /// This is a fallback for the generic system when the specialized overloads
+  /// cannot be resolved at compile time due to type erasure.
   ///
   internal func compute<K, S>(
     _ component: K,
     from components: S,
   ) -> K.Value where K: DateTimeComponentKind, S: ComponentContainer {
-    fatalError("Unsupported component kind: \(component)")
+    // Handle integer component kinds that may not be resolved to the specialized overload
+    switch component.id {
+    case .year, .hourOfDay, .minuteOfHour, .secondOfMinute, .nanosecondOfSecond:
+      if let value = components.valueIfPresent(for: component) {
+        return value
+      }
+      return 0 as! K.Value
+
+    case .monthOfYear, .dayOfMonth:
+      if let value = components.valueIfPresent(for: component) {
+        return value
+      }
+      return 1 as! K.Value
+
+    case .weekOfYear:
+      return weekOfYear(for: components) as! K.Value
+
+    case .weekOfMonth:
+      return weekOfMonth(for: components) as! K.Value
+
+    case .dayOfYear:
+      return dayOfYear(for: components) as! K.Value
+
+    case .dayOfWeek:
+      return dayOfWeek(for: components) as! K.Value
+
+    case .dayOfWeekForMonth:
+      let day = components.valueIfPresent(for: .dayOfMonth) ?? 1
+      return ((day - 1) / 7 + 1) as! K.Value
+
+    case .yearForWeekOfYear:
+      return yearForWeekOfYear(for: components) as! K.Value
+
+    case .isLeapMonth:
+      return false as! K.Value
+
+    case .zoneId:
+      if let value = components.valueIfPresent(for: component) {
+        return value
+      }
+      return "UTC" as! K.Value
+
+    case .zoneOffset:
+      if let value = components.valueIfPresent(for: component) {
+        return value
+      }
+      return 0 as! K.Value
+
+    default:
+      fatalError("Unsupported component kind: \(component)")
+    }
   }
 
   /// Computes the corresponding `Instant` for the specified components.
