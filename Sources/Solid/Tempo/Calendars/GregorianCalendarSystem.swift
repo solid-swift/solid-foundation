@@ -22,10 +22,10 @@ public struct GregorianCalendarSystem: CalendarSystem, Sendable {
 
   /// Variants of the Gregorian calendar system.
   public enum Variant: Sendable {
-    /// No variant, uses the default Gregorian calendar.
-    case none
     /// ISO 8601 variant, which is the **default**.
     case iso8601
+    /// No variant, uses the classic Gregorian calendar.
+    case none
   }
 
   internal let variant: Variant
@@ -234,21 +234,13 @@ public struct GregorianCalendarSystem: CalendarSystem, Sendable {
       return K.Value(weekOfMonth(for: components))
 
     case .dayOfYear:
-      let year = components.valueIfPresent(for: .year) ?? 0
-      let month = components.valueIfPresent(for: .monthOfYear) ?? 1
-      let day = components.valueIfPresent(for: .dayOfMonth) ?? 1
-      var total = day
-      for m in 1..<month {
-        total += daysInMonth(year: year, month: m)
-      }
-      return K.Value(total)
+      return K.Value(dayOfYear(for: components))
 
     case .dayOfWeek:
       return K.Value(dayOfWeek(for: components))
 
     case .dayOfWeekForMonth:
-      let day = components.valueIfPresent(for: .dayOfMonth) ?? 1
-      return K.Value((day - 1) / 7 + 1)
+      return K.Value(dayOfWeekForMonth(for: components))
 
     case .yearForWeekOfYear:
       return K.Value(yearForWeekOfYear(for: components))
@@ -295,17 +287,65 @@ public struct GregorianCalendarSystem: CalendarSystem, Sendable {
     }
   }
 
-  /// Default implementation for computing date/time components that fails.
+  /// Default implementation for computing date/time components.
   ///
-  /// This is a fallback for the generic system and shouldn't be called directly. Nor
-  /// should it ever get called indirectly since all date/time components should have
-  /// specialized implementations.
+  /// This is a fallback for the generic system when the specialized overloads
+  /// cannot be resolved at compile time due to type erasure.
   ///
   internal func compute<K, S>(
     _ component: K,
     from components: S,
   ) -> K.Value where K: DateTimeComponentKind, S: ComponentContainer {
-    fatalError("Unsupported component kind: \(component)")
+    // Handle integer component kinds that may not be resolved to the specialized overload
+    switch component.id {
+    case .year, .hourOfDay, .minuteOfHour, .secondOfMinute, .nanosecondOfSecond:
+      if let value = components.valueIfPresent(for: component) {
+        return value
+      }
+      return knownSafeCast(0)
+
+    case .monthOfYear, .dayOfMonth:
+      if let value = components.valueIfPresent(for: component) {
+        return value
+      }
+      return knownSafeCast(1)
+
+    case .weekOfYear:
+      return knownSafeCast(weekOfYear(for: components))
+
+    case .weekOfMonth:
+      return knownSafeCast(weekOfMonth(for: components))
+
+    case .dayOfYear:
+      return knownSafeCast(dayOfYear(for: components))
+
+    case .dayOfWeek:
+      return knownSafeCast(dayOfWeek(for: components))
+
+    case .dayOfWeekForMonth:
+      return knownSafeCast(dayOfWeekForMonth(for: components))
+
+    case .yearForWeekOfYear:
+      return knownSafeCast(yearForWeekOfYear(for: components))
+
+    case .isLeapMonth:
+      return knownSafeCast(false)
+
+    case .zoneId:
+      if let value = components.valueIfPresent(for: component) {
+        return value
+      }
+      return knownSafeCast("UTC")
+
+    case .zoneOffset:
+      if let value = components.valueIfPresent(for: component) {
+        return value
+      }
+      return knownSafeCast(0)
+
+    default:
+      fatalError("Unsupported component kind: \(component)")
+    }
   }
 
   /// Computes the corresponding `Instant` for the specified components.
@@ -678,17 +718,17 @@ public struct GregorianCalendarSystem: CalendarSystem, Sendable {
   }
 
   public func dayOfYear(for components: some ComponentContainer) -> Int {
-    return dayOfYear(
-      year: components.valueIfPresent(for: .year) ?? 0,
-      month: components.valueIfPresent(for: .monthOfYear) ?? 1,
-      day: components.valueIfPresent(for: .dayOfMonth) ?? 1
-    )
+    let year = components.valueIfPresent(for: .year) ?? 0
+    let month = components.valueIfPresent(for: .monthOfYear) ?? 1
+    let day = components.valueIfPresent(for: .dayOfMonth) ?? 1
+    return dayOfYear(year: year, month: month, day: day)
   }
 
   public func dayOfYear(year: Int, month: Int, day: Int) -> Int {
-    let adjustedMonth = month <= 2 ? month + 12 : month
-
-    return (Consts.daysIn5MarchMonths * (adjustedMonth - 3) + 2) / 5 + day - 1
+    let cumulativeDays = isLeapYear(year)
+      ? Consts.cumulativeDayOfLeapYearMonths
+      : Consts.cumulativeDayOfStandardYearMonths
+    return cumulativeDays[month - 1] + day
   }
 
   public func dayOfWeek(for components: some ComponentContainer) -> Int {
@@ -697,6 +737,11 @@ public struct GregorianCalendarSystem: CalendarSystem, Sendable {
 
   public func yearForWeekOfYear(for components: some ComponentContainer) -> Int {
     return variant.yearForWeekOfYear(for: components, in: self)
+  }
+
+  public func dayOfWeekForMonth(for components: some ComponentContainer) -> Int {
+    let day = components.valueIfPresent(for: .dayOfMonth) ?? 1
+    return (day - 1) / 7 + 1
   }
 
   // Constants used for Gregorian calculations

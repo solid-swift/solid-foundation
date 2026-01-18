@@ -34,6 +34,22 @@ public struct ComponentKeyPathLink<Root, Value>: ComponentLink where Root: Senda
   }
 }
 
+public struct ComputedComponentLink<Root, Value>: ComponentLink where Root: Sendable, Value: Sendable {
+
+  private nonisolated(unsafe) let compute: (Root) -> Value
+
+  public init(_ kind: some ComponentKind<Value>, compute: @escaping @Sendable (Root) -> Value) {
+    self.kind = kind
+    self.compute = compute
+  }
+
+  public let kind: any ComponentKind<Value>
+
+  public func value(in root: Root) -> Value {
+    compute(root)
+  }
+}
+
 
 extension LinkedComponentContainer where Self: ComponentContainer {
 

@@ -184,4 +184,41 @@ struct LocalDateTests {
     #expect(now.month == fdComps.month)
     #expect(now.day == fdComps.day)
   }
+
+  @Test("LocalDate computed components via subscripting")
+  func testComputedComponents() throws {
+    // March 15, 2024 is a Friday (day 5 in ISO week, where Monday=1)
+    // It's the 75th day of the year (31 Jan + 29 Feb leap + 15 Mar)
+    let date = try LocalDate(year: 2024, month: 3, day: 15)
+
+    #expect(date[.dayOfYear] == 75)
+    #expect(date[.dayOfWeek] == 5)  // Friday
+
+    // Week calculations - March 15, 2024 is in week 11 of the year
+    #expect(date[.weekOfYear] == 11)
+    #expect(date[.weekOfMonth] == 3)  // 3rd week of March
+    #expect(date[.yearForWeekOfYear] == 2024)
+    #expect(date[.dayOfWeekForMonth] == 3)  // 3rd Friday of the month
+  }
+
+  @Test("LocalDate computed components for edge cases")
+  func testComputedComponentsEdgeCases() throws {
+    // January 1, 2024 (Monday, first day of year)
+    let jan1 = try LocalDate(year: 2024, month: 1, day: 1)
+    #expect(jan1[.dayOfYear] == 1)
+    #expect(jan1[.dayOfWeek] == 1)  // Monday
+    #expect(jan1[.weekOfYear] == 1)
+    #expect(jan1[.weekOfMonth] == 1)
+    #expect(jan1[.dayOfWeekForMonth] == 1)  // 1st Monday of the month
+
+    // December 31, 2024 (Tuesday, last day of leap year)
+    let dec31 = try LocalDate(year: 2024, month: 12, day: 31)
+    #expect(dec31[.dayOfYear] == 366)  // Leap year
+    #expect(dec31[.dayOfWeek] == 2)  // Tuesday
+
+    // December 31, 2023 (Sunday, last day of non-leap year)
+    let dec31_2023 = try LocalDate(year: 2023, month: 12, day: 31)
+    #expect(dec31_2023[.dayOfYear] == 365)  // Non-leap year
+    #expect(dec31_2023[.dayOfWeek] == 7)  // Sunday
+  }
 }

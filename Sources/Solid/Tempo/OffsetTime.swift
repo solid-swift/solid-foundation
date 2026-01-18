@@ -47,6 +47,37 @@ extension OffsetTime: CustomStringConvertible {
   }
 }
 
+extension OffsetTime: LinkedComponentContainer, ComponentBuildable {
+
+  public static let links: [any ComponentLink<Self>] = [
+    ComponentKeyPathLink(.hourOfDay, to: \.hour),
+    ComponentKeyPathLink(.minuteOfHour, to: \.minute),
+    ComponentKeyPathLink(.secondOfMinute, to: \.second),
+    ComponentKeyPathLink(.nanosecondOfSecond, to: \.nanosecond),
+    ComponentKeyPathLink(.zoneOffset, to: \.offset.totalSeconds),
+  ]
+
+  public init(components: some ComponentContainer) {
+    if let offsetTime = components as? OffsetTime {
+      self = offsetTime
+      return
+    }
+
+    self.time = LocalTime(components: components)
+    self.offset = ZoneOffset(availableComponents: components)
+  }
+
+  public init(availableComponents components: some ComponentContainer) {
+    if let offsetTime = components as? OffsetTime {
+      self = offsetTime
+      return
+    }
+
+    self.time = LocalTime(availableComponents: components)
+    self.offset = ZoneOffset(availableComponents: components)
+  }
+}
+
 extension OffsetTime {
 
   public static func of(instant: Instant, zone: Zone) -> Self {

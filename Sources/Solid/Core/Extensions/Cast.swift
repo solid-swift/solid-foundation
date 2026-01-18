@@ -16,7 +16,7 @@
 ///
 package func knownSafeCast<T, V>(
   _ value: V,
-  to type: T.Type,
+  to type: T.Type = T.self,
   message: String? = nil,
   _ file: StaticString = #file,
   _ line: UInt = #line
