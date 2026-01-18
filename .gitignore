@@ -12,3 +12,4 @@ DerivedData/
 .cursor
 .readme-examples
 *.xcscheme
+.idea
