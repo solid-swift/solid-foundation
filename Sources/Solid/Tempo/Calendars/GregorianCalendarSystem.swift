@@ -22,10 +22,10 @@ public struct GregorianCalendarSystem: CalendarSystem, Sendable {
 
   /// Variants of the Gregorian calendar system.
   public enum Variant: Sendable {
-    /// No variant, uses the default Gregorian calendar.
-    case none
     /// ISO 8601 variant, which is the **default**.
     case iso8601
+    /// No variant, uses the classic Gregorian calendar.
+    case none
   }
 
   internal let variant: Variant
