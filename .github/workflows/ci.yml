@@ -136,6 +136,15 @@ jobs:
     permissions:
       pull-requests: write
     steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Swift
+        uses: swift-actions/setup-swift@v3
+        with:
+          swift-version: "6.2.3"
+          skip-verify-signature: true
+
       - name: Download macOS Reports
         uses: actions/download-artifact@v4
         with:
@@ -150,67 +159,18 @@ jobs:
           path: test-reports-linux
         continue-on-error: true
 
-      - name: Generate Test Results
-        id: generate-comment
+      - name: Merge Reports
         run: |
-          COMMENT=""
-          
-          # Add test results summary
-          COMMENT+="## Test Results Summary\n\n"
-          
-          # macOS results
-          if [ -f "test-reports-macos/test-summary.md" ]; then
-            COMMENT+="### macOS\n\n"
-            COMMENT+="$(cat test-reports-macos/test-summary.md | tail -n +3)\n\n"
+          REPORT_DIRS=""
+          if [ -d "test-reports-macos" ]; then
+            REPORT_DIRS="$REPORT_DIRS test-reports-macos"
           fi
-          
-          # Linux results
-          if [ -f "test-reports-linux/test-summary.md" ]; then
-            COMMENT+="### Linux\n\n"
-            COMMENT+="$(cat test-reports-linux/test-summary.md | tail -n +3)\n\n"
+          if [ -d "test-reports-linux" ]; then
+            REPORT_DIRS="$REPORT_DIRS test-reports-linux"
           fi
-          
-          # Add coverage overview (macOS only)
-          if [ -f "test-reports-macos/coverage-summary.md" ]; then
-            COMMENT+="\n---\n\n"
-            COMMENT+="### Coverage\n\n"
-            COMMENT+="$(cat test-reports-macos/coverage-summary.md)\n\n"
-          fi
-
-          # Write comment to file
-          echo -e "$COMMENT" > pr-comment.md
-          
-          # Add test result details to summary
-          
-          echo "## Test Results" >> $GITHUB_STEP_SUMMARY
-          
-          # macOS results
-          if [ -f "test-reports-macos/test-detail.md" ]; then
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "### macOS" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "$(cat test-reports-macos/test-detail.md)" >> $GITHUB_STEP_SUMMARY
-          fi
-          
-          # Linux results
-          if [ -f "test-reports-linux/test-detail.md" ]; then
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "### Linux" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "$(cat test-reports-linux/test-detail.md)\n\n" >> $GITHUB_STEP_SUMMARY
-          fi
-          
-          # Add coverage (macOS only)
-          if [ -f "test-reports-macos/coverage-detail.md" ]; then
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "---" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "### Coverage" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "$(cat test-reports-macos/coverage-detail.md)" >> $GITHUB_STEP_SUMMARY
+          if [ -n "$REPORT_DIRS" ]; then
+            swift run test-report merge --output merged-reports $REPORT_DIRS
+            cat merged-reports/actions-summary.md >> $GITHUB_STEP_SUMMARY
           fi
 
       - name: Post PR Comment
@@ -218,7 +178,13 @@ jobs:
         with:
           script: |
             const fs = require('fs');
-            const comment = fs.readFileSync('pr-comment.md', 'utf8');
+            
+            if (!fs.existsSync('merged-reports/pr-comment.md')) {
+              console.log('No PR comment file found, skipping');
+              return;
+            }
+            
+            const comment = fs.readFileSync('merged-reports/pr-comment.md', 'utf8');
 
             // Find existing comment
             const { data: comments } = await github.rest.issues.listComments({
@@ -229,7 +195,7 @@ jobs:
             
             const botComment = comments.find(c => 
               c.user.type === 'Bot' && 
-              c.body.includes('## Test Results Summary')
+              c.body.includes('## Test Results')
             );
             
             if (botComment) {
