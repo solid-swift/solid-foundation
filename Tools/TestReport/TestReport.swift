@@ -11,6 +11,17 @@ struct TestReport: AsyncParsableCommand {
 
   static let configuration = CommandConfiguration(
     commandName: "test-report",
+    abstract: "Generate and merge test reports for CI",
+    subcommands: [Generate.self, Merge.self],
+    defaultSubcommand: Generate.self
+  )
+
+}
+
+struct Generate: AsyncParsableCommand {
+
+  static let configuration = CommandConfiguration(
+    commandName: "generate",
     abstract: "Generate reports for tests and code coverage"
   )
 
@@ -38,7 +49,7 @@ struct TestReport: AsyncParsableCommand {
   @Flag(name: .long, help: "Generate all reports")
   var all: Bool = false
 
-  @Flag(name: .long, help: "Don't add headers and/or footers to generated reports")
+  @Flag(name: .long, help: "Generate reports suitable for later merging (no standalone headers)")
   var mergeable: Bool = false
 
   func run() async throws {
@@ -76,30 +87,30 @@ struct TestReport: AsyncParsableCommand {
 
     if testSummary || all {
       print("  Generating\(mergeable ? " (mergeable)" : "") test summary report")
-      let testSummaryReport = generateTestSummary(results: testResults, mergeable: mergeable)
+      let testSummaryReport = ReportGenerator.generateTestSummary(results: testResults, mergeable: mergeable)
       let testSummaryReportURL = outputURL.appendingPathComponent("test-summary.md")
       try testSummaryReport.write(to: testSummaryReportURL, atomically: true, encoding: .utf8)
     }
 
-    if testDetail || all  {
+    if testDetail || all {
       print("  Generating\(mergeable ? " (mergeable)" : "") test detail report")
-      let testDetailReport = generateTestDetail(results: testResults, mergeable: mergeable)
+      let testDetailReport = ReportGenerator.generateTestDetail(results: testResults, mergeable: mergeable)
       let testDetailReportURL = outputURL.appendingPathComponent("test-detail.md")
       try testDetailReport.write(to: testDetailReportURL, atomically: true, encoding: .utf8)
     }
 
     if let coverage = coverageData {
 
-      if coverageSummary || all  {
+      if coverageSummary || all {
         print("  Generating\(mergeable ? " (mergeable)" : "") code coverage summary report")
-        let coverageSummaryReport = generateCoverageSummary(coverage: coverage, mergeable: mergeable)
+        let coverageSummaryReport = ReportGenerator.generateCoverageSummary(coverage: coverage, mergeable: mergeable)
         let coverageSummaryReportURL = outputURL.appendingPathComponent("coverage-summary.md")
         try coverageSummaryReport.write(to: coverageSummaryReportURL, atomically: true, encoding: .utf8)
       }
 
-      if coverageDetail || all  {
+      if coverageDetail || all {
         print("  Generating\(mergeable ? " (mergeable)" : "") code coverage detail report")
-        let coverageDetailReport = generateCoverageDetail(coverage: coverage, mergeable: mergeable)
+        let coverageDetailReport = ReportGenerator.generateCoverageDetail(coverage: coverage, mergeable: mergeable)
         let coverageDetailReportURL = outputURL.appendingPathComponent("coverage-detail.md")
         try coverageDetailReport.write(to: coverageDetailReportURL, atomically: true, encoding: .utf8)
       }
@@ -173,99 +184,6 @@ struct TestReport: AsyncParsableCommand {
     return externalPaths.contains { filename.contains($0) }
   }
 
-  func parseSwiftTestOutput(_ output: String) -> [TestResult] {
-    var results: [TestResult] = []
-    let lines = output.components(separatedBy: .newlines)
-
-    // Regex patterns for swift test output
-    // Swift Testing format: "✔ Test "name" passed after X.XXX seconds."
-    // Swift Testing format: "✘ Test "name" failed after X.XXX seconds."
-    // XCTest format: "Test Case '-[Module.Suite testName]' passed (X.XXX seconds)."
-    // XCTest format: "Test Case '-[Module.Suite testName]' failed (X.XXX seconds)."
-
-    let swiftTestingPattern =
-      #"^[✔✘◇] (?:Test|Suite) ["\"]?(.+?)["\"]? (passed|failed|skipped) after ([\d.]+) seconds"#
-    let xcTestPattern =
-      #"Test Case '-\[(\w+)\.(\w+) (\w+)\]' (passed|failed) \(([\d.]+) seconds\)"#
-
-    let swiftTestingRegex = try? NSRegularExpression(pattern: swiftTestingPattern, options: [])
-    let xcTestRegex = try? NSRegularExpression(pattern: xcTestPattern, options: [])
-
-    var currentSuite = "Unknown"
-
-    for line in lines {
-      let range = NSRange(line.startIndex..., in: line)
-
-      // Try Swift Testing format
-      if let match = swiftTestingRegex?.firstMatch(in: line, options: [], range: range) {
-        if let nameRange = Range(match.range(at: 1), in: line),
-          let statusRange = Range(match.range(at: 2), in: line),
-          let durationRange = Range(match.range(at: 3), in: line)
-        {
-          let name = String(line[nameRange])
-          let statusStr = String(line[statusRange])
-          let duration = Double(line[durationRange]) ?? 0.0
-
-          // Check if this is a Suite line (skip it but track the suite name)
-          if line.contains("Suite ") {
-            currentSuite = name
-            continue
-          }
-
-          let status: TestStatus =
-            switch statusStr {
-            case "passed": .success
-            case "failed": .failure
-            case "skipped": .skipped
-            default: .unknown
-            }
-
-          results.append(
-            TestResult(
-              module: "SolidFoundation",
-              suite: currentSuite,
-              name: name,
-              status: status,
-              duration: duration,
-              message: nil
-            )
-          )
-        }
-      }
-
-      // Try XCTest format
-      if let match = xcTestRegex?.firstMatch(in: line, options: [], range: range) {
-        if let moduleRange = Range(match.range(at: 1), in: line),
-          let suiteRange = Range(match.range(at: 2), in: line),
-          let nameRange = Range(match.range(at: 3), in: line),
-          let statusRange = Range(match.range(at: 4), in: line),
-          let durationRange = Range(match.range(at: 5), in: line)
-        {
-          let module = String(line[moduleRange])
-          let suite = String(line[suiteRange])
-          let name = String(line[nameRange])
-          let statusStr = String(line[statusRange])
-          let duration = Double(line[durationRange]) ?? 0.0
-
-          let status: TestStatus = statusStr == "passed" ? .success : .failure
-
-          results.append(
-            TestResult(
-              module: module,
-              suite: suite,
-              name: name,
-              status: status,
-              duration: duration,
-              message: nil
-            )
-          )
-        }
-      }
-    }
-
-    return results
-  }
-
   func extractModuleName(from filename: String) -> String {
     let components = filename.components(separatedBy: "/")
 
@@ -290,7 +208,241 @@ struct TestReport: AsyncParsableCommand {
     return "Unknown"
   }
 
-  func generateTestSummary(results: [TestResult], mergeable: Bool) -> String {
+}
+
+
+struct Merge: AsyncParsableCommand {
+
+  static let configuration = CommandConfiguration(
+    commandName: "merge",
+    abstract: "Merge reports from multiple platforms into combined PR comment and GitHub Actions summary"
+  )
+
+  @Option(name: .long, help: "Output directory for merged reports")
+  var output: String = "."
+
+  @Argument(help: "Paths to platform report directories (e.g., test-reports-macos test-reports-linux)")
+  var reportDirs: [String]
+
+  func run() async throws {
+    let outputURL = URL(fileURLWithPath: output)
+    try FileManager.default.createDirectory(at: outputURL, withIntermediateDirectories: true)
+
+    print("Merging reports from: \(reportDirs.joined(separator: ", "))")
+
+    var platformResults: [(name: String, results: TestResultsJSON)] = []
+
+    for dir in reportDirs {
+      let dirURL = URL(fileURLWithPath: dir)
+      let resultsURL = dirURL.appendingPathComponent("results.json")
+
+      let platformName = extractPlatformName(from: dir)
+
+      if FileManager.default.fileExists(atPath: resultsURL.path) {
+        let data = try Data(contentsOf: resultsURL)
+        let results = try JSONDecoder().decode(TestResultsJSON.self, from: data)
+        platformResults.append((name: platformName, results: results))
+        print("  Loaded results for \(platformName)")
+      } else {
+        print("  Warning: No results.json found in \(dir)")
+      }
+    }
+
+    let prComment = generatePRComment(platformResults: platformResults)
+    let prCommentURL = outputURL.appendingPathComponent("pr-comment.md")
+    try prComment.write(to: prCommentURL, atomically: true, encoding: .utf8)
+    print("  Generated PR comment: pr-comment.md")
+
+    let actionsSummary = generateActionsSummary(platformResults: platformResults)
+    let actionsSummaryURL = outputURL.appendingPathComponent("actions-summary.md")
+    try actionsSummary.write(to: actionsSummaryURL, atomically: true, encoding: .utf8)
+    print("  Generated Actions summary: actions-summary.md")
+  }
+
+  func extractPlatformName(from path: String) -> String {
+    let components = path.components(separatedBy: "/")
+    let dirName = components.last ?? path
+
+    if dirName.contains("macos") || dirName.contains("macOS") {
+      return "macOS"
+    } else if dirName.contains("linux") || dirName.contains("Linux") {
+      return "Linux"
+    } else if dirName.contains("windows") || dirName.contains("Windows") {
+      return "Windows"
+    }
+
+    return dirName.replacingOccurrences(of: "test-reports-", with: "").capitalized
+  }
+
+  func generatePRComment(platformResults: [(name: String, results: TestResultsJSON)]) -> String {
+    var report = "## Test Results\n\n"
+
+    let allPassed = platformResults.allSatisfy { platform in
+      platform.results.results.allSatisfy { $0.status == .success || $0.status == .skipped }
+    }
+
+    if allPassed {
+      report += "All tests passed across all platforms.\n\n"
+    }
+
+    report += "| Platform | Passed | Failed | Skipped |\n"
+    report += "|----------|-------:|-------:|--------:|\n"
+
+    for (name, results) in platformResults {
+      let passed = results.results.filter { $0.status == .success }.count
+      let failed = results.results.filter { $0.status == .failure }.count
+      let skipped = results.results.filter { $0.status == .skipped }.count
+
+      let statusIcon = failed > 0 ? "🔴" : "🟢"
+      report += "| \(statusIcon) \(name) | \(passed) | \(failed) | \(skipped) |\n"
+    }
+
+    let failedTests = platformResults.flatMap { platform in
+      platform.results.results.filter { $0.status == .failure }.map { (platform.name, $0) }
+    }
+
+    if !failedTests.isEmpty {
+      report += "\n### Failed Tests\n\n"
+      for (platform, test) in failedTests {
+        report += "- **\(platform)**: `\(test.module).\(test.suite).\(test.name)`\n"
+      }
+    }
+
+    if let macOSResults = platformResults.first(where: { $0.name == "macOS" }),
+      let coverage = macOSResults.results.coverage
+    {
+      report += "\n---\n\n"
+      report += "### Coverage\n\n"
+      let totalPercent = String(format: "%.1f%%", coverage.totalCoverage * 100)
+      report += "**\(totalPercent)** overall line coverage\n\n"
+      report += "_See the [CI workflow run](../../actions) for detailed coverage by module._\n"
+    }
+
+    return report
+  }
+
+  func generateActionsSummary(platformResults: [(name: String, results: TestResultsJSON)]) -> String {
+    var report = "## Test Results\n\n"
+
+    for (platformName, results) in platformResults {
+      let passed = results.results.filter { $0.status == .success }.count
+      let failed = results.results.filter { $0.status == .failure }.count
+      let skipped = results.results.filter { $0.status == .skipped }.count
+      let total = results.results.count
+
+      let platformIcon = failed > 0 ? "🔴" : "🟢"
+      report += "### \(platformIcon) \(platformName)\n\n"
+
+      report += "**\(passed)** passed"
+      if failed > 0 {
+        report += " · **\(failed)** failed"
+      }
+      if skipped > 0 {
+        report += " · **\(skipped)** skipped"
+      }
+      report += " · **\(total)** total\n\n"
+
+      let failedTests = results.results.filter { $0.status == .failure }
+      if !failedTests.isEmpty {
+        report += "#### Failed Tests\n\n"
+        for test in failedTests {
+          report += "- `\(test.module).\(test.suite).\(test.name)`\n"
+          if let message = test.message, !message.isEmpty {
+            let truncatedMessage =
+              message.count > 200 ? String(message.prefix(200)) + "..." : message
+            let escapedMessage =
+              truncatedMessage
+              .replacingOccurrences(of: "\n", with: " ")
+              .replacingOccurrences(of: "|", with: "\\|")
+            report += "  > \(escapedMessage)\n"
+          }
+        }
+        report += "\n"
+      }
+
+      let groupedByModule = Dictionary(grouping: results.results) { $0.module }
+
+      for (module, moduleResults) in groupedByModule.sorted(by: { $0.key < $1.key }) {
+        let modulePassed = moduleResults.filter { $0.status == .success }.count
+        let moduleFailed = moduleResults.filter { $0.status == .failure }.count
+        let moduleSkipped = moduleResults.filter { $0.status == .skipped }.count
+        let moduleTotal = moduleResults.count
+
+        let moduleIcon = moduleFailed > 0 ? "🔴" : "🟢"
+
+        report += "#### \(moduleIcon) \(module)\n\n"
+        report += "**\(modulePassed)** passed"
+        if moduleFailed > 0 {
+          report += " · **\(moduleFailed)** failed"
+        }
+        if moduleSkipped > 0 {
+          report += " · **\(moduleSkipped)** skipped"
+        }
+        report += " · **\(moduleTotal)** total\n\n"
+
+        let moduleFailedTests = moduleResults.filter { $0.status == .failure }
+        if !moduleFailedTests.isEmpty {
+          report += "**Failed:**\n"
+          for test in moduleFailedTests {
+            report += "- `\(test.suite).\(test.name)`\n"
+          }
+          report += "\n"
+        }
+
+        report += "<details>\n"
+        report += "<summary>View all tests</summary>\n\n"
+
+        let groupedBySuite = Dictionary(grouping: moduleResults) { $0.suite }
+
+        for (suite, suiteResults) in groupedBySuite.sorted(by: { $0.key < $1.key }) {
+          report += "**\(suite)**\n\n"
+          report += "| Test | Status | Duration |\n"
+          report += "|------|:------:|---------:|\n"
+
+          for result in suiteResults.sorted(by: { $0.name < $1.name }) {
+            let statusIcon = result.status.icon
+            let duration = String(format: "%.3fs", result.duration)
+            let testName = result.name.replacingOccurrences(of: "|", with: "\\|")
+            report += "| \(testName) | \(statusIcon) | \(duration) |\n"
+          }
+
+          report += "\n"
+        }
+
+        report += "</details>\n\n"
+      }
+    }
+
+    if let macOSResults = platformResults.first(where: { $0.name == "macOS" }),
+      let coverage = macOSResults.results.coverage
+    {
+      report += "---\n\n"
+      report += "## Coverage\n\n"
+
+      let totalPercent = String(format: "%.1f%%", coverage.totalCoverage * 100)
+      report += "**Total Coverage: \(totalPercent)**\n\n"
+
+      report += "| Module | Coverage | Lines |\n"
+      report += "|--------|----------|-------|\n"
+
+      for module in coverage.modules.sorted(by: { $0.name < $1.name }) {
+        let percent =
+          module.linesTotal > 0
+          ? String(format: "%.1f%%", Double(module.linesCovered) / Double(module.linesTotal) * 100)
+          : "N/A"
+        report += "| \(module.name) | \(percent) | \(module.linesCovered)/\(module.linesTotal) |\n"
+      }
+    }
+
+    return report
+  }
+
+}
+
+
+enum ReportGenerator {
+
+  static func generateTestSummary(results: [TestResult], mergeable: Bool) -> String {
     let passed = results.filter { $0.status == .success }.count
     let failed = results.filter { $0.status == .failure }.count
     let skipped = results.filter { $0.status == .skipped }.count
@@ -298,64 +450,124 @@ struct TestReport: AsyncParsableCommand {
 
     var report = ""
 
-    if mergeable {
-      report += "## Test Summary\n\n"
+    if !mergeable {
+      report += "# Test Summary\n\n"
     }
 
+    let statusIcon = failed > 0 ? "🔴" : "🟢"
+    report += "\(statusIcon) **\(passed)** passed"
     if failed > 0 {
-      report += "| Status | Count |\n"
-      report += "|--------|-------|\n"
-      report += "| ✅ | \(passed) |\n"
-      report += "| ⚠️ | \(failed) |\n"
-      report += "| ➡️ | \(skipped) |\n"
-      report += "| **Total** | **\(total)** |\n"
-    } else {
-      report += "| ✅ | ⚠️ | ➡️ | Total |\n"
-      report += "|--------|--------|---------|-------|\n"
-      report += "| \(passed) | \(failed) | \(skipped) | \(total) |\n"
+      report += " · **\(failed)** failed"
+    }
+    if skipped > 0 {
+      report += " · **\(skipped)** skipped"
+    }
+    report += " · **\(total)** total\n\n"
+
+    if failed > 0 {
+      report += "### Failed Tests\n\n"
+      let failedTests = results.filter { $0.status == .failure }
+      for test in failedTests {
+        report += "- `\(test.module).\(test.suite).\(test.name)`\n"
+      }
+      report += "\n"
     }
 
     return report
   }
 
-  func generateTestDetail(results: [TestResult], mergeable: Bool) -> String {
+  static func generateTestDetail(results: [TestResult], mergeable: Bool) -> String {
     var report = ""
 
-    if mergeable {
-      report += "## Test Results\n\n"
+    if !mergeable {
+      report += "# Test Results\n\n"
     }
+
+    let passed = results.filter { $0.status == .success }.count
+    let failed = results.filter { $0.status == .failure }.count
+    let skipped = results.filter { $0.status == .skipped }.count
+    let total = results.count
+
+    let overallIcon = failed > 0 ? "🔴" : "🟢"
+    report += "\(overallIcon) **\(passed)** passed"
+    if failed > 0 {
+      report += " · **\(failed)** failed"
+    }
+    if skipped > 0 {
+      report += " · **\(skipped)** skipped"
+    }
+    report += " · **\(total)** total\n\n"
 
     let groupedByModule = Dictionary(grouping: results) { $0.module }
 
     for (module, moduleResults) in groupedByModule.sorted(by: { $0.key < $1.key }) {
-      report += "### \(module)\n\n"
+      let modulePassed = moduleResults.filter { $0.status == .success }.count
+      let moduleFailed = moduleResults.filter { $0.status == .failure }.count
+      let moduleSkipped = moduleResults.filter { $0.status == .skipped }.count
+      let moduleTotal = moduleResults.count
+
+      let moduleIcon = moduleFailed > 0 ? "🔴" : "🟢"
+
+      report += "### \(moduleIcon) \(module)\n\n"
+      report += "**\(modulePassed)** passed"
+      if moduleFailed > 0 {
+        report += " · **\(moduleFailed)** failed"
+      }
+      if moduleSkipped > 0 {
+        report += " · **\(moduleSkipped)** skipped"
+      }
+      report += " · **\(moduleTotal)** total\n\n"
+
+      let moduleFailedTests = moduleResults.filter { $0.status == .failure }
+      if !moduleFailedTests.isEmpty {
+        report += "**Failed:**\n"
+        for test in moduleFailedTests {
+          report += "- `\(test.suite).\(test.name)`\n"
+          if let message = test.message, !message.isEmpty {
+            let truncatedMessage =
+              message.count > 200 ? String(message.prefix(200)) + "..." : message
+            let escapedMessage =
+              truncatedMessage
+              .replacingOccurrences(of: "\n", with: " ")
+              .replacingOccurrences(of: "|", with: "\\|")
+            report += "  > \(escapedMessage)\n"
+          }
+        }
+        report += "\n"
+      }
+
+      report += "<details>\n"
+      report += "<summary>View all tests</summary>\n\n"
 
       let groupedBySuite = Dictionary(grouping: moduleResults) { $0.suite }
 
       for (suite, suiteResults) in groupedBySuite.sorted(by: { $0.key < $1.key }) {
-        report += "#### \(suite)\n\n"
+        report += "**\(suite)**\n\n"
         report += "| Test | Status | Duration |\n"
-        report += "|------|--------|----------|\n"
+        report += "|------|:------:|---------:|\n"
 
         for result in suiteResults.sorted(by: { $0.name < $1.name }) {
           let statusIcon = result.status.icon
           let duration = String(format: "%.3fs", result.duration)
-          report += "| \(result.name) | \(statusIcon) | \(duration) |\n"
+          let testName = result.name.replacingOccurrences(of: "|", with: "\\|")
+          report += "| \(testName) | \(statusIcon) | \(duration) |\n"
         }
 
         report += "\n"
       }
+
+      report += "</details>\n\n"
     }
 
     return report
   }
 
-  func generateCoverageSummary(coverage: CoverageData, mergeable: Bool) -> String {
+  static func generateCoverageSummary(coverage: CoverageData, mergeable: Bool) -> String {
 
     var report = ""
 
-    if mergeable {
-      report += "## Code Coverage Summary\n\n"
+    if !mergeable {
+      report += "# Code Coverage Summary\n\n"
     }
 
     let totalPercent = String(format: "%.1f%%", coverage.totalCoverage * 100)
@@ -375,26 +587,26 @@ struct TestReport: AsyncParsableCommand {
     return report
   }
 
-  func generateCoverageDetail(coverage: CoverageData, mergeable: Bool) -> String {
+  static func generateCoverageDetail(coverage: CoverageData, mergeable: Bool) -> String {
 
     var report = ""
 
-    if mergeable {
-      report += "## Code Coverage Report\n\n"
+    if !mergeable {
+      report += "# Code Coverage Report\n\n"
     }
 
     let totalPercent = String(format: "%.1f%%", coverage.totalCoverage * 100)
     report += "**Total Coverage: \(totalPercent)**\n\n"
 
-    report += "| Module | File | Coverage | Lines |\n"
-    report += "|--------|----------|-------|-------|\n"
+    report += "| Module | Coverage | Lines |\n"
+    report += "|--------|----------|-------|\n"
 
     for module in coverage.modules.sorted(by: { $0.name < $1.name }) {
       let percent =
-      module.linesTotal > 0
-      ? String(format: "%.1f%%", Double(module.linesCovered) / Double(module.linesTotal) * 100)
-      : "N/A"
-      report += "| \(module.name) | | \(percent) | \(module.linesCovered)/\(module.linesTotal) |\n"
+        module.linesTotal > 0
+        ? String(format: "%.1f%%", Double(module.linesCovered) / Double(module.linesTotal) * 100)
+        : "N/A"
+      report += "| \(module.name) | \(percent) | \(module.linesCovered)/\(module.linesTotal) |\n"
     }
 
     return report
@@ -412,12 +624,12 @@ enum TestStatus: String, Codable {
 
   var icon: String {
     switch self {
-    case .success: return "✅"
-    case .failure: return "⚠️"
-    case .skipped: return "➡️"
-    case .expectedFailure: return "☑️"
-    case .mixed: return "✅⚠️"
-    case .unknown: return "❔"
+    case .success: return "🟢"
+    case .failure: return "🔴"
+    case .skipped: return "⏭️"
+    case .expectedFailure: return "🟡"
+    case .mixed: return "🟠"
+    case .unknown: return "⚪"
     }
   }
 }
