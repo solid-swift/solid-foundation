@@ -10,3 +10,5 @@ DerivedData/
 .vscode
 .editorconfig
 .cursor
+.readme-examples
+*.xcscheme

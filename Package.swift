@@ -40,8 +40,9 @@ let package = Package(
       name: "Solid",
       dependencies: [
         "SolidCore",
-        "SolidID",
         "SolidNumeric",
+        "SolidIO",
+        "SolidID",
         "SolidURI",
         "SolidTempo",
         "SolidData",
@@ -286,6 +287,13 @@ let package = Package(
         .plugin(name: "Lint", package: "swiftformatplugins")
       ]
     ),
+    .target(
+      name: "Snippets",
+      dependencies: [
+        "Solid",
+      ],
+      path: "Snippets"
+    ),
     .executableTarget(
       name: "test-report",
       dependencies: [
@@ -293,6 +301,14 @@ let package = Package(
         .product(name: "Markdown", package: "swift-markdown"),
       ],
       path: "Tools/TestReport"
+    ),
+    .executableTarget(
+      name: "readme-build",
+      dependencies: [
+        .product(name: "ArgumentParser", package: "swift-argument-parser"),
+        .product(name: "Markdown", package: "swift-markdown"),
+      ],
+      path: "Tools/ReadmeBuild"
     ),
   ],
   swiftLanguageModes: [.v6],
