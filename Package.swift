@@ -123,13 +123,6 @@ let package = Package(
       ]
     ),
     .target(
-      name: "SwiftCompression",
-      dependencies: [
-        .product(name: "SWCompression", package: "SWCompression", condition: .when(platforms: [.linux])),
-      ],
-      path: "Sources/SwiftCompression"
-    ),
-    .target(
       name: "SolidIO",
       dependencies: [
         "SolidCore",
@@ -241,7 +234,7 @@ let package = Package(
     .testTarget(
       name: "SolidNetTests",
       dependencies: [
-        "SolidNet",
+        "SolidNet"
       ],
       plugins: [
         .plugin(name: "Lint", package: "swiftformatplugins")
@@ -296,13 +289,19 @@ let package = Package(
         .plugin(name: "Lint", package: "swiftformatplugins")
       ]
     ),
+
+    // - MARK: Shims
+
     .target(
-      name: "Snippets",
+      name: "SwiftCompression",
       dependencies: [
-        "Solid",
+        .product(name: "SWCompression", package: "SWCompression", condition: .when(platforms: [.linux]))
       ],
-      path: "Snippets"
+      path: "Sources/SwiftCompression"
     ),
+
+    // - MARK: Build Tools
+
     .executableTarget(
       name: "test-report",
       dependencies: [
@@ -318,6 +317,13 @@ let package = Package(
         .product(name: "Markdown", package: "swift-markdown"),
       ],
       path: "Tools/ReadmeBuild"
+    ),
+    .target(
+      name: "Snippets",
+      dependencies: [
+        "Solid"
+      ],
+      path: "Snippets"
     ),
   ],
   swiftLanguageModes: [.v6],
