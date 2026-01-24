@@ -161,7 +161,7 @@ let package = Package(
     ),
     .target(
       name: "SolidJSON",
-      dependencies: ["SolidData"],
+      dependencies: ["SolidData", "SolidIO"],
       path: "Sources/Solid/JSON",
       plugins: [
         .plugin(name: "Lint", package: "swiftformatplugins")
@@ -261,6 +261,18 @@ let package = Package(
       ],
       resources: [
         .copy("Resources")
+      ],
+      plugins: [
+        .plugin(name: "Lint", package: "swiftformatplugins")
+      ]
+    ),
+    .testTarget(
+      name: "SolidJSONTests",
+      dependencies: [
+        "SolidJSON",
+        "SolidData",
+        "SolidIO",
+        "SolidTesting",
       ],
       plugins: [
         .plugin(name: "Lint", package: "swiftformatplugins")

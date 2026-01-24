@@ -566,7 +566,7 @@ struct JSONTokenReader {
     }
 
     func readObject() throws -> C.ValueType {
-      var object: [String: C.ValueType] = [:]
+      var object: [(String, C.ValueType)] = []
       if try readToken(ifMatches: .endObject) {
         return try converter.convertObject(object)
       }
@@ -581,7 +581,12 @@ struct JSONTokenReader {
 
         try readToken(matching: [.pairSeparator])
 
-        object[key] = try readValue(converter: converter)
+        let value = try readValue(converter: converter)
+        if let index = object.firstIndex(where: { $0.0 == key }) {
+          object[index] = (key, value)
+        } else {
+          object.append((key, value))
+        }
 
         if try readToken(matching: [.elementSeparator, .endObject]) == .endObject {
           break
