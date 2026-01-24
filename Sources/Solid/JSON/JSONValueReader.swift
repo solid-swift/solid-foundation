@@ -49,8 +49,12 @@ public struct JSONValueReader: FormatReader {
       return .array(value)
     }
 
-    func convertObject(_ value: [String: Value]) throws -> Value {
-      return .object(Value.Object(uniqueKeysWithValues: value.map { (.string($0.key), $0.value) }))
+    func convertObject(_ value: [(String, Value)]) throws -> Value {
+      var object = Value.Object()
+      for (key, val) in value {
+        object[.string(key)] = val
+      }
+      return .object(object)
     }
 
     func convertNull() -> Value {
@@ -72,7 +76,7 @@ public struct JSONValueReader: FormatReader {
       return
     }
 
-    func convertObject(_ value: [String: Void]) throws -> Void {
+    func convertObject(_ value: [(String, Void)]) throws -> Void {
       return
     }
 

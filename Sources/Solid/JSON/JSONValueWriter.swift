@@ -45,7 +45,7 @@ public struct JSONValueWriter: FormatWriter {
 
   /// Write a value into a new in-memory Data buffer.
   public static func write(_ value: Value, options: Options = .default) -> Data {
-    let writer = JSONValueWriter()
+    let writer = JSONValueWriter(options: options)
     writer.write(value)
     return writer.data()
   }
