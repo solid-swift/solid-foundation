@@ -176,7 +176,7 @@ let package = Package(
     ),
     .target(
       name: "SolidYAML",
-      dependencies: ["SolidData"],
+      dependencies: ["SolidData", "SolidIO"],
       path: "Sources/Solid/YAML",
       plugins: [
         .plugin(name: "Lint", package: "swiftformatplugins")
@@ -280,6 +280,20 @@ let package = Package(
         "SolidData",
         "SolidIO",
         "SolidTesting",
+      ],
+      plugins: [
+        .plugin(name: "Lint", package: "swiftformatplugins")
+      ]
+    ),
+    .testTarget(
+      name: "SolidYAMLTests",
+      dependencies: [
+        "SolidYAML",
+        "SolidData",
+        "SolidTesting",
+      ],
+      resources: [
+        .copy("Fixtures/yaml-test-suite")
       ],
       plugins: [
         .plugin(name: "Lint", package: "swiftformatplugins")
