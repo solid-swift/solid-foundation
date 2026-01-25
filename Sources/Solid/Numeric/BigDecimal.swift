@@ -158,11 +158,11 @@ public struct BigDecimal {
 
     // Split into number and exponent
     let parts = str.split(maxSplits: 1) { $0 == "e" || $0 == "E" }
-    guard parts.count <= 2 else { return nil }
+    guard parts.count > 0 && parts.count <= 2 else { return nil }
 
     // Parse mantissa parts
     let numberParts = parts[0].split(separator: ".", maxSplits: 1)
-    guard numberParts.count <= 2,
+    guard numberParts.count > 0 && numberParts.count <= 2,
       !numberParts[0].isEmpty || numberParts.count > 1
     else { return nil }
 
