@@ -31,9 +31,6 @@ struct YAMLEventEmitter {
 
     case .scalar(let scalar, let tag, let anchor):
       if let anchor {
-        if anchorNodes[anchor] != nil {
-          throw YAML.Error.duplicateAnchor(anchor)
-        }
         anchorNodes[anchor] = node
       }
       if let tag {
@@ -41,18 +38,12 @@ struct YAMLEventEmitter {
       }
       let value = resolver.resolve(scalar, explicitTag: tag, wrapTag: false)
       if let anchor {
-        if valueAnchors[anchor] != nil {
-          throw YAML.Error.duplicateAnchor(anchor)
-        }
         valueAnchors[anchor] = value
       }
       events.append(.scalar(value))
 
-    case .sequence(let items, let tag, let anchor):
+    case .sequence(let items, _, let tag, let anchor):
       if let anchor {
-        if anchorNodes[anchor] != nil {
-          throw YAML.Error.duplicateAnchor(anchor)
-        }
         anchorNodes[anchor] = node
       }
       if let tag {
@@ -65,17 +56,11 @@ struct YAMLEventEmitter {
       events.append(.endArray)
       if let anchor {
         let value = try buildValue(from: node, includeTags: false)
-        if valueAnchors[anchor] != nil {
-          throw YAML.Error.duplicateAnchor(anchor)
-        }
         valueAnchors[anchor] = value
       }
 
-    case .mapping(let pairs, let tag, let anchor):
+    case .mapping(let pairs, _, let tag, let anchor):
       if let anchor {
-        if anchorNodes[anchor] != nil {
-          throw YAML.Error.duplicateAnchor(anchor)
-        }
         anchorNodes[anchor] = node
       }
       if let tag {
@@ -89,9 +74,6 @@ struct YAMLEventEmitter {
       events.append(.endObject)
       if let anchor {
         let value = try buildValue(from: node, includeTags: false)
-        if valueAnchors[anchor] != nil {
-          throw YAML.Error.duplicateAnchor(anchor)
-        }
         valueAnchors[anchor] = value
       }
     }
@@ -109,9 +91,9 @@ struct YAMLEventEmitter {
     switch node {
     case .scalar(_, let tag, _):
       return tag
-    case .sequence(_, let tag, _):
+    case .sequence(_, _, let tag, _):
       return tag
-    case .mapping(_, let tag, _):
+    case .mapping(_, _, let tag, _):
       return tag
     case .alias(let name):
       return anchorNodes[name].flatMap { nodeTag($0) }
