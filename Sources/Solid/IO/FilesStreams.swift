@@ -16,6 +16,7 @@ import Synchronization
 ///
 public class FileSource: FileStream, Source, @unchecked Sendable {
 
+  // swift-format-ignore: NoLeadingUnderscores
   private let _bytesRead = Atomic<Int>(0)
 
   public var bytesRead: Int { _bytesRead.load(ordering: .acquiring) }
@@ -103,6 +104,7 @@ public class FileSource: FileStream, Source, @unchecked Sendable {
 ///
 public final class FileSink: FileStream, Sink, @unchecked Sendable {
 
+  // swift-format-ignore: NoLeadingUnderscores
   private let _bytesWritten = Atomic<Int>(0)
 
   public var bytesWritten: Int { _bytesWritten.load(ordering: .acquiring) }

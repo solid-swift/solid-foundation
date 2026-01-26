@@ -33,7 +33,7 @@ public final class YAMLStreamReader: FormatStreamReader {
 
     let data = try await readAll()
     guard let text = String(data: data, encoding: .utf8) else {
-      throw YAML.Error.invalidUTF8
+      throw YAML.DataError.invalidEncoding(.utf8)
     }
 
     var parser = try YAMLParser(text: text)

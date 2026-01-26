@@ -25,7 +25,7 @@ struct YAMLEventEmitter {
     switch node {
     case .alias(let name):
       guard let target = anchorNodes[name] else {
-        throw YAML.Error.unresolvedAlias(name)
+        throw YAML.ParseError.unresolvedAlias(name)
       }
       try emit(target, into: &events)
 
@@ -107,7 +107,7 @@ struct YAMLEventEmitter {
         return cached
       }
       guard let target = anchorNodes[name] else {
-        throw YAML.Error.unresolvedAlias(name)
+        throw YAML.ParseError.unresolvedAlias(name)
       }
       let value = try buildValue(from: target, includeTags: includeTags)
       valueAnchors[name] = value

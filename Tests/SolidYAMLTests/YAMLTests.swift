@@ -24,6 +24,21 @@ struct YAMLTests {
     var description: String { id }
   }
 
+  struct ErrorCase: Sendable, CustomStringConvertible, Identifiable {
+    enum Kind: Sendable {
+      case invalidSyntax
+      case invalidIndentation
+    }
+
+    let id: String
+    let yaml: String
+    let line: Int
+    let column: Int
+    let kind: Kind
+
+    var description: String { id }
+  }
+
   static let cases: [TestCase] = [
     .init(
       id: "scalar-string",
@@ -61,6 +76,30 @@ struct YAMLTests {
         "foo": .null,
         "bar": .null,
       ]
+    ),
+  ]
+
+  static let errorCases: [ErrorCase] = [
+    .init(
+      id: "unterminated-double-quote",
+      yaml: "\"foo",
+      line: 1,
+      column: 5,
+      kind: .invalidSyntax
+    ),
+    .init(
+      id: "invalid-tag",
+      yaml: "!<tag",
+      line: 1,
+      column: 6,
+      kind: .invalidSyntax
+    ),
+    .init(
+      id: "tab-indentation",
+      yaml: "\tkey: value\n",
+      line: 1,
+      column: 2,
+      kind: .invalidIndentation
     ),
   ]
 
@@ -108,6 +147,25 @@ struct YAMLTests {
     #expect(value == testCase.value, "\(testCase.id): streamed emit mismatch")
   }
 
+  @Test("Error locations", arguments: errorCases)
+  func errorLocations(_ testCase: ErrorCase) throws {
+    let error =
+      #expect(throws: Error.self) {
+        _ = try YAMLValueReader(string: testCase.yaml).read()
+      }
+    let yamlError = try #require(error as? any YAML.Error)
+    switch (yamlError, testCase.kind) {
+    case (YAML.ParseError.invalidSyntax(_, let location), .invalidSyntax):
+      #expect(location?.line == testCase.line, "\(testCase.id): line mismatch")
+      #expect(location?.column == testCase.column, "\(testCase.id): column mismatch")
+    case (YAML.ParseError.invalidIndentation(let location), .invalidIndentation):
+      #expect(location?.line == testCase.line, "\(testCase.id): line mismatch")
+      #expect(location?.column == testCase.column, "\(testCase.id): column mismatch")
+    default:
+      Issue.record("\(testCase.id): unexpected error kind")
+    }
+  }
+
 }
 
 private func emitEvents(from value: Value, into events: inout [ValueEvent]) {
@@ -132,4 +190,3 @@ private func emitEvents(from value: Value, into events: inout [ValueEvent]) {
     events.append(.scalar(value))
   }
 }
-

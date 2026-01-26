@@ -103,7 +103,8 @@ struct YAMLTestSuite {
       return false
     }
     let emitURL = testCase.directory.appendingPathComponent("emit.yaml")
-    let expectedURL = FileManager.default.fileExists(atPath: emitURL.path)
+    let expectedURL =
+      FileManager.default.fileExists(atPath: emitURL.path)
       ? emitURL
       : testCase.directory.appendingPathComponent("in.yaml")
     guard FileManager.default.fileExists(atPath: expectedURL.path) else {
@@ -155,7 +156,8 @@ struct YAMLTestSuite {
       let value = try reader.read()
 
       let emitURL = testCase.directory.appendingPathComponent("emit.yaml")
-      let expectedURL = FileManager.default.fileExists(atPath: emitURL.path)
+      let expectedURL =
+        FileManager.default.fileExists(atPath: emitURL.path)
         ? emitURL
         : testCase.directory.appendingPathComponent("in.yaml")
       let expectedData = try Data(contentsOf: expectedURL)
@@ -193,7 +195,7 @@ struct YAMLTestSuite {
       let expected = try Self.loadEventLines(from: eventURL)
 
       guard let yamlText = String(data: yamlData, encoding: .utf8) else {
-        throw YAML.Error.invalidUTF8
+        throw YAML.DataError.invalidEncoding(.utf8)
       }
 
       var parser = try YAMLParser(text: yamlText)
@@ -350,17 +352,17 @@ struct YAMLTestSuite {
   private static func readSingleDocumentValue(from data: Data, label: String, testCase: Case) throws -> Value {
     do {
       guard let text = String(data: data, encoding: .utf8) else {
-        throw YAML.Error.invalidUTF8
+        throw YAML.DataError.invalidEncoding(.utf8)
       }
       var parser = try YAMLParser(text: text)
       let documents = try parser.parseDocumentStream()
       guard documents.count == 1 else {
-        throw YAML.Error.invalidSyntax("Expected single document for \(label) in \(testCase.id)")
+        throw YAML.ParseError.invalidSyntax("Expected single document for \(label) in \(testCase.id)", location: nil)
       }
       var anchors: [String: Value] = [:]
       return try documents[0].node.toValue(anchors: &anchors)
     } catch {
-      throw YAML.Error.invalidSyntax("Failed to parse \(label) YAML for \(testCase.id): \(error)")
+      throw YAML.ParseError.invalidSyntax("Failed to parse \(label) YAML for \(testCase.id): \(error)", location: nil)
     }
   }
 
@@ -521,7 +523,8 @@ struct YAMLTestSuite {
         return "-DOC"
       }
       if line.hasPrefix("+SEQ") || line.hasPrefix("+MAP") {
-        let normalized = line
+        let normalized =
+          line
           .replacingOccurrences(of: " []", with: "")
           .replacingOccurrences(of: " {}", with: "")
         let parts = normalized.split(whereSeparator: { $0.isWhitespace })
@@ -632,7 +635,7 @@ struct YAMLTestSuite {
 
   private static func parseEventStream(from lines: [String]) throws -> ParsedEventStream {
     guard lines.first == "+STR", lines.last == "-STR" else {
-      throw YAML.Error.invalidSyntax("Invalid event stream boundaries")
+      throw YAML.ParseError.invalidSyntax("Invalid event stream boundaries", location: nil)
     }
 
     var documents: [ParsedEventDocument] = []
@@ -644,7 +647,7 @@ struct YAMLTestSuite {
       let line = lines[index]
       if line.hasPrefix("+DOC") {
         guard builder == nil else {
-          throw YAML.Error.invalidSyntax("Nested document start")
+          throw YAML.ParseError.invalidSyntax("Nested document start", location: nil)
         }
         let parts = line.split(whereSeparator: { $0.isWhitespace })
         explicitStart = parts.contains("---")
@@ -654,7 +657,7 @@ struct YAMLTestSuite {
       }
       if line.hasPrefix("-DOC") {
         guard var activeBuilder = builder else {
-          throw YAML.Error.invalidSyntax("Document end without start")
+          throw YAML.ParseError.invalidSyntax("Document end without start", location: nil)
         }
         let parts = line.split(whereSeparator: { $0.isWhitespace })
         let explicitEnd = parts.contains("...")
@@ -668,7 +671,7 @@ struct YAMLTestSuite {
       }
 
       guard var activeBuilder = builder else {
-        throw YAML.Error.invalidSyntax("Missing document start")
+        throw YAML.ParseError.invalidSyntax("Missing document start", location: nil)
       }
 
       if line.hasPrefix("+SEQ") {
@@ -687,7 +690,7 @@ struct YAMLTestSuite {
       } else if line.hasPrefix("=ALI") {
         let parts = line.split(whereSeparator: { $0.isWhitespace })
         guard parts.count >= 2, parts[1].first == "*" else {
-          throw YAML.Error.invalidSyntax("Invalid alias event")
+          throw YAML.ParseError.invalidSyntax("Invalid alias event", location: nil)
         }
         let name = String(parts[1].dropFirst())
         try activeBuilder.alias(name)
@@ -700,7 +703,7 @@ struct YAMLTestSuite {
     }
 
     guard builder == nil else {
-      throw YAML.Error.invalidSyntax("Unclosed document")
+      throw YAML.ParseError.invalidSyntax("Unclosed document", location: nil)
     }
 
     return ParsedEventStream(documents: documents)
@@ -721,7 +724,7 @@ struct YAMLTestSuite {
   private static func parseScalarEvent(line: String) throws -> ParsedScalarEvent {
     let prefix = "=VAL"
     guard line.hasPrefix(prefix) else {
-      throw YAML.Error.invalidSyntax("Invalid scalar event")
+      throw YAML.ParseError.invalidSyntax("Invalid scalar event", location: nil)
     }
     var cursor = line.index(line.startIndex, offsetBy: prefix.count)
     skipSpaces(in: line, cursor: &cursor)
@@ -737,7 +740,7 @@ struct YAMLTestSuite {
       if ch == "&" {
         let token = readToken(from: line, start: cursor)
         if anchor != nil {
-          throw YAML.Error.invalidSyntax("Duplicate anchor")
+          throw YAML.ParseError.invalidSyntax("Duplicate anchor", location: nil)
         }
         anchor = String(token.text.dropFirst())
         cursor = token.end
@@ -756,11 +759,11 @@ struct YAMLTestSuite {
     }
 
     guard cursor < line.endIndex else {
-      throw YAML.Error.invalidSyntax("Missing scalar style")
+      throw YAML.ParseError.invalidSyntax("Missing scalar style", location: nil)
     }
     let styleChar = line[cursor]
     guard isStyleIndicator(styleChar) else {
-      throw YAML.Error.invalidSyntax("Invalid scalar style")
+      throw YAML.ParseError.invalidSyntax("Invalid scalar style", location: nil)
     }
     cursor = line.index(after: cursor)
     let value = String(line[cursor...])
@@ -772,7 +775,7 @@ struct YAMLTestSuite {
   private static func parseCollectionEvent(line: String) throws -> ParsedCollectionEvent {
     let parts = line.split(whereSeparator: { $0.isWhitespace })
     guard let first = parts.first, first == "+SEQ" || first == "+MAP" else {
-      throw YAML.Error.invalidSyntax("Invalid collection event")
+      throw YAML.ParseError.invalidSyntax("Invalid collection event", location: nil)
     }
     var tags: [String] = []
     var anchor: String?
@@ -784,7 +787,7 @@ struct YAMLTestSuite {
       }
       if token.first == "&" {
         if anchor != nil {
-          throw YAML.Error.invalidSyntax("Duplicate anchor")
+          throw YAML.ParseError.invalidSyntax("Duplicate anchor", location: nil)
         }
         anchor = String(token.dropFirst())
         continue
@@ -907,7 +910,7 @@ struct YAMLTestSuite {
 
     mutating func endSequence() throws {
       guard case .sequence(let items, let style, let tag, let anchor) = stack.popLast() else {
-        throw YAML.Error.invalidSyntax("Unexpected end of sequence")
+        throw YAML.ParseError.invalidSyntax("Unexpected end of sequence", location: nil)
       }
       try appendNode(.sequence(items, style: style, tag: tag, anchor: anchor))
     }
@@ -928,10 +931,10 @@ struct YAMLTestSuite {
     mutating func endMapping() throws {
       guard case .mapping(let pairs, let expectingKey, let currentKey, let style, let tag, let anchor) = stack.popLast()
       else {
-        throw YAML.Error.invalidSyntax("Unexpected end of mapping")
+        throw YAML.ParseError.invalidSyntax("Unexpected end of mapping", location: nil)
       }
       guard expectingKey, currentKey == nil else {
-        throw YAML.Error.invalidSyntax("Missing value for key")
+        throw YAML.ParseError.invalidSyntax("Missing value for key", location: nil)
       }
       try appendNode(.mapping(pairs, style: style, tag: tag, anchor: anchor))
     }
@@ -946,7 +949,7 @@ struct YAMLTestSuite {
 
     mutating func finish() throws -> YAMLNode {
       guard stack.isEmpty, let root else {
-        throw YAML.Error.invalidSyntax("Unclosed collection in event stream")
+        throw YAML.ParseError.invalidSyntax("Unclosed collection in event stream", location: nil)
       }
       return root
     }
@@ -954,7 +957,7 @@ struct YAMLTestSuite {
     private mutating func appendNode(_ node: YAMLNode) throws {
       guard var container = stack.popLast() else {
         guard root == nil else {
-          throw YAML.Error.invalidSyntax("Multiple root values")
+          throw YAML.ParseError.invalidSyntax("Multiple root values", location: nil)
         }
         root = node
         return
@@ -977,7 +980,7 @@ struct YAMLTestSuite {
           )
         } else {
           guard let key = currentKey else {
-            throw YAML.Error.invalidSyntax("Missing key for value")
+            throw YAML.ParseError.invalidSyntax("Missing key for value", location: nil)
           }
           pairs.append((key, node))
           container = .mapping(
@@ -1133,7 +1136,7 @@ struct YAMLTestSuite {
       switch node {
       case .alias(let name):
         guard let value = anchors[name] else {
-          throw YAML.Error.unresolvedAlias(name)
+          throw YAML.ParseError.unresolvedAlias(name)
         }
         return value
 
@@ -1184,7 +1187,7 @@ struct YAMLTestSuite {
       switch node {
       case .alias(let name):
         guard let value = anchors[name] else {
-          throw YAML.Error.unresolvedAlias(name)
+          throw YAML.ParseError.unresolvedAlias(name)
         }
         return value
 

@@ -14,7 +14,7 @@ public enum CBOR {
   /// + Note: These are informational only, all errors are
   /// fatal and represent corrupted data; no recovery is
   /// possible
-  public enum Error: Swift.Error {
+  public enum Error: FormatError {
     /// End of data stream unexpectedly encounteredd during deserialization
     case unexpectedEndOfStream
     /// Invalid item type was encountered during deserialization
@@ -62,5 +62,12 @@ public enum CBOR {
   }
 
   public static let format = Format.instance
+
+}
+
+
+extension CBOR.Error {
+
+  public var format: CBOR.Format { .instance }
 
 }

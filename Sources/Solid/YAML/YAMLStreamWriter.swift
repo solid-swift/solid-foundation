@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import SolidCore
 import SolidData
 import SolidIO
 
@@ -90,12 +91,12 @@ public final class YAMLStreamWriter: FormatStreamWriter {
   public var format: Format { YAML.format }
 
   public func write(_ event: ValueEvent) async throws {
-    guard !finished else { throw YAML.Error.invalidSyntax("Writer already finished") }
+    guard !finished else { throw YAML.EmitError.invalidState("Writer already finished") }
 
     switch event {
     case .style(let style):
       guard pendingStyle == nil else {
-        throw YAML.Error.invalidSyntax("Style without value")
+        throw YAML.EmitError.invalidEvent("Style without value")
       }
       pendingStyle = style
 
@@ -104,7 +105,7 @@ public final class YAMLStreamWriter: FormatStreamWriter {
 
     case .anchor(let name):
       guard pendingAnchor == nil else {
-        throw YAML.Error.invalidSyntax("Anchor without value")
+        throw YAML.EmitError.invalidEvent("Anchor without value")
       }
       pendingAnchor = name
 
@@ -133,8 +134,12 @@ public final class YAMLStreamWriter: FormatStreamWriter {
 
   public func finish() async throws {
     guard !finished else { return }
-    guard containers.isEmpty, pendingTags.isEmpty, pendingAnchor == nil, pendingStyle == nil, rootState == .complete else {
-      throw YAML.Error.invalidSyntax("Incomplete YAML document")
+    guard
+      containers.isEmpty, pendingTags.isEmpty,
+      pendingAnchor == nil, pendingStyle == nil,
+      rootState == .complete
+    else {
+      throw YAML.EmitError.invalidState("Incomplete YAML document")
     }
     if !buffer.isEmpty, !atLineStart {
       try await appendString("\n")
@@ -162,13 +167,13 @@ public final class YAMLStreamWriter: FormatStreamWriter {
 
   private func writeKey(_ key: Value) async throws {
     guard var container = containers.popLast() else {
-      throw YAML.Error.invalidSyntax("Key outside object")
+      throw YAML.EmitError.invalidEvent("Key outside object")
     }
     guard container.kind == .object else {
-      throw YAML.Error.invalidSyntax("Key outside object")
+      throw YAML.EmitError.invalidEvent("Key outside object")
     }
     guard container.expectingKey else {
-      throw YAML.Error.invalidSyntax("Unexpected key")
+      throw YAML.EmitError.invalidEvent("Unexpected key")
     }
     let scalarStyle = try consumePendingScalarStyle()
     let allowImplicitTyping = options.allowImplicitTyping
@@ -249,7 +254,7 @@ public final class YAMLStreamWriter: FormatStreamWriter {
     let scalarStyle = try consumePendingScalarStyle()
     if containers.isEmpty {
       guard rootState == .expectingValue else {
-        throw YAML.Error.invalidSyntax("Multiple root values")
+        throw YAML.EmitError.invalidState("Multiple root values")
       }
       let allowImplicitTyping = options.allowImplicitTyping
       let properties = consumePendingNodeProperties()
@@ -274,7 +279,7 @@ public final class YAMLStreamWriter: FormatStreamWriter {
     }
 
     guard var container = containers.popLast() else {
-      throw YAML.Error.invalidSyntax("Invalid container state")
+      throw YAML.EmitError.invalidState("Invalid container state")
     }
 
     switch container.kind {
@@ -335,7 +340,7 @@ public final class YAMLStreamWriter: FormatStreamWriter {
 
     case .object:
       guard !container.expectingKey else {
-        throw YAML.Error.invalidSyntax("Unexpected value before key")
+        throw YAML.EmitError.invalidEvent("Unexpected value before key")
       }
       if container.style == .flow {
         try await appendString(" ")
@@ -405,12 +410,12 @@ public final class YAMLStreamWriter: FormatStreamWriter {
 
   private func writeAlias(_ name: String) async throws {
     guard pendingTags.isEmpty, pendingAnchor == nil, pendingStyle == nil else {
-      throw YAML.Error.invalidSyntax("Alias cannot have tags or anchors")
+      throw YAML.EmitError.invalidEvent("Alias cannot have tags or anchors")
     }
 
     if containers.isEmpty {
       guard rootState == .expectingValue else {
-        throw YAML.Error.invalidSyntax("Multiple root values")
+        throw YAML.EmitError.invalidState("Multiple root values")
       }
       try await appendString("*\(name)")
       rootState = .complete
@@ -418,7 +423,7 @@ public final class YAMLStreamWriter: FormatStreamWriter {
     }
 
     guard var container = containers.popLast() else {
-      throw YAML.Error.invalidSyntax("Invalid container state")
+      throw YAML.EmitError.invalidState("Invalid container state")
     }
 
     switch container.kind {
@@ -529,16 +534,16 @@ public final class YAMLStreamWriter: FormatStreamWriter {
 
   private func endContainer(kind: ContainerKind) async throws {
     guard pendingTags.isEmpty, pendingStyle == nil else {
-      throw YAML.Error.invalidSyntax("Tag or style without value")
+      throw YAML.EmitError.invalidEvent("Tag or style without value")
     }
     guard var container = containers.popLast() else {
-      throw YAML.Error.invalidSyntax(kind == .array ? "Unexpected endArray" : "Unexpected endObject")
+      throw YAML.EmitError.invalidEvent(kind == .array ? "Unexpected endArray" : "Unexpected endObject")
     }
     guard container.kind == kind else {
-      throw YAML.Error.invalidSyntax(kind == .array ? "Unexpected endArray" : "Unexpected endObject")
+      throw YAML.EmitError.invalidEvent(kind == .array ? "Unexpected endArray" : "Unexpected endObject")
     }
     if kind == .object, !container.expectingKey {
-      throw YAML.Error.invalidSyntax("Missing value for key")
+      throw YAML.EmitError.invalidEvent("Missing value for key")
     }
     if container.style == .flow {
       try await appendString(kind == .array ? "]" : "}")
@@ -547,10 +552,10 @@ public final class YAMLStreamWriter: FormatStreamWriter {
     }
     if container.opened {
       if !container.pendingTags.isEmpty {
-        throw YAML.Error.invalidSyntax("Tag without value")
+        throw YAML.EmitError.invalidEvent("Tag without value")
       }
       if container.pendingAnchor != nil {
-        throw YAML.Error.invalidSyntax("Anchor without value")
+        throw YAML.EmitError.invalidEvent("Anchor without value")
       }
     } else {
       if !container.inlinePrefix.isEmpty {
@@ -570,13 +575,13 @@ public final class YAMLStreamWriter: FormatStreamWriter {
   private func prepareForContainerValue(kind: ContainerKind) async throws -> ContainerContext {
     if containers.isEmpty {
       guard rootState == .expectingValue else {
-        throw YAML.Error.invalidSyntax("Multiple root values")
+        throw YAML.EmitError.invalidState("Multiple root values")
       }
       return ContainerContext(indent: 0, inlinePrefix: "", allowInline: false)
     }
 
     guard var container = containers.popLast() else {
-      throw YAML.Error.invalidSyntax("Invalid container state")
+      throw YAML.EmitError.invalidState("Invalid container state")
     }
 
     switch container.kind {
@@ -599,7 +604,7 @@ public final class YAMLStreamWriter: FormatStreamWriter {
 
     case .object:
       guard !container.expectingKey else {
-        throw YAML.Error.invalidSyntax("Unexpected value before key")
+        throw YAML.EmitError.invalidEvent("Unexpected value before key")
       }
       let allowInline = container.explicitValuePending
       containers.append(container)
@@ -665,7 +670,7 @@ public final class YAMLStreamWriter: FormatStreamWriter {
       containers.append(container)
     case .object:
       guard !container.expectingKey else {
-        throw YAML.Error.invalidSyntax("Unexpected value")
+        throw YAML.EmitError.invalidEvent("Unexpected value")
       }
       container.expectingKey = true
       container.explicitValuePending = false
@@ -689,7 +694,7 @@ public final class YAMLStreamWriter: FormatStreamWriter {
       self.pendingStyle = nil
       return style
     case .collection:
-      throw YAML.Error.invalidSyntax("Collection style cannot apply to scalar")
+      throw YAML.EmitError.invalidEvent("Collection style cannot apply to scalar")
     }
   }
 
@@ -702,7 +707,7 @@ public final class YAMLStreamWriter: FormatStreamWriter {
       self.pendingStyle = nil
       return style
     case .scalar:
-      throw YAML.Error.invalidSyntax("Scalar style cannot apply to collection")
+      throw YAML.EmitError.invalidEvent("Scalar style cannot apply to collection")
     }
   }
 
@@ -804,7 +809,12 @@ public final class YAMLStreamWriter: FormatStreamWriter {
     case .number(let number):
       return number.description
     case .bytes(let data):
-      let encoded = serializeString(data.base64EncodedString(), indent: indent, allowBlock: allowBlock, style: scalarStyle)
+      let encoded = serializeString(
+        data.baseEncoded(using: .base64),
+        indent: indent,
+        allowBlock: allowBlock,
+        style: scalarStyle
+      )
       let tag = formatTag(.string("tag:yaml.org,2002:binary"))
       return "\(tag) \(encoded)"
     case .string(let string):
@@ -1130,7 +1140,7 @@ public final class YAMLStreamWriter: FormatStreamWriter {
     let lines = renderBlockValueLines(key, scalarStyle: scalarStyle)
     if !lines.isEmpty {
       let inlineIndex = lines.firstIndex { !$0.isEmpty }
-      let firstLine = inlineIndex != nil ? lines[inlineIndex!] : lines[0]
+      let firstLine = inlineIndex.map { lines[$0] } ?? lines[0]
       let hasProperties = properties != nil
       let isSequenceLine = firstLine.hasPrefix("-")
       let shouldInline = !firstLine.isEmpty && !firstLine.hasPrefix("?") && !(isSequenceLine && hasProperties)
@@ -1148,7 +1158,7 @@ public final class YAMLStreamWriter: FormatStreamWriter {
       }()
       if !bodyLines.isEmpty {
         let isBlockScalar = firstLine.hasPrefix("|") || firstLine.hasPrefix(">")
-      let lineIndent = indent + options.indent
+        let lineIndent = indent + options.indent
         let padding = indentString(count: lineIndent)
         let blockIndent = indentString(count: options.indent)
         for line in bodyLines {
@@ -1174,7 +1184,7 @@ public final class YAMLStreamWriter: FormatStreamWriter {
 
   private func appendString(_ string: String) async throws {
     guard let data = string.data(using: .utf8) else {
-      throw YAML.Error.invalidUTF8
+      throw YAML.DataError.invalidEncoding(.utf8)
     }
     buffer.append(data)
     if let last = string.last {
