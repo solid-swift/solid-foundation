@@ -25,4 +25,3 @@ public enum ValueCollectionStyle: Sendable, Equatable {
   case block
   case flow
 }
-

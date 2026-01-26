@@ -15,7 +15,7 @@ public struct YAMLValueReader: FormatReader {
 
   public init(data: Data) throws {
     guard let text = String(data: data, encoding: .utf8) else {
-      throw YAML.Error.invalidUTF8
+      throw YAML.DataError.invalidEncoding(.utf8)
     }
     self.text = text
   }
@@ -92,7 +92,8 @@ public final class YAMLValueWriter: FormatWriter {
       for (index, item) in array.enumerated() {
         let itemIndent = isScalar(item) ? indent : (indent + options.indent)
         let content = render(item, indent: itemIndent, allowBlock: true)
-        let line = isScalar(item)
+        let line =
+          isScalar(item)
           ? "\(indentString(indent))- \(content)"
           : "\(indentString(indent))-\n\(content)"
         if index > 0, !result.hasSuffix("\n") {
@@ -118,7 +119,8 @@ public final class YAMLValueWriter: FormatWriter {
         let keyText = render(key, indent: indent, allowBlock: false)
         let valueIndent = isScalar(val) ? indent : (indent + options.indent)
         let valueText = render(val, indent: valueIndent, allowBlock: true)
-        let line = isScalar(val)
+        let line =
+          isScalar(val)
           ? "\(indentString(indent))\(keyText): \(valueText)"
           : "\(indentString(indent))\(keyText):\n\(valueText)"
         if index > 0, !result.hasSuffix("\n") {

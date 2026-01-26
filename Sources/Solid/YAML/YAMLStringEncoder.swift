@@ -292,10 +292,8 @@ struct YAMLStringEncoder {
 
   private static func firstContentLine(in string: String) -> Substring? {
     let lines = string.split(separator: "\n", omittingEmptySubsequences: false)
-    for line in lines {
-      if !line.isEmpty {
-        return line
-      }
+    for line in lines where !line.isEmpty {
+      return line
     }
     return nil
   }
@@ -597,12 +595,11 @@ struct YAMLStringEncoder {
     var index = string.endIndex
     while index > string.startIndex {
       let prev = string.index(before: index)
-      if string[prev] == "\n" {
-        count += 1
-        index = prev
-      } else {
+      guard string[prev] == "\n" else {
         break
       }
+      count += 1
+      index = prev
     }
     return count
   }

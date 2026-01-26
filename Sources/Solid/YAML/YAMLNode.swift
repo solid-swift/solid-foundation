@@ -209,11 +209,15 @@ struct YAMLScalarResolver {
 
 extension YAMLNode {
 
-  func toValue(resolver: YAMLScalarResolver = YAMLScalarResolver(), anchors: inout [String: Value], wrapTag: Bool = true) throws -> Value {
+  func toValue(
+    resolver: YAMLScalarResolver = YAMLScalarResolver(),
+    anchors: inout [String: Value],
+    wrapTag: Bool = true
+  ) throws -> Value {
     switch self {
     case .alias(let name):
       guard let value = anchors[name] else {
-        throw YAML.Error.unresolvedAlias(name)
+        throw YAML.ParseError.unresolvedAlias(name)
       }
       return value
 
