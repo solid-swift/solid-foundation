@@ -49,6 +49,13 @@ public final class YAMLValueWriter: FormatWriter {
   private let options: Options
   private var output = ""
 
+  /// Write a value into a new in-memory `Data` buffer.
+  public static func write(_ value: Value, options: Options = .default) throws -> Data {
+    let writer = YAMLValueWriter(options: options)
+    try writer.write(value)
+    return writer.data()
+  }
+
   public init(options: Options = .default) {
     self.options = options
   }
@@ -56,53 +63,78 @@ public final class YAMLValueWriter: FormatWriter {
   public var format: Format { YAML.format }
 
   public func write(_ value: Value) throws {
-    output = render(value, indent: 0)
+    output = render(value, indent: 0, allowBlock: true)
   }
 
   /// Rendered YAML bytes.
   public func data() -> Data {
-    output.data(using: .utf8) ?? Data()
+    Data(output.utf8)
   }
 
   // MARK: - Rendering
 
-  private func render(_ value: Value, indent: Int) -> String {
+  private func render(_ value: Value, indent: Int, allowBlock: Bool) -> String {
     switch value {
     case .tagged(let tag, let inner):
-      return "\(formatTag(tag)) \(render(inner, indent: indent))"
+      let innerText = render(inner, indent: indent, allowBlock: allowBlock)
+      if allowBlock, innerText.contains("\n"), !isScalar(inner) {
+        let tagLine = "\(indentString(indent))\(formatTag(tag))"
+        return "\(tagLine)\n\(innerText)"
+      }
+      return "\(formatTag(tag)) \(innerText)"
     case .array(let array):
       guard !array.isEmpty else { return "[]" }
-      var lines: [String] = []
-      for item in array {
-        if isScalar(item) {
-          let content = render(item, indent: indent + options.indent)
-          lines.append("\(indentString(indent))- \(content)")
-        } else {
-          let content = render(item, indent: indent + options.indent)
-          lines.append("\(indentString(indent))-\n\(content)")
-        }
+      if !allowBlock {
+        let contents = array.map { render($0, indent: indent, allowBlock: false) }
+        return "[\(contents.joined(separator: ", "))]"
       }
-      return lines.joined(separator: "\n")
+      var result = ""
+      for (index, item) in array.enumerated() {
+        let itemIndent = isScalar(item) ? indent : (indent + options.indent)
+        let content = render(item, indent: itemIndent, allowBlock: true)
+        let line = isScalar(item)
+          ? "\(indentString(indent))- \(content)"
+          : "\(indentString(indent))-\n\(content)"
+        if index > 0, !result.hasSuffix("\n") {
+          result.append("\n")
+        }
+        result.append(line)
+      }
+      return result
 
     case .object(let object):
       guard !object.isEmpty else { return "{}" }
-      var lines: [String] = []
-      for (key, val) in object {
-        let keyText = renderScalarLike(key, indent: indent)
-        if isScalar(val) {
-          let valueText = render(val, indent: indent + options.indent)
-          lines.append("\(indentString(indent))\(keyText): \(valueText)")
-        } else {
-          let valueText = render(val, indent: indent + options.indent)
-          lines.append("\(indentString(indent))\(keyText):\n\(valueText)")
+      if !allowBlock {
+        let contents = object.map { key, val in
+          let keyText = render(key, indent: indent, allowBlock: false)
+          let valueText = render(val, indent: indent, allowBlock: false)
+          return "\(keyText): \(valueText)"
         }
+        return "{\(contents.joined(separator: ", "))}"
       }
-      return lines.joined(separator: "\n")
+      var result = ""
+      var index = 0
+      for (key, val) in object {
+        let keyText = render(key, indent: indent, allowBlock: false)
+        let valueIndent = isScalar(val) ? indent : (indent + options.indent)
+        let valueText = render(val, indent: valueIndent, allowBlock: true)
+        let line = isScalar(val)
+          ? "\(indentString(indent))\(keyText): \(valueText)"
+          : "\(indentString(indent))\(keyText):\n\(valueText)"
+        if index > 0, !result.hasSuffix("\n") {
+          result.append("\n")
+        }
+        result.append(line)
+        index += 1
+      }
+      return result
 
     case .string(let string):
-      return renderString(string, indent: indent)
+      return renderString(string, indent: indent, allowBlock: allowBlock)
     case .bytes(let data):
-      return "\"\(data.base64EncodedString())\""
+      let encoded = renderString(data.base64EncodedString(), indent: indent, allowBlock: allowBlock)
+      let tag = formatTag(.string("tag:yaml.org,2002:binary"))
+      return "\(tag) \(encoded)"
     case .bool(let bool):
       return bool ? "true" : "false"
     case .number(let number):
@@ -114,65 +146,25 @@ public final class YAMLValueWriter: FormatWriter {
 
   private func isScalar(_ value: Value) -> Bool {
     switch value {
-    case .array, .object:
-      return false
+    case .tagged(_, let inner):
+      return isScalar(inner)
+    case .array(let array):
+      return array.isEmpty
+    case .object(let object):
+      return object.isEmpty
     default:
       return true
     }
   }
 
-  private func renderScalarLike(_ value: Value, indent: Int) -> String {
-    switch value {
-    case .tagged(let tag, let inner):
-      return "\(formatTag(tag)) \(renderScalarLike(inner, indent: indent))"
-    case .string:
-      return renderString(value.stringified, indent: indent)
-    default:
-      return render(value, indent: indent)
-    }
-  }
-
-  private func renderString(_ string: String, indent: Int) -> String {
-    if string.contains("\n") {
-      var result = "|\n"
-      let padding = indentString(indent + options.indent)
-      let lines = string.split(separator: "\n", omittingEmptySubsequences: false)
-      for line in lines {
-        result.append(padding)
-        result.append(contentsOf: line)
-        result.append("\n")
-      }
-      return result
-    }
-
-    let requiresQuotes = string.isEmpty ||
-      string.first?.isWhitespace == true ||
-      string.contains(where: { ":{}[],#&*!|>'\"%@`".contains($0) }) ||
-      string.contains("\n")
-
-    if !requiresQuotes {
-      return string
-    }
-
-    var escaped = "\""
-    for scalar in string.unicodeScalars {
-      switch scalar {
-      case "\"":
-        escaped.append("\\\"")
-      case "\\":
-        escaped.append("\\\\")
-      case "\n":
-        escaped.append("\\n")
-      case "\r":
-        escaped.append("\\r")
-      case "\t":
-        escaped.append("\\t")
-      default:
-        escaped.append(String(scalar))
-      }
-    }
-    escaped.append("\"")
-    return escaped
+  private func renderString(_ string: String, indent: Int, allowBlock: Bool) -> String {
+    YAMLStringEncoder.render(
+      string,
+      indent: indent,
+      indentSize: options.indent,
+      allowBlock: allowBlock,
+      allowImplicitTyping: false
+    )
   }
 
   private func indentString(_ indent: Int) -> String {
@@ -181,10 +173,23 @@ public final class YAMLValueWriter: FormatWriter {
 
   private func formatTag(_ value: Value) -> String {
     let tag = value.stringified
-    let simple = tag.allSatisfy { $0.isLetter || $0.isNumber || $0 == ":" || $0 == "-" || $0 == "_" || $0 == "/" || $0 == "." }
-    if simple {
+    if tag == "!" {
+      return "!"
+    }
+    let corePrefix = "tag:yaml.org,2002:"
+    if tag.hasPrefix(corePrefix) {
+      let suffix = String(tag.dropFirst(corePrefix.count))
+      if isSimpleTagText(suffix) {
+        return "!!\(suffix)"
+      }
+    }
+    if isSimpleTagText(tag) {
       return "!\(tag)"
     }
     return "!<\(tag)>"
+  }
+
+  private func isSimpleTagText(_ text: String) -> Bool {
+    text.allSatisfy { $0.isLetter || $0.isNumber || $0 == ":" || $0 == "-" || $0 == "_" || $0 == "/" || $0 == "." }
   }
 }
