@@ -278,13 +278,13 @@ struct OffsetDateTimeTests {
     )
 
     #expect(dateTime[.dayOfYear] == 75)
-    #expect(dateTime[.dayOfWeek] == 5)  // Friday
+    #expect(dateTime[.dayOfWeek] == 5)    // Friday
 
     // Week calculations - March 15, 2024 is in week 11 of the year
     #expect(dateTime[.weekOfYear] == 11)
-    #expect(dateTime[.weekOfMonth] == 3)  // 3rd week of March
+    #expect(dateTime[.weekOfMonth] == 3)    // 3rd week of March
     #expect(dateTime[.yearForWeekOfYear] == 2024)
-    #expect(dateTime[.dayOfWeekForMonth] == 3)  // 3rd Friday of the month
+    #expect(dateTime[.dayOfWeekForMonth] == 3)    // 3rd Friday of the month
   }
 
   @Test("OffsetDateTime computed components for edge cases")
@@ -301,10 +301,10 @@ struct OffsetDateTimeTests {
       offset: .zero
     )
     #expect(jan1[.dayOfYear] == 1)
-    #expect(jan1[.dayOfWeek] == 1)  // Monday
+    #expect(jan1[.dayOfWeek] == 1)    // Monday
     #expect(jan1[.weekOfYear] == 1)
     #expect(jan1[.weekOfMonth] == 1)
-    #expect(jan1[.dayOfWeekForMonth] == 1)  // 1st Monday of the month
+    #expect(jan1[.dayOfWeekForMonth] == 1)    // 1st Monday of the month
 
     // December 31, 2024 23:59:59-05:00 (Tuesday, last day of leap year)
     let dec31 = try OffsetDateTime(
@@ -317,7 +317,7 @@ struct OffsetDateTimeTests {
       nanosecond: 999_999_999,
       offset: .hours(-5)
     )
-    #expect(dec31[.dayOfYear] == 366)  // Leap year
-    #expect(dec31[.dayOfWeek] == 2)  // Tuesday
+    #expect(dec31[.dayOfYear] == 366)    // Leap year
+    #expect(dec31[.dayOfWeek] == 2)    // Tuesday
   }
 }

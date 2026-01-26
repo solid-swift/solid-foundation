@@ -106,13 +106,13 @@ struct ZonedDateTimeTests {
     )
 
     #expect(zonedDateTime[.dayOfYear] == 75)
-    #expect(zonedDateTime[.dayOfWeek] == 5)  // Friday
+    #expect(zonedDateTime[.dayOfWeek] == 5)    // Friday
 
     // Week calculations - March 15, 2024 is in week 11 of the year
     #expect(zonedDateTime[.weekOfYear] == 11)
-    #expect(zonedDateTime[.weekOfMonth] == 3)  // 3rd week of March
+    #expect(zonedDateTime[.weekOfMonth] == 3)    // 3rd week of March
     #expect(zonedDateTime[.yearForWeekOfYear] == 2024)
-    #expect(zonedDateTime[.dayOfWeekForMonth] == 3)  // 3rd Friday of the month
+    #expect(zonedDateTime[.dayOfWeekForMonth] == 3)    // 3rd Friday of the month
   }
 
   @Test("ZonedDateTime computed components for edge cases")
@@ -129,10 +129,10 @@ struct ZonedDateTimeTests {
       zone: Self.LAZone
     )
     #expect(jan1[.dayOfYear] == 1)
-    #expect(jan1[.dayOfWeek] == 1)  // Monday
+    #expect(jan1[.dayOfWeek] == 1)    // Monday
     #expect(jan1[.weekOfYear] == 1)
     #expect(jan1[.weekOfMonth] == 1)
-    #expect(jan1[.dayOfWeekForMonth] == 1)  // 1st Monday of the month
+    #expect(jan1[.dayOfWeekForMonth] == 1)    // 1st Monday of the month
 
     // December 31, 2024 23:59:59 in LA (Tuesday, last day of leap year)
     let dec31 = try ZonedDateTime(
@@ -145,8 +145,8 @@ struct ZonedDateTimeTests {
       nanosecond: 999_999_999,
       zone: Self.LAZone
     )
-    #expect(dec31[.dayOfYear] == 366)  // Leap year
-    #expect(dec31[.dayOfWeek] == 2)  // Tuesday
+    #expect(dec31[.dayOfYear] == 366)    // Leap year
+    #expect(dec31[.dayOfWeek] == 2)    // Tuesday
   }
 }
 
