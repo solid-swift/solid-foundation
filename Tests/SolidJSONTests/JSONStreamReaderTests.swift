@@ -73,7 +73,8 @@ private final class ChunkedSource: Source, @unchecked Sendable {
     guard !closed else { throw IOError.streamClosed }
     guard !data.isEmpty else { return nil }
 
-    let requested = chunkSizes.isEmpty
+    let requested =
+      chunkSizes.isEmpty
       ? max
       : chunkSizes[min(chunkIndex, chunkSizes.count - 1)]
     chunkIndex += 1

@@ -725,7 +725,8 @@ public struct GregorianCalendarSystem: CalendarSystem, Sendable {
   }
 
   public func dayOfYear(year: Int, month: Int, day: Int) -> Int {
-    let cumulativeDays = isLeapYear(year)
+    let cumulativeDays =
+      isLeapYear(year)
       ? Consts.cumulativeDayOfLeapYearMonths
       : Consts.cumulativeDayOfStandardYearMonths
     return cumulativeDays[month - 1] + day

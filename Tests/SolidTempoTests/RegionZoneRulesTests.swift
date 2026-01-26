@@ -149,7 +149,8 @@ struct RegionZoneRulesTests {
 
   @Test(
     "designation",
-    arguments: details
+    arguments:
+      details
       .filter { $0.entry.local.year >= 1970 }
       .filter { $0.zone.identifier != "Europe/Kyiv" || $0.entry.local.year >= 1989 }
       .map { ($0.zone, $0.entry.instant, $0.entry.instantOffset, $0.entry.designation) }
@@ -214,11 +215,15 @@ struct RegionZoneRulesTestData: TestData, Decodable {
 }
 
 /// Valid start years for each zone, parsed from tzdata.zi.
+///
 /// Test cases with dates before the valid start year are filtered out.
+///
 private let zoneValidRanges = TzDb.default.loadZoneValidRanges()
 
 /// Filters test details to only include entries within the zone's valid date range.
+///
 /// This includes checking that all referenced transitions are also within the valid range.
+///
 private func filterByValidRange(
   _ details: [(zone: Zone, entry: RegionZoneRulesTestData.ZoneDetails.Entry)]
 ) -> [(zone: Zone, entry: RegionZoneRulesTestData.ZoneDetails.Entry)] {
@@ -228,14 +233,16 @@ private func filterByValidRange(
     }
     let entry = detail.entry
     return entry.local.year >= ranges.validStartYear
-    && isTransitionValid(entry.localApplicableTransition, firstTransitionYear: ranges.firstTransitionYear)
-    && isTransitionValid(entry.instantNextTransition, firstTransitionYear: ranges.firstTransitionYear)
-    && isTransitionValid(entry.instantPriorTransition, firstTransitionYear: ranges.firstTransitionYear)
+      && isTransitionValid(entry.localApplicableTransition, firstTransitionYear: ranges.firstTransitionYear)
+      && isTransitionValid(entry.instantNextTransition, firstTransitionYear: ranges.firstTransitionYear)
+      && isTransitionValid(entry.instantPriorTransition, firstTransitionYear: ranges.firstTransitionYear)
   }
 }
 
 /// Checks if a transition is within the valid date range for the zone.
+///
 /// The transition must be after the first transition year in the system's tzdata.
+///
 private func isTransitionValid(
   _ transition: RegionZoneRulesTestData.ZoneDetails.Entry.Transition?,
   firstTransitionYear: Int

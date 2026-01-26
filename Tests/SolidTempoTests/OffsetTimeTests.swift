@@ -32,7 +32,7 @@ struct OffsetTimeTests {
     #expect(time[.minuteOfHour] == 30)
     #expect(time[.secondOfMinute] == 45)
     #expect(time[.nanosecondOfSecond] == 123456789)
-    #expect(time[.zoneOffset] == -5 * 3600)  // -5 hours in seconds
+    #expect(time[.zoneOffset] == -5 * 3600)    // -5 hours in seconds
   }
 
   @Test("OffsetTime component subscripting with positive offset")
@@ -44,7 +44,7 @@ struct OffsetTimeTests {
     #expect(time[.minuteOfHour] == 15)
     #expect(time[.secondOfMinute] == 0)
     #expect(time[.nanosecondOfSecond] == 0)
-    #expect(time[.zoneOffset] == 5 * 3600 + 30 * 60)  // +5:30 in seconds
+    #expect(time[.zoneOffset] == 5 * 3600 + 30 * 60)    // +5:30 in seconds
   }
 
   @Test("OffsetTime component subscripting with UTC offset")
