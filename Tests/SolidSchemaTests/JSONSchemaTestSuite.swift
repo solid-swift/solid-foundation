@@ -13,7 +13,7 @@ import Foundation
 import Testing
 
 
-@Suite("JSON Schema Test")
+@Suite("JSON Schema Test Suite")
 public struct JSONSchemaTestSuite {
 
   @Test(

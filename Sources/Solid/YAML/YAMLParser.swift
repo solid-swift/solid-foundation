@@ -267,7 +267,6 @@ struct YAMLParser {
             inlineText = expanded.text
             extraLines = expanded.extraLines
           }
-          index += 1 + extraLines
           var inlineParser = InlineParser(text: inlineText)
           var node = try parseInlineNode(parser: &inlineParser, baseIndent: 0)
           node = try attach(node, tag: decorated.decorators.tag, anchor: decorated.decorators.anchor)
@@ -275,6 +274,19 @@ struct YAMLParser {
           if inlineParser.peek != nil {
             throw YAML.Error.invalidSyntax("Unexpected trailing content")
           }
+          var linesConsumed = 1 + extraLines
+          if case .scalar(let scalar, let tag, let anchor) = node,
+             case .plain = scalar.style {
+            try validatePlainScalarText(scalar.text)
+            let folded = foldPlainScalarFromInline(initial: scalar.text, startIndex: startIndex, contextIndent: 0)
+            if folded.linesConsumed > 0 {
+              try validatePlainScalarText(folded.text)
+              let updated = YAMLScalar(text: folded.text, style: .plain)
+              node = .scalar(updated, tag: tag, anchor: anchor)
+              linesConsumed += folded.linesConsumed
+            }
+          }
+          index += linesConsumed
           appendDocument(node, explicitStart: explicitStart)
           tagHandles = YAMLParser.defaultTagHandles
           requireDocumentStart = true
@@ -1516,8 +1528,8 @@ struct YAMLParser {
       let skipped = entryParser.text[whitespaceStart..<entryParser.index]
       let sawLineBreak = skipped.contains(where: { $0.isNewline })
       if entryParser.consumeIf(":") {
-        if sawLineBreak || keyHasLineBreak {
-          throw YAML.Error.invalidSyntax("Implicit flow mapping key on multiple lines")
+        if keyHasLineBreak || sawLineBreak {
+          throw YAML.Error.invalidSyntax("Implicit flow mapping key must be on one line")
         }
         entryParser.skipWhitespaceAndComments()
         let valueStart = entryParser.index
@@ -1875,6 +1887,90 @@ struct YAMLParser {
     let initialLine = lines[startIndex]
     let initialIndent = contextIndent ?? initialLine.indent
     let initialContent = initialLine.contentStrippingComment().trimmingCharacters(in: .whitespaces)
+    var requireMoreIndent = false
+    if isSequenceIndicator(initialContent) {
+      requireMoreIndent = true
+    } else if let entry = splitMappingEntry(initialContent),
+              let value = entry.value,
+              !value.trimmingCharacters(in: .whitespaces).isEmpty {
+      requireMoreIndent = true
+    }
+    let minIndent = requireMoreIndent ? initialIndent + 1 : initialIndent
+    var collected: [(line: String, indent: Int)] = []
+    var cursor = startIndex + 1
+    var baseIndent: Int?
+
+    while cursor < lines.count {
+      let line = lines[cursor]
+      let rawTrimmed = line.raw.trimmingCharacters(in: .whitespaces)
+      let content = line.contentStrippingComment()
+      let trimmed = content.trimmingCharacters(in: .whitespaces)
+      if trimmed.isEmpty {
+        if !rawTrimmed.isEmpty {
+          break
+        }
+        collected.append((line: "", indent: line.indent))
+        cursor += 1
+        continue
+      }
+      if line.indent < minIndent {
+        break
+      }
+      let stripped = content.trimmingCharacters(in: .whitespaces)
+      if stripped == "..." {
+        break
+      }
+      if stripped.hasPrefix("---") {
+        let markerIndex = stripped.index(stripped.startIndex, offsetBy: 3)
+        if markerIndex == stripped.endIndex || stripped[markerIndex].isWhitespace {
+          break
+        }
+      }
+      if stripped.hasPrefix("...") {
+        let markerIndex = stripped.index(stripped.startIndex, offsetBy: 3)
+        if markerIndex == stripped.endIndex || stripped[markerIndex].isWhitespace {
+          break
+        }
+      }
+      if line.indent == initialIndent {
+        if isSequenceIndicator(stripped) || splitMappingEntry(stripped) != nil || isExplicitMappingIndicator(stripped) {
+          break
+        }
+      }
+      if baseIndent == nil {
+        baseIndent = line.indent
+      }
+      collected.append((line: content, indent: line.indent))
+      if line.content != content {
+        cursor += 1
+        break
+      }
+      cursor += 1
+    }
+
+    guard let baseIndent else {
+      return (initial, 0)
+    }
+
+    var linesToFold: [(line: String, indent: Int)] = []
+    linesToFold.reserveCapacity(collected.count + 1)
+    linesToFold.append((line: initial, indent: baseIndent))
+    linesToFold.append(contentsOf: collected)
+
+    var folded = foldPlainLines(linesToFold, baseIndent: baseIndent)
+    while folded.last == "\n" {
+      folded.removeLast()
+    }
+    return (folded, collected.count)
+  }
+
+  private func foldPlainScalarFromInline(
+    initial: String,
+    startIndex: Int,
+    contextIndent: Int
+  ) -> (text: String, linesConsumed: Int) {
+    let initialIndent = contextIndent
+    let initialContent = initial.trimmingCharacters(in: .whitespaces)
     var requireMoreIndent = false
     if isSequenceIndicator(initialContent) {
       requireMoreIndent = true

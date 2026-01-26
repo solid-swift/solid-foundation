@@ -79,8 +79,17 @@ public final class JSONStreamWriter: FormatStreamWriter {
     }
 
     switch event {
+    case .style:
+      break
+
     case .tag(let tag):
       pendingTags.append(tag)
+
+    case .anchor:
+      throw Error.invalidEventSequence("Anchors are not supported")
+
+    case .alias:
+      throw Error.invalidEventSequence("Aliases are not supported")
 
     case .key(let key):
       try await prepareForValue(isKey: true)

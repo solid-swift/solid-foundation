@@ -43,13 +43,13 @@ struct JSONStreamReaderTests {
 private func parseStreamed(json: String, chunkSizes: [Int]) async throws -> Value {
   let source = ChunkedSource(data: Data(json.utf8), chunkSizes: chunkSizes)
   let reader = JSONStreamReader(source: source, bufferSize: 64)
-  var builder = ValueEventBuilder()
+  var decoder = ValueEventDecoder()
 
   while let event = try await reader.next() {
-    try builder.append(event)
+    try decoder.append(event)
   }
 
-  return try builder.finish()
+  return try decoder.finish()
 }
 
 private final class ChunkedSource: Source, @unchecked Sendable {
@@ -87,109 +87,5 @@ private final class ChunkedSource: Source, @unchecked Sendable {
 
   func close() async throws {
     closed = true
-  }
-}
-
-private struct ValueEventBuilder {
-
-  enum Error: Swift.Error {
-    case invalidEventSequence(String)
-    case incompleteValue
-  }
-
-  private enum Container {
-    case array([Value], tags: [Value])
-    case object(Value.Object, expectingKey: Bool, currentKey: Value?, tags: [Value])
-  }
-
-  private var stack: [Container] = []
-  private var pendingTags: [Value] = []
-  private var root: Value?
-
-  mutating func append(_ event: ValueEvent) throws {
-    switch event {
-    case .tag(let tag):
-      pendingTags.append(tag)
-
-    case .scalar(let value):
-      try appendValue(value)
-
-    case .beginArray:
-      let tags = pendingTags
-      pendingTags.removeAll()
-      stack.append(.array([], tags: tags))
-
-    case .endArray:
-      guard case .array(let values, let tags) = stack.popLast() else {
-        throw Error.invalidEventSequence("Unexpected endArray")
-      }
-      try appendValue(applyTags(.array(values), tags: tags))
-
-    case .beginObject:
-      let tags = pendingTags
-      pendingTags.removeAll()
-      stack.append(.object(Value.Object(), expectingKey: true, currentKey: nil, tags: tags))
-
-    case .endObject:
-      guard case .object(let object, let expectingKey, _, let tags) = stack.popLast() else {
-        throw Error.invalidEventSequence("Unexpected endObject")
-      }
-      guard expectingKey else {
-        throw Error.invalidEventSequence("Missing value for key")
-      }
-      try appendValue(applyTags(.object(object), tags: tags))
-
-    case .key(let key):
-      guard case .object(let object, let expectingKey, let currentKey, let tags) = stack.popLast() else {
-        throw Error.invalidEventSequence("Unexpected key")
-      }
-      guard expectingKey, currentKey == nil else {
-        throw Error.invalidEventSequence("Unexpected key position")
-      }
-      let taggedKey = applyTags(key, tags: pendingTags)
-      pendingTags.removeAll()
-      stack.append(.object(object, expectingKey: false, currentKey: taggedKey, tags: tags))
-    }
-  }
-
-  mutating func finish() throws -> Value {
-    guard stack.isEmpty, pendingTags.isEmpty, let root else {
-      throw Error.incompleteValue
-    }
-    return root
-  }
-
-  private func applyTags(_ value: Value, tags: [Value]) -> Value {
-    var tagged = value
-    for tag in tags.reversed() {
-      tagged = .tagged(tag: tag, value: tagged)
-    }
-    return tagged
-  }
-
-  private mutating func appendValue(_ value: Value) throws {
-    let taggedValue = applyTags(value, tags: pendingTags)
-    pendingTags.removeAll()
-
-    guard let container = stack.popLast() else {
-      guard root == nil else {
-        throw Error.invalidEventSequence("Multiple root values")
-      }
-      root = taggedValue
-      return
-    }
-
-    switch container {
-    case .array(var values, let tags):
-      values.append(taggedValue)
-      stack.append(.array(values, tags: tags))
-
-    case .object(var object, let expectingKey, let currentKey, let tags):
-      guard !expectingKey, let key = currentKey else {
-        throw Error.invalidEventSequence("Missing key for value")
-      }
-      object[key] = taggedValue
-      stack.append(.object(object, expectingKey: true, currentKey: nil, tags: tags))
-    }
   }
 }
