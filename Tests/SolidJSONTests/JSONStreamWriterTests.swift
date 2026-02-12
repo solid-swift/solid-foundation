@@ -61,13 +61,13 @@ private func emitEvents(from value: Value, into events: inout [ValueEvent]) {
     events.append(.tag(tag))
     emitEvents(from: value, into: &events)
   case .array(let array):
-    events.append(.beginArray)
+    events.append(.beginArray(count: nil))
     for item in array {
       emitEvents(from: item, into: &events)
     }
     events.append(.endArray)
   case .object(let object):
-    events.append(.beginObject)
+    events.append(.beginObject(count: nil))
     for (key, val) in object {
       events.append(.key(key))
       emitEvents(from: val, into: &events)

@@ -137,6 +137,7 @@ let package = Package(
       name: "SolidData",
       dependencies: [
         "SolidCore",
+        "SolidIO",
         "SolidNumeric",
         "SolidURI",
       ],
@@ -177,7 +178,7 @@ let package = Package(
     ),
     .target(
       name: "SolidCBOR",
-      dependencies: ["SolidData"],
+      dependencies: ["SolidData", "SolidIO"],
       path: "Sources/Solid/CBOR",
       plugins: [
         .plugin(name: "Lint", package: "swiftformatplugins")
@@ -293,6 +294,18 @@ let package = Package(
       ]
     ),
     .testTarget(
+      name: "SolidCBORTests",
+      dependencies: [
+        "SolidCBOR",
+        "SolidData",
+        "SolidIO",
+        "SolidTesting",
+      ],
+      plugins: [
+        .plugin(name: "Lint", package: "swiftformatplugins")
+      ]
+    ),
+    .testTarget(
       name: "SolidTempoTests",
       dependencies: [
         "SolidTempo",
@@ -387,6 +400,17 @@ if benchmarkEnbled {
         .product(name: "Benchmark", package: "package-benchmark"),
       ],
       path: "Benchmarks/SolidNumericBenchmark",
+      plugins: [
+        .plugin(name: "BenchmarkPlugin", package: "package-benchmark")
+      ]
+    ),
+    .executableTarget(
+      name: "SolidCBORBenchmark",
+      dependencies: [
+        "Solid",
+        .product(name: "Benchmark", package: "package-benchmark"),
+      ],
+      path: "Benchmarks/SolidCBORBenchmark",
       plugins: [
         .plugin(name: "BenchmarkPlugin", package: "package-benchmark")
       ]

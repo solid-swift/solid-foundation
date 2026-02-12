@@ -49,7 +49,7 @@ struct YAMLEventEmitter {
       if let tag {
         events.append(.tag(.string(tag)))
       }
-      events.append(.beginArray)
+      events.append(.beginArray(count: nil))
       for item in items {
         try emit(item, into: &events)
       }
@@ -66,7 +66,7 @@ struct YAMLEventEmitter {
       if let tag {
         events.append(.tag(.string(tag)))
       }
-      events.append(.beginObject)
+      events.append(.beginObject(count: nil))
       for (keyNode, valueNode) in pairs {
         try emitKey(keyNode, into: &events)
         try emit(valueNode, into: &events)

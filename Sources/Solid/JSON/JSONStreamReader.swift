@@ -7,47 +7,41 @@
 
 import Foundation
 import SolidData
-import SolidIO
-
-
-/// Async JSON stream reader that produces ``ValueEvent`` values.
+/// Synchronous JSON stream reader that produces ``ValueEvent`` values.
 public final class JSONStreamReader: FormatStreamReader {
 
-  private let source: any Source
-  private let bufferSize: Int
   private var parser = JSONPushParser()
-  private var reachedEOF = false
   private var finished = false
 
-  public init(source: any Source, bufferSize: Int = BufferedSource.segmentSize) {
-    self.source = source
-    self.bufferSize = bufferSize
-  }
+  public init() {}
 
   public var format: Format { JSON.format }
 
-  public func next() async throws -> ValueEvent? {
-    guard !finished else { return nil }
+  public func read(
+    input: Data,
+    isFinal: Bool,
+    output: inout OutputSpan<ValueEvent>
+  ) throws -> FormatStreamReadStatus {
+    guard !finished else { return .endOfStream }
 
-    while true {
+    if !input.isEmpty || isFinal {
+      parser.feed(input, isFinal: isFinal)
+    }
+
+    var produced = false
+    while !output.isFull {
       if let event = try parser.nextEvent() {
-        return event
-      }
-
-      if reachedEOF {
-        finished = true
-        return nil
-      }
-
-      guard let data = try await source.read(max: bufferSize) else {
-        reachedEOF = true
-        parser.feed(Data(), isFinal: true)
+        output.append(event)
+        produced = true
         continue
       }
-
-      if !data.isEmpty {
-        parser.feed(data)
+      if parser.isFinished {
+        finished = true
+        return produced ? .producedOutput : .endOfStream
       }
+      return produced ? .producedOutput : .needMoreInput
     }
+
+    return .producedOutput
   }
 }

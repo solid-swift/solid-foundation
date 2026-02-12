@@ -1,35 +1,42 @@
 //
-//  YAMLValueReader.swift
+//  CBORValueReader.swift
 //  SolidFoundation
 //
-//  Created by Kevin Wooten on 5/12/25.
+//  Created by Kevin Wooten on 2/18/26.
 //
 
 import Foundation
 import SolidData
-import SolidIO
 
-/// Synchronous YAML reader that loads into ``Value``.
-public struct YAMLValueReader: FormatReader {
+/// Synchronous CBOR reader that loads into ``Value``.
+public struct CBORValueReader: FormatReader {
 
-  private let text: String
+  public struct Options: Sendable {
 
-  public init(data: Data) throws {
-    guard let text = String(data: data, encoding: .utf8) else {
-      throw YAML.DataError.invalidEncoding(.utf8)
+    public enum Undefined: Sendable {
+      case throwError
+      case convertToNull
     }
-    self.text = text
+
+    public var undefined: Undefined
+
+    public init(undefined: Undefined = .throwError) {
+      self.undefined = undefined
+    }
   }
 
-  public init(string: String) {
-    self.text = string
+  private let data: Data
+  private let options: Options
+
+  public init(data: Data, options: Options = Options()) {
+    self.data = data
+    self.options = options
   }
 
-  public var format: Format { YAML.format }
+  public var format: Format { CBOR.format }
 
   public func read() throws -> Value {
-    let data = Data(text.utf8)
-    let reader = YAMLStreamReader()
+    let reader = CBORStreamReader(options: options)
     var decoder = ValueEventDecoder()
     var firstValue: Value?
 
@@ -49,6 +56,8 @@ public struct YAMLValueReader: FormatReader {
               let value = try decoder.finish()
               if firstValue == nil {
                 firstValue = value
+                done = true
+                break
               }
               decoder = ValueEventDecoder()
             }
@@ -63,7 +72,7 @@ public struct YAMLValueReader: FormatReader {
         case .producedOutput:
           input = Data()
         case .needMoreInput:
-          throw YAML.ParseError.invalidSyntax("Unexpected end of document", location: nil)
+          throw CBOR.Error.unexpectedEndOfStream
         case .endOfStream:
           done = true
         }

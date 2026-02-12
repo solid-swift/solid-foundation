@@ -32,12 +32,16 @@ public enum ValueEvent: Sendable, Equatable {
   case scalar(Value)
 
   /// Start of an array.
-  case beginArray
+  ///
+  /// - Parameter count: Optional item count hint for the array.
+  case beginArray(count: Int?)
   /// End of an array.
   case endArray
 
   /// Start of an object.
-  case beginObject
+  ///
+  /// - Parameter count: Optional entry count hint for the object.
+  case beginObject(count: Int?)
   /// End of an object.
   case endObject
 

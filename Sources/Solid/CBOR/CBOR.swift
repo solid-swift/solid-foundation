@@ -35,8 +35,8 @@ public enum CBOR {
     case invalidIntegerSize
     /// An undefined item was encountered during deserialization
     ///
-    /// - Note: This can be suppressed by setting ``CBORReader/Options/undefined``
-    /// to ``CBORReader/Options/Undefined/convertToNull``.
+    /// - Note: This can be suppressed by setting ``CBORValueReader/Options/undefined``
+    /// to ``CBORValueReader/Options/Undefined/convertToNull``.
     ///
     case undefinedItem
     /// Invalid tag was encountered during serialization

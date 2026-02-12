@@ -41,6 +41,8 @@ public enum YAML {
     case unresolvedAlias(String)
     /// An anchor was defined more than once.
     case duplicateAnchor(String)
+    /// The input ended before a complete YAML document could be parsed.
+    case incompleteInput(location: Location?)
   }
 
   /// Errors emitted by YAML writers and emitters.

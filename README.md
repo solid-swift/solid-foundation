@@ -232,10 +232,10 @@ import SolidData
 
   // Encode to CBOR
   let value: Value = ["temperature": 23.5, "humidity": 65]
-  let output = try CBORWriter.write(value)
+  let output = try CBORValueWriter.write(value)
 
   // Decode from CBOR
-  let reader = CBORReader(data: output)
+  let reader = CBORValueReader(data: output)
   let decoded = try reader.read()
 ```
 

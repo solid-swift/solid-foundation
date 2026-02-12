@@ -54,6 +54,8 @@ public struct JSONPushParser {
 
   public init() {}
 
+  public var isFinished: Bool { finished }
+
   public mutating func feed(_ data: Data, isFinal: Bool = false) {
     tokenizer.append(data, isFinal: isFinal)
   }
@@ -100,7 +102,7 @@ public struct JSONPushParser {
     case .beginArray:
       try startValue()
       containers.append(.array(.expectValueOrEnd))
-      return .beginArray
+      return .beginArray(count: nil)
 
     case .endArray:
       guard case .array(let state) = containers.popLast() else {
@@ -115,7 +117,7 @@ public struct JSONPushParser {
     case .beginObject:
       try startValue()
       containers.append(.object(.expectKeyOrEnd))
-      return .beginObject
+      return .beginObject(count: nil)
 
     case .endObject:
       guard case .object(let state) = containers.popLast() else {

@@ -16,4 +16,14 @@ public protocol FormatStreamWriter {
   /// - Parameter event: The event to write.
   /// - Throws: Error if the event cannot be written.
   func write(_ event: ValueEvent) async throws
+
+  /// Finish the stream, emitting any closing bytes.
+  ///
+  /// - Throws: Error if the stream cannot be finished.
+  func finish() async throws
+
+  /// Close the underlying sink.
+  ///
+  /// - Throws: Error if the sink cannot be closed.
+  func close() async throws
 }

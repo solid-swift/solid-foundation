@@ -68,6 +68,7 @@ struct YAMLTestSuite {
   private static let defaultMaxResidentBytes: UInt64 = 16 * 1024 * 1024 * 1024
   private static let maxResidentBytes: UInt64? = parseMemoryLimit(from: "YAML_TEST_CASE_MEM_LIMIT")
   private static let debugEmitCaseID = ProcessInfo.processInfo.environment["YAML_EMIT_DEBUG_CASE"]
+  private static let debugEmitValueCaseID = ProcessInfo.processInfo.environment["YAML_EMIT_VALUE_DEBUG_CASE"]
 
   @Test("Suite availability")
   func suiteAvailability() {
@@ -165,6 +166,15 @@ struct YAMLTestSuite {
       try writer.write(value)
       let actualData = writer.data()
 
+      if let debugID = Self.debugEmitValueCaseID, debugID == testCase.id {
+        let actualText = String(decoding: actualData, as: UTF8.self)
+        let expectedText = String(decoding: expectedData, as: UTF8.self)
+        print("EmitValue \(testCase.id) actual:\n\(actualText)")
+        print("EmitValue \(testCase.id) expected:\n\(expectedText)")
+        print("EmitValue \(testCase.id) actual (escaped):\n\(String(reflecting: actualText))")
+        print("EmitValue \(testCase.id) expected (escaped):\n\(String(reflecting: expectedText))")
+      }
+
       let expectedValue = try Self.readSingleDocumentValue(from: expectedData, label: "expected", testCase: testCase)
       let actualValue = try Self.readSingleDocumentValue(from: actualData, label: "actual", testCase: testCase)
 
@@ -193,13 +203,8 @@ struct YAMLTestSuite {
       let eventURL = testCase.directory.appendingPathComponent("test.event")
       let yamlData = try Data(contentsOf: yamlURL)
       let expected = try Self.loadEventLines(from: eventURL)
-
-      guard let yamlText = String(data: yamlData, encoding: .utf8) else {
-        throw YAML.DataError.invalidEncoding(.utf8)
-      }
-
-      var parser = try YAMLParser(text: yamlText)
-      let documents = try parser.parseDocumentStream()
+      let reader = try YAMLNodeDocumentReader(data: yamlData)
+      let documents = try reader.readAll()
       let actual = Self.renderEventLines(from: documents)
 
       #expect(actual == expected, "\(testCase.id): event stream mismatch")
@@ -338,11 +343,11 @@ struct YAMLTestSuite {
   }
 
   private static func hasSingleDocument(at url: URL) -> Bool {
-    guard
-      let data = try? Data(contentsOf: url),
-      let text = String(data: data, encoding: .utf8),
-      var parser = try? YAMLParser(text: text),
-      let documents = try? parser.parseDocumentStream()
+    guard let data = try? Data(contentsOf: url) else {
+      return false
+    }
+    guard let reader = try? YAMLDocumentReader(data: data),
+          let documents = try? reader.readAll()
     else {
       return false
     }
@@ -351,16 +356,12 @@ struct YAMLTestSuite {
 
   private static func readSingleDocumentValue(from data: Data, label: String, testCase: Case) throws -> Value {
     do {
-      guard let text = String(data: data, encoding: .utf8) else {
-        throw YAML.DataError.invalidEncoding(.utf8)
-      }
-      var parser = try YAMLParser(text: text)
-      let documents = try parser.parseDocumentStream()
+      let reader = try YAMLDocumentReader(data: data)
+      let documents = try reader.readAll()
       guard documents.count == 1 else {
         throw YAML.ParseError.invalidSyntax("Expected single document for \(label) in \(testCase.id)", location: nil)
       }
-      var anchors: [String: Value] = [:]
-      return try documents[0].node.toValue(anchors: &anchors)
+      return documents[0].value
     } catch {
       throw YAML.ParseError.invalidSyntax("Failed to parse \(label) YAML for \(testCase.id): \(error)", location: nil)
     }
@@ -510,8 +511,8 @@ struct YAMLTestSuite {
   }
 
   private static func parseDocuments(from text: String) throws -> [YAMLDocument] {
-    var parser = try YAMLParser(text: text)
-    return try parser.parseDocumentStream()
+    let reader = YAMLNodeDocumentReader(string: text)
+    return try reader.readAll()
   }
 
   private static func normalizeDocumentMarkers(_ lines: [String]) -> [String] {
@@ -567,16 +568,6 @@ struct YAMLTestSuite {
     if explicitStart {
       if output.isEmpty {
         output = "---"
-      } else if let newline = output.firstIndex(of: "\n") {
-        let firstLine = String(output[..<newline])
-        let rest = String(output[output.index(after: newline)...])
-        if canInlineHeaderLine(firstLine) {
-          output = rest.isEmpty ? "--- \(firstLine)" : "--- \(firstLine)\n\(rest)"
-        } else {
-          output = "---\n\(output)"
-        }
-      } else if shouldInlineDocumentStart(for: output) {
-        output = "--- \(output)"
       } else {
         output = "---\n\(output)"
       }
@@ -588,39 +579,6 @@ struct YAMLTestSuite {
       output.append("...")
     }
     return output
-  }
-
-  private static func shouldInlineDocumentStart(for text: String) -> Bool {
-    guard !text.isEmpty else { return false }
-    if text.contains("\n") {
-      return false
-    }
-    if text.hasPrefix("-") || text.hasPrefix("?") {
-      return false
-    }
-    if containsKeySeparator(text) {
-      return false
-    }
-    return true
-  }
-
-  private static func canInlineHeaderLine(_ line: String) -> Bool {
-    guard let first = line.first else { return false }
-    return first == "!" || first == "&" || first == "|" || first == ">" || first == "'" || first == "\""
-  }
-
-  private static func containsKeySeparator(_ text: String) -> Bool {
-    var index = text.startIndex
-    while index < text.endIndex {
-      if text[index] == ":" {
-        let next = text.index(after: index)
-        if next == text.endIndex || text[next].isWhitespace {
-          return true
-        }
-      }
-      index = text.index(after: index)
-    }
-    return false
   }
 
   private struct ParsedEventDocument {
@@ -1034,7 +992,7 @@ struct YAMLTestSuite {
           events.append(.anchor(anchor))
         }
         events.append(.style(.collection(mapCollectionStyle(style))))
-        events.append(.beginArray)
+        events.append(.beginArray(count: nil))
         for item in items {
           try emitNode(item)
         }
@@ -1051,7 +1009,7 @@ struct YAMLTestSuite {
           events.append(.anchor(anchor))
         }
         events.append(.style(.collection(mapCollectionStyle(style))))
-        events.append(.beginObject)
+        events.append(.beginObject(count: nil))
         for (keyNode, valueNode) in pairs {
           try emitKey(keyNode)
           try emitNode(valueNode)

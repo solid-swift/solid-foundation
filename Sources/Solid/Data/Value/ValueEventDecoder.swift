@@ -16,7 +16,7 @@ public struct ValueEventDecoder {
   }
 
   private enum Container {
-    case array([Value], tags: [Value])
+    case array(Value.Array, tags: [Value])
     case object(Value.Object, expectingKey: Bool, currentKey: Value?, tags: [Value])
   }
 
@@ -27,6 +27,10 @@ public struct ValueEventDecoder {
   private var root: Value?
 
   public init() {}
+
+  public var isComplete: Bool {
+    root != nil && stack.isEmpty && pendingTags.isEmpty && pendingAnchor == nil
+  }
 
   public mutating func append(_ event: ValueEvent) throws {
     switch event {
@@ -54,10 +58,14 @@ public struct ValueEventDecoder {
     case .scalar(let value):
       try appendValue(value)
 
-    case .beginArray:
+    case .beginArray(let count):
       let tags = pendingTags
       pendingTags.removeAll()
-      stack.append(.array([], tags: tags))
+      var values: [Value] = []
+      if let count {
+        values.reserveCapacity(count)
+      }
+      stack.append(.array(values, tags: tags))
 
     case .endArray:
       guard case .array(let values, let tags) = stack.popLast() else {
@@ -65,10 +73,14 @@ public struct ValueEventDecoder {
       }
       try appendValue(applyTags(.array(values), tags: tags))
 
-    case .beginObject:
+    case .beginObject(let count):
       let tags = pendingTags
       pendingTags.removeAll()
-      stack.append(.object(Value.Object(), expectingKey: true, currentKey: nil, tags: tags))
+      var object = Value.Object()
+      if let count {
+        object.reserveCapacity(count)
+      }
+      stack.append(.object(object, expectingKey: true, currentKey: nil, tags: tags))
 
     case .endObject:
       guard case .object(let object, let expectingKey, _, let tags) = stack.popLast() else {

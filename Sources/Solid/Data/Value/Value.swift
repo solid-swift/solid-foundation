@@ -109,6 +109,8 @@ extension Value: Equatable {
       return l == r
     case (.object(let l), .object(let r)):
       return l == r
+    case (.tagged(let lt, let lv), .tagged(let rt, let rv)):
+      return lt == rt && lv == rv
     default:
       return false
     }

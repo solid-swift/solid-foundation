@@ -42,10 +42,11 @@ struct JSONStreamReaderTests {
 
 private func parseStreamed(json: String, chunkSizes: [Int]) async throws -> Value {
   let source = ChunkedSource(data: Data(json.utf8), chunkSizes: chunkSizes)
-  let reader = JSONStreamReader(source: source, bufferSize: 64)
+  let reader = JSONStreamReader()
+  let driver = FormatStreamReaderDriver(reader: reader, source: source, bufferSize: 64)
   var decoder = ValueEventDecoder()
 
-  while let event = try await reader.next() {
+  while let event = try await driver.next() {
     try decoder.append(event)
   }
 
