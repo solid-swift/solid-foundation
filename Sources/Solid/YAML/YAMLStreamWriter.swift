@@ -34,32 +34,28 @@ public final class YAMLStreamWriter: FormatStreamWriter {
     }
   }
 
-  private var driver: FormatStreamWriterDriver<YAMLStreamEncoder>
-  private var finished = false
+  private let adapter: FormatStreamWriterAdapter<YAMLStreamEncoder>
 
   public init(sink: any Sink, bufferSize: Int = BufferedSink.segmentSize, options: Options = .default) {
-    self.driver = FormatStreamWriterDriver(
+    self.adapter = FormatStreamWriterAdapter(
       encoder: YAMLStreamEncoder(writer: YAMLEventWriter(options: options)),
       sink: sink,
-      bufferSize: bufferSize
+      bufferSize: bufferSize,
+      alreadyFinishedError: { YAML.EmitError.invalidState("Writer already finished") }
     )
   }
 
-  public var format: Format { YAML.format }
+  public var format: Format { adapter.format }
 
   public func write(_ event: ValueEvent) async throws {
-    guard !finished else { throw YAML.EmitError.invalidState("Writer already finished") }
-    try await driver.write(event)
+    try await adapter.write(event)
   }
 
   public func finish() async throws {
-    guard !finished else { return }
-    try await driver.finish()
-    finished = true
+    try await adapter.finish()
   }
 
   public func close() async throws {
-    try await finish()
-    try await driver.close()
+    try await adapter.close()
   }
 }

@@ -49,8 +49,8 @@ public final class YAMLDocumentWriter {
   private func render(document: YAMLValueDocument) throws -> String {
     let needsStart = document.explicitStart || wroteDocument
     let writer = YAMLValueWriter(options: .init(indent: options.indent))
-    try writer.write(document.value)
-    let body = String(decoding: writer.data(), as: UTF8.self)
+    let data = try writer.write(document.value)
+    let body = String(decoding: data, as: UTF8.self)
 
     var chunk = ""
     if needsStart {

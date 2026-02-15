@@ -9,7 +9,7 @@ import Foundation
 import SolidData
 
 /// Synchronous CBOR writer that renders ``Value`` instances.
-public final class CBORValueWriter: FormatWriter {
+public struct CBORValueWriter: FormatWriter {
 
   public struct Options: Sendable {
 
@@ -24,38 +24,38 @@ public final class CBORValueWriter: FormatWriter {
     }
   }
 
-  private let options: Options
-  private var output = Data()
+  private let writer: FormatValueWriter<CBORStreamEncoder>
 
   /// Write a value into a new in-memory `Data` buffer.
   public static func write(_ value: Value, options: Options = .default) throws -> Data {
     let writer = CBORValueWriter(options: options)
-    try writer.write(value)
-    return writer.data()
+    return try writer.write(value)
   }
 
   public init(options: Options = .default) {
-    self.options = options
+    self.writer = FormatValueWriter(
+      format: CBOR.format,
+      makeEncoder: {
+        CBORStreamEncoder(
+          writer: CBOREncoder(
+            options: .init(deterministic: options.deterministic, deterministicMode: .none)
+          )
+        )
+      },
+      encodeValue: { value in
+        let encoder = CBORValueEventEncoder(
+          deterministic: options.deterministic,
+          includeContainerSizes: options.includeContainerSizes
+        )
+        return try encoder.encode(value)
+      }
+    )
   }
 
-  public var format: Format { CBOR.format }
+  public var format: Format { writer.format }
 
-  public func write(_ value: Value) throws {
-    let encoder = CBORValueEventEncoder(
-      deterministic: options.deterministic,
-      includeContainerSizes: options.includeContainerSizes
-    )
-    let events = try encoder.encode(value)
-    let streamEncoder = CBORStreamEncoder(
-      writer: CBOREncoder(options: .init(deterministic: options.deterministic, deterministicMode: .none))
-    )
-    var buffer = FormatStreamEncoderBuffer(encoder: streamEncoder)
-    output = try buffer.encode(events: events)
-  }
-
-  /// Rendered CBOR bytes.
-  public func data() -> Data {
-    output
+  public func write(_ value: Value) throws -> Data {
+    try writer.write(value)
   }
 }
 

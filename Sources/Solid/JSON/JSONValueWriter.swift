@@ -9,7 +9,7 @@ import Foundation
 import SolidData
 
 
-public final class JSONValueWriter: FormatWriter {
+public struct JSONValueWriter: FormatWriter {
 
   public struct Options: Sendable {
 
@@ -40,32 +40,31 @@ public final class JSONValueWriter: FormatWriter {
     }
   }
 
-  let options: Options
-  private var output = Data()
+  private let writer: FormatValueWriter<JSONStreamEncoder>
 
   /// Write a value into a new in-memory Data buffer.
   public static func write(_ value: Value, options: Options = .default) -> Data {
     let writer = JSONValueWriter(options: options)
-    writer.write(value)
-    return writer.data()
+    return (try? writer.write(value)) ?? Data()
   }
 
   public init(options: Options = Options()) {
-    self.options = options
-  }
-
-  public var format: Format { JSON.format }
-
-  public func write(_ value: Value) {
-    let encoder = ValueEventEncoder()
-    let streamEncoder = JSONStreamEncoder(
-      writer: JSONEventWriter(options: .init(tagShape: options.tagShape, escapeSlashes: false))
+    self.writer = FormatValueWriter(
+      format: JSON.format,
+      makeEncoder: {
+        JSONStreamEncoder(
+          writer: JSONEventWriter(options: .init(tagShape: options.tagShape, escapeSlashes: false))
+        )
+      },
+      encodeValue: { value in
+        ValueEventEncoder().encode(value)
+      }
     )
-    var buffer = FormatStreamEncoderBuffer(encoder: streamEncoder)
-    output = (try? buffer.encode(events: encoder.encode(value))) ?? Data()
   }
 
-  public func data() -> Data {
-    output
+  public var format: Format { writer.format }
+
+  public func write(_ value: Value) throws -> Data {
+    try writer.write(value)
   }
 }

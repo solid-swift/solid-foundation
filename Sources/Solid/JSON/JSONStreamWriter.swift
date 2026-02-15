@@ -33,32 +33,28 @@ public final class JSONStreamWriter: FormatStreamWriter {
     case alreadyFinished
   }
 
-  private var driver: FormatStreamWriterDriver<JSONStreamEncoder>
-  private var finished = false
+  private let adapter: FormatStreamWriterAdapter<JSONStreamEncoder>
 
   public init(sink: any Sink, bufferSize: Int = BufferedSink.segmentSize, options: Options = .default) {
-    self.driver = FormatStreamWriterDriver(
+    self.adapter = FormatStreamWriterAdapter(
       encoder: JSONStreamEncoder(writer: JSONEventWriter(options: options)),
       sink: sink,
-      bufferSize: bufferSize
+      bufferSize: bufferSize,
+      alreadyFinishedError: { Error.alreadyFinished }
     )
   }
 
-  public var format: Format { JSON.format }
+  public var format: Format { adapter.format }
 
   public func write(_ event: ValueEvent) async throws {
-    guard !finished else { throw Error.alreadyFinished }
-    try await driver.write(event)
+    try await adapter.write(event)
   }
 
   public func finish() async throws {
-    guard !finished else { throw Error.alreadyFinished }
-    try await driver.finish()
-    finished = true
+    try await adapter.finish()
   }
 
   public func close() async throws {
-    try await finish()
-    try await driver.close()
+    try await adapter.close()
   }
 }

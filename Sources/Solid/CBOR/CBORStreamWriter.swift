@@ -50,44 +50,38 @@ public final class CBORStreamWriter: FormatStreamWriter {
     }
   }
 
-  private var driver: FormatStreamWriterDriver<CBORStreamEncoder>
-  private var finished = false
+  private let adapter: FormatStreamWriterAdapter<CBORStreamEncoder>
 
   public init(sink: any Sink, options: Options = .default, bufferSize: Int = BufferedSink.segmentSize) {
-    self.driver = FormatStreamWriterDriver(
+    self.adapter = FormatStreamWriterAdapter(
       encoder: CBORStreamEncoder(
         writer: CBOREncoder(
           options: .init(deterministic: false, deterministicMode: .init(options.deterministicMode))
         )
       ),
       sink: sink,
-      bufferSize: bufferSize
+      bufferSize: bufferSize,
+      alreadyFinishedError: { Error.alreadyFinished },
+      mapError: { error in
+        if let cborError = error as? CBOREncoder.Error {
+          return Error.from(cborError)
+        }
+        return error
+      }
     )
   }
 
-  public var format: Format { CBOR.format }
+  public var format: Format { adapter.format }
 
   public func write(_ event: ValueEvent) async throws {
-    guard !finished else { throw Error.alreadyFinished }
-    do {
-      try await driver.write(event)
-    } catch let error as CBOREncoder.Error {
-      throw Error.from(error)
-    }
+    try await adapter.write(event)
   }
 
   public func finish() async throws {
-    guard !finished else { throw Error.alreadyFinished }
-    do {
-      try await driver.finish()
-    } catch let error as CBOREncoder.Error {
-      throw Error.from(error)
-    }
-    finished = true
+    try await adapter.finish()
   }
 
   public func close() async throws {
-    try await finish()
-    try await driver.close()
+    try await adapter.close()
   }
 }

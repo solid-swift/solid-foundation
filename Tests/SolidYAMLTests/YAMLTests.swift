@@ -150,8 +150,7 @@ struct YAMLTests {
   @Test("Emit value", arguments: cases)
   func emitValue(_ testCase: TestCase) throws {
     let writer = YAMLValueWriter(options: .default)
-    try writer.write(testCase.value)
-    let output = writer.data()
+    let output = try writer.write(testCase.value)
     var outputReader = try YAMLValueReader(data: output)
     let value = try outputReader.read()
     #expect(value == testCase.value, "\(testCase.id): emitted value mismatch")

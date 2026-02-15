@@ -165,8 +165,7 @@ struct YAMLTestSuite {
         : testCase.directory.appendingPathComponent("in.yaml")
       let expectedData = try Data(contentsOf: expectedURL)
       let writer = YAMLValueWriter(options: .default)
-      try writer.write(value)
-      let actualData = writer.data()
+      let actualData = try writer.write(value)
 
       if let debugID = Self.debugEmitValueCaseID, debugID == testCase.id {
         let actualText = String(decoding: actualData, as: UTF8.self)
