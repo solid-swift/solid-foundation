@@ -9,7 +9,7 @@ import Foundation
 import SolidData
 
 /// Synchronous YAML stream reader that produces ``ValueEvent`` values.
-public final class YAMLStreamReader: FormatStreamReader {
+public struct YAMLStreamReader: FormatStreamReader {
 
   private var eventIterator: YAMLNodeEventIterator?
   private var buffers = DataBufferPair()
@@ -21,7 +21,7 @@ public final class YAMLStreamReader: FormatStreamReader {
 
   public var format: Format { YAML.format }
 
-  public func read(
+  public mutating func read(
     input: Data,
     isFinal: Bool,
     output: inout OutputSpan<ValueEvent>
@@ -59,7 +59,7 @@ public final class YAMLStreamReader: FormatStreamReader {
     return .producedOutput
   }
 
-  private func readNextDocument(isFinal: Bool) throws -> YAMLDocument? {
+  private mutating func readNextDocument(isFinal: Bool) throws -> YAMLDocument? {
     let data = buffers.combinedData()
     guard !data.isEmpty else {
       return nil

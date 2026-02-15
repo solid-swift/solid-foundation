@@ -16,6 +16,6 @@ public protocol FormatReader {
   /// - Returns: The next available value.
   /// - Throws: Error if a value cannot be read.
   ///
-  func read() throws -> Value
+  mutating func read() throws -> Value
 
 }

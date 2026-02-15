@@ -9,7 +9,7 @@ func cborExample() throws {
   let output = try CBORValueWriter.write(value)
 
   // Decode from CBOR
-  let reader = CBORValueReader(data: output)
+  var reader = CBORValueReader(data: output)
   let decoded = try reader.read()
   // snippet.hide
   _ = decoded

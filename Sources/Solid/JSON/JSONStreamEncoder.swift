@@ -8,7 +8,7 @@
 import Foundation
 import SolidData
 /// Synchronous JSON stream encoder that consumes ``ValueEvent`` values.
-final class JSONStreamEncoder: FormatStreamEncoder {
+struct JSONStreamEncoder: FormatStreamEncoder {
 
   public typealias TagShape = JSONValueWriter.Options.TagShape
   typealias Options = JSONStreamWriter.Options
@@ -51,7 +51,7 @@ final class JSONStreamEncoder: FormatStreamEncoder {
 
   public var format: Format { JSON.format }
 
-  func writeEvent(_ event: ValueEvent) throws {
+  mutating func writeEvent(_ event: ValueEvent) throws {
     guard !finished else {
       throw Error.alreadyFinished
     }
@@ -132,7 +132,7 @@ final class JSONStreamEncoder: FormatStreamEncoder {
     }
   }
 
-  private func setObjectExpectingValue() throws {
+  private mutating func setObjectExpectingValue() throws {
     guard case .object(let hasPairs, let expectingKey) = containers.popLast() else {
       throw Error.invalidEventSequence("Key outside object")
     }
@@ -142,7 +142,7 @@ final class JSONStreamEncoder: FormatStreamEncoder {
     containers.append(.object(hasPairs: hasPairs, expectingKey: false))
   }
 
-  private func finishValue() throws {
+  private mutating func finishValue() throws {
     if containers.isEmpty {
       rootState = .complete
       return
@@ -161,7 +161,7 @@ final class JSONStreamEncoder: FormatStreamEncoder {
     }
   }
 
-  private func prepareForValue(isKey: Bool) throws {
+  private mutating func prepareForValue(isKey: Bool) throws {
     if containers.isEmpty {
       guard rootState == .expectingValue else {
         throw Error.invalidEventSequence("Multiple root values")
@@ -195,7 +195,7 @@ final class JSONStreamEncoder: FormatStreamEncoder {
     }
   }
 
-  private func openWrappers() throws -> [Wrapper] {
+  private mutating func openWrappers() throws -> [Wrapper] {
     let tags = pendingTags
     pendingTags.removeAll()
 
@@ -232,7 +232,7 @@ final class JSONStreamEncoder: FormatStreamEncoder {
     return wrappers
   }
 
-  private func closeWrappers(_ wrappers: [Wrapper]) throws {
+  private mutating func closeWrappers(_ wrappers: [Wrapper]) throws {
     for wrapper in wrappers.reversed() {
       switch wrapper {
       case .array:
@@ -243,7 +243,7 @@ final class JSONStreamEncoder: FormatStreamEncoder {
     }
   }
 
-  private func writeValue(_ value: Value) throws {
+  private mutating func writeValue(_ value: Value) throws {
     switch value {
     case .null:
       writeNull()
@@ -296,7 +296,7 @@ final class JSONStreamEncoder: FormatStreamEncoder {
     }
   }
 
-  private func writeString(_ value: String) {
+  private mutating func writeString(_ value: String) {
     appendByte(JSONStructure.quotationMark)
     for scalar in value.unicodeScalars {
       switch scalar {
@@ -327,33 +327,33 @@ final class JSONStreamEncoder: FormatStreamEncoder {
     appendByte(JSONStructure.quotationMark)
   }
 
-  private func writeNumber(_ value: Value.Number) {
+  private mutating func writeNumber(_ value: Value.Number) {
     appendString(value.description)
   }
 
-  private func writeBool(_ value: Bool) {
+  private mutating func writeBool(_ value: Bool) {
     appendString(value ? "true" : "false")
   }
 
-  private func writeNull() {
+  private mutating func writeNull() {
     appendString("null")
   }
 
-  private func appendString(_ string: String) {
+  private mutating func appendString(_ string: String) {
     appendBytes(string.utf8)
   }
 
-  private func appendBytes<S: Sequence>(_ bytes: S) where S.Element == UInt8 {
+  private mutating func appendBytes<S: Sequence>(_ bytes: S) where S.Element == UInt8 {
     buffer.append(contentsOf: bytes)
   }
 
-  private func appendByte(_ byte: UInt8) {
+  private mutating func appendByte(_ byte: UInt8) {
     buffer.append(byte)
   }
 
   // MARK: - FormatStreamEncoder
 
-  func encode(_ event: ValueEvent, output: inout OutputSpan<UInt8>) throws -> FormatStreamEncodeStatus {
+  mutating func encode(_ event: ValueEvent, output: inout OutputSpan<UInt8>) throws -> FormatStreamEncodeStatus {
     if pendingEvent {
       let pendingStatus = drainPending(into: &output)
       if pendingStatus == .needMoreOutputSpace {
@@ -376,7 +376,7 @@ final class JSONStreamEncoder: FormatStreamEncoder {
     return status
   }
 
-  func finish(output: inout OutputSpan<UInt8>) throws -> FormatStreamEncodeStatus {
+  mutating func finish(output: inout OutputSpan<UInt8>) throws -> FormatStreamEncodeStatus {
     let pendingStatus = drainPending(into: &output)
     if pendingStatus == .needMoreOutputSpace {
       return pendingStatus
@@ -394,7 +394,7 @@ final class JSONStreamEncoder: FormatStreamEncoder {
     return finalStatus == .needMoreOutputSpace ? finalStatus : .endOfStream
   }
 
-  private func drainPending(into output: inout OutputSpan<UInt8>) -> FormatStreamEncodeStatus {
+  private mutating func drainPending(into output: inout OutputSpan<UInt8>) -> FormatStreamEncodeStatus {
     guard pendingOffset < buffer.count else {
       buffer.removeAll(keepingCapacity: true)
       pendingOffset = 0

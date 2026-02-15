@@ -142,7 +142,8 @@ struct YAMLTests {
 
   @Test("Parse value", .serialized, arguments: cases)
   func parseValue(_ testCase: TestCase) throws {
-    let value = try YAMLValueReader(string: testCase.yaml).read()
+    var yamlReader = YAMLValueReader(string: testCase.yaml)
+    let value = try yamlReader.read()
     #expect(value == testCase.value, "\(testCase.id): parsed value mismatch")
   }
 
@@ -151,7 +152,8 @@ struct YAMLTests {
     let writer = YAMLValueWriter(options: .default)
     try writer.write(testCase.value)
     let output = writer.data()
-    let value = try YAMLValueReader(data: output).read()
+    var outputReader = try YAMLValueReader(data: output)
+    let value = try outputReader.read()
     #expect(value == testCase.value, "\(testCase.id): emitted value mismatch")
   }
 
@@ -181,7 +183,8 @@ struct YAMLTests {
     }
     try await writer.finish()
 
-    let value = try YAMLValueReader(data: sink.data).read()
+    var sinkReader = try YAMLValueReader(data: sink.data)
+    let value = try sinkReader.read()
     #expect(value == testCase.value, "\(testCase.id): streamed emit mismatch")
   }
 
@@ -230,7 +233,8 @@ struct YAMLTests {
   func errorLocations(_ testCase: ErrorCase) throws {
     let error =
       #expect(throws: Error.self) {
-        _ = try YAMLValueReader(string: testCase.yaml).read()
+        var errorReader = YAMLValueReader(string: testCase.yaml)
+        _ = try errorReader.read()
       }
     let yamlError = try #require(error as? any YAML.Error)
     switch (yamlError, testCase.kind) {

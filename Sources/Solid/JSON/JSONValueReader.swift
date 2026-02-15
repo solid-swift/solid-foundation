@@ -10,7 +10,7 @@ import Foundation
 
 public struct JSONValueReader: FormatReader {
 
-  let tokenReader: JSONTokenReader
+  var tokenReader: JSONTokenReader
 
   public init(data: Data) {
     self.tokenReader = JSONTokenReader(data: data)
@@ -22,11 +22,11 @@ public struct JSONValueReader: FormatReader {
 
   public var format: Format { JSON.format }
 
-  public func read() throws -> Value {
+  public mutating func read() throws -> Value {
     return try tokenReader.readValue(converter: ValueConverter.instance)
   }
 
-  public func validateValue() throws {
+  public mutating func validateValue() throws {
     try tokenReader.readValue(converter: NullConverter.instance)
   }
 

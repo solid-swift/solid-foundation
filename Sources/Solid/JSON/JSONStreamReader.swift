@@ -8,7 +8,7 @@
 import Foundation
 import SolidData
 /// Synchronous JSON stream reader that produces ``ValueEvent`` values.
-public final class JSONStreamReader: FormatStreamReader {
+public struct JSONStreamReader: FormatStreamReader {
 
   private var parser = JSONPushParser()
   private var finished = false
@@ -17,7 +17,7 @@ public final class JSONStreamReader: FormatStreamReader {
 
   public var format: Format { JSON.format }
 
-  public func read(
+  public mutating func read(
     input: Data,
     isFinal: Bool,
     output: inout OutputSpan<ValueEvent>

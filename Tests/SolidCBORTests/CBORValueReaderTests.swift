@@ -428,7 +428,7 @@ private let errorCases: [CBORValueReaderTests.DecodeErrorCase] = [
 ]
 
 private func decode(_ bytes: [UInt8], options: CBORValueReader.Options) throws -> Value {
-  let reader = CBORValueReader(data: Data(bytes), options: options)
+  var reader = CBORValueReader(data: Data(bytes), options: options)
   return try reader.read()
 }
 

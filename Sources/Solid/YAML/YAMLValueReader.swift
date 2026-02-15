@@ -27,9 +27,9 @@ public struct YAMLValueReader: FormatReader {
 
   public var format: Format { YAML.format }
 
-  public func read() throws -> Value {
+  public mutating func read() throws -> Value {
     let data = Data(text.utf8)
-    let reader = YAMLStreamReader()
+    var reader = YAMLStreamReader()
     var decoder = ValueEventDecoder()
     var firstValue: Value?
 

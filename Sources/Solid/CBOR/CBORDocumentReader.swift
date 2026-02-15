@@ -29,7 +29,7 @@ public struct CBORDocumentReader {
   }
 
   public func readAll() throws -> [CBORValueDocument] {
-    let reader = CBORStreamReader(options: .init(undefined: options.undefined))
+    var reader = CBORStreamReader(options: .init(undefined: options.undefined))
     var decoder = ValueEventDecoder()
     var documents: [CBORValueDocument] = []
     var input = data

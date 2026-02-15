@@ -16,7 +16,8 @@ public struct JSONContentMediaTypeType: Schema.ContentMediaTypeType {
   public func validate(_ value: Value) -> Bool {
     guard case .string(let string) = value else { return false }
     do {
-      try JSONValueReader(string: string).validateValue()
+      var reader = JSONValueReader(string: string)
+      try reader.validateValue()
       return true
     } catch {
       return false

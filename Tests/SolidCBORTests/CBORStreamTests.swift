@@ -133,7 +133,8 @@ struct CBORStreamTests {
     }
     try await writer.finish()
 
-    let value = try CBORValueReader(data: sink.data).read()
+    var cborReader = CBORValueReader(data: sink.data)
+    let value = try cborReader.read()
     #expect(value == testCase.value, "\(testCase.id): streamed emit mismatch")
   }
 

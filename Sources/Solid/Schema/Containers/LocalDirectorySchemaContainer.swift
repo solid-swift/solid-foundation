@@ -47,7 +47,8 @@ public final class LocalDirectorySchemaContainer: SchemaLocator {
     do {
 
       let data = try Data(contentsOf: fileLoc.url)
-      let value = try JSONValueReader(data: data).read()
+      var reader = JSONValueReader(data: data)
+      let value = try reader.read()
 
       let resourceSchema = try Schema.Builder.build(from: value, resourceId: resourceId, options: options)
 

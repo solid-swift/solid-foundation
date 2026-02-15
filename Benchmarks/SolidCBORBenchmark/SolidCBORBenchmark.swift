@@ -119,7 +119,8 @@ let benchmarks: @Sendable () -> Void = {
     guard let smallMapData else { return }
     benchmark.startMeasurement()
     for _ in benchmark.scaledIterations {
-      let value = try? CBORValueReader(data: smallMapData).read()
+      var reader = CBORValueReader(data: smallMapData)
+      let value = try? reader.read()
       blackHole(value)
     }
   }
@@ -128,7 +129,8 @@ let benchmarks: @Sendable () -> Void = {
     guard let smallArrayData else { return }
     benchmark.startMeasurement()
     for _ in benchmark.scaledIterations {
-      let value = try? CBORValueReader(data: smallArrayData).read()
+      var reader = CBORValueReader(data: smallArrayData)
+      let value = try? reader.read()
       blackHole(value)
     }
   }
@@ -137,7 +139,8 @@ let benchmarks: @Sendable () -> Void = {
     guard let largeArrayData else { return }
     benchmark.startMeasurement()
     for _ in benchmark.scaledIterations {
-      let value = try? CBORValueReader(data: largeArrayData).read()
+      var reader = CBORValueReader(data: largeArrayData)
+      let value = try? reader.read()
       blackHole(value)
     }
   }
@@ -146,7 +149,8 @@ let benchmarks: @Sendable () -> Void = {
     guard let largeMapData else { return }
     benchmark.startMeasurement()
     for _ in benchmark.scaledIterations {
-      let value = try? CBORValueReader(data: largeMapData).read()
+      var reader = CBORValueReader(data: largeMapData)
+      let value = try? reader.read()
       blackHole(value)
     }
   }
@@ -155,7 +159,8 @@ let benchmarks: @Sendable () -> Void = {
     guard let largeStringData else { return }
     benchmark.startMeasurement()
     for _ in benchmark.scaledIterations {
-      let value = try? CBORValueReader(data: largeStringData).read()
+      var reader = CBORValueReader(data: largeStringData)
+      let value = try? reader.read()
       blackHole(value)
     }
   }
@@ -164,7 +169,8 @@ let benchmarks: @Sendable () -> Void = {
     guard let largeBytesData else { return }
     benchmark.startMeasurement()
     for _ in benchmark.scaledIterations {
-      let value = try? CBORValueReader(data: largeBytesData).read()
+      var reader = CBORValueReader(data: largeBytesData)
+      let value = try? reader.read()
       blackHole(value)
     }
   }
@@ -173,7 +179,8 @@ let benchmarks: @Sendable () -> Void = {
     guard let taggedData else { return }
     benchmark.startMeasurement()
     for _ in benchmark.scaledIterations {
-      let value = try? CBORValueReader(data: taggedData).read()
+      var reader = CBORValueReader(data: taggedData)
+      let value = try? reader.read()
       blackHole(value)
     }
   }

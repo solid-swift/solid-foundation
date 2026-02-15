@@ -10,7 +10,7 @@ import SolidData
 import SolidNumeric
 
 /// Synchronous CBOR stream reader that produces ``ValueEvent`` values.
-public final class CBORStreamReader: FormatStreamReader {
+public struct CBORStreamReader: FormatStreamReader {
 
   private enum Frame {
     case array(remaining: Int?)
@@ -46,7 +46,7 @@ public final class CBORStreamReader: FormatStreamReader {
 
   public var format: Format { CBOR.format }
 
-  public func read(
+  public mutating func read(
     input: Data,
     isFinal: Bool,
     output: inout OutputSpan<ValueEvent>
@@ -83,7 +83,7 @@ public final class CBORStreamReader: FormatStreamReader {
     return .producedOutput
   }
 
-  private func nextEvent(isFinal: Bool) throws -> ValueEvent? {
+  private mutating func nextEvent(isFinal: Bool) throws -> ValueEvent? {
     if completedRootInCall {
       return nil
     }
@@ -153,7 +153,7 @@ public final class CBORStreamReader: FormatStreamReader {
     }
   }
 
-  private func emitCompletedContainerIfNeeded() throws -> ValueEvent? {
+  private mutating func emitCompletedContainerIfNeeded() throws -> ValueEvent? {
     guard let frame = frames.last else { return nil }
 
     switch frame {
@@ -182,7 +182,7 @@ public final class CBORStreamReader: FormatStreamReader {
     return nil
   }
 
-  private func emitBreakIfNeeded() throws -> ValueEvent? {
+  private mutating func emitBreakIfNeeded() throws -> ValueEvent? {
     guard let frame = frames.last, frame.isIndefinite else { return nil }
     guard inputBuffer.peekByte() != nil else { return nil }
 
@@ -208,7 +208,7 @@ public final class CBORStreamReader: FormatStreamReader {
     return nil
   }
 
-  private func didFinishKey() throws {
+  private mutating func didFinishKey() throws {
     guard case .map(let remaining, let expectingKey) = frames.popLast() else {
       throw CBOR.Error.invalidBreak
     }
@@ -218,7 +218,7 @@ public final class CBORStreamReader: FormatStreamReader {
     frames.append(.map(remaining: remaining, expectingKey: false))
   }
 
-  private func didFinishValue() throws {
+  private mutating func didFinishValue() throws {
     guard var frame = frames.popLast() else {
       return
     }
@@ -265,7 +265,7 @@ public final class CBORStreamReader: FormatStreamReader {
     }
   }
 
-  private func parseValue() throws -> ParseResult {
+  private mutating func parseValue() throws -> ParseResult {
     let initByte = try readByte()
 
     switch initByte {
@@ -365,12 +365,12 @@ public final class CBORStreamReader: FormatStreamReader {
 
   // MARK: - Value decoding (for map keys and tag helpers)
 
-  private func decodeRequiredItem() throws -> Value {
+  private mutating func decodeRequiredItem() throws -> Value {
     guard let item = try decodeItem() else { throw CBOR.Error.invalidBreak }
     return item
   }
 
-  private func decodeItem() throws -> Value? {
+  private mutating func decodeItem() throws -> Value? {
     let initByte = try readByte()
 
     switch initByte {
@@ -462,7 +462,7 @@ public final class CBORStreamReader: FormatStreamReader {
     }
   }
 
-  private func decodeItems(count: Int) throws -> Value.Array {
+  private mutating func decodeItems(count: Int) throws -> Value.Array {
     var result: Value.Array = []
     for _ in 0..<count {
       let item = try decodeRequiredItem()
@@ -471,7 +471,7 @@ public final class CBORStreamReader: FormatStreamReader {
     return result
   }
 
-  private func decodeItemsUntilBreak() throws -> Value.Array {
+  private mutating func decodeItemsUntilBreak() throws -> Value.Array {
     var result: Value.Array = []
     while let item = try decodeItem() {
       result.append(item)
@@ -479,7 +479,7 @@ public final class CBORStreamReader: FormatStreamReader {
     return result
   }
 
-  private func decodeItemPairs(count: Int) throws -> Value.Object {
+  private mutating func decodeItemPairs(count: Int) throws -> Value.Object {
     var result: Value.Object = [:]
     for _ in 0..<count {
       let key = try decodeRequiredItem()
@@ -489,7 +489,7 @@ public final class CBORStreamReader: FormatStreamReader {
     return result
   }
 
-  private func decodeItemPairsUntilBreak() throws -> Value.Object {
+  private mutating func decodeItemPairsUntilBreak() throws -> Value.Object {
     var result: Value.Object = [:]
     while let key = try decodeItem() {
       let val = try decodeRequiredItem()
@@ -501,7 +501,7 @@ public final class CBORStreamReader: FormatStreamReader {
   private static let decimalFractionRadix: BigDecimal = .ten
   private static let bigFloatRadix: BigDecimal = 2
 
-  private func decodeBigInt(isNegative: Bool) throws -> Value {
+  private mutating func decodeBigInt(isNegative: Bool) throws -> Value {
     let item = try decodeRequiredItem()
     guard case .bytes(let bytes) = item, !bytes.isEmpty else {
       throw CBOR.Error.invalidItemType
@@ -509,7 +509,7 @@ public final class CBORStreamReader: FormatStreamReader {
     return .number(BigInt(isNegative: isNegative, magnitude: BigUInt(encoded: bytes)))
   }
 
-  private func decodeBigNumber(base: BigDecimal) throws -> Value {
+  private mutating func decodeBigNumber(base: BigDecimal) throws -> Value {
     let item = try decodeRequiredItem()
     guard
       case .array(let items) = item, items.count == 2,
@@ -525,7 +525,7 @@ public final class CBORStreamReader: FormatStreamReader {
     return .number(decimal)
   }
 
-  private func readFiniteString(initByte: UInt8) throws -> String {
+  private mutating func readFiniteString(initByte: UInt8) throws -> String {
     let numBytes = try readLength(initByte, base: 0x60)
     guard let string = String(data: try readBytes(count: numBytes), encoding: .utf8) else {
       throw CBOR.Error.invalidUTF8String
@@ -533,7 +533,7 @@ public final class CBORStreamReader: FormatStreamReader {
     return string
   }
 
-  private func readIndefiniteString() throws -> String {
+  private mutating func readIndefiniteString() throws -> String {
     return try decodeItemsUntilBreak()
       .map { item -> String in
         guard case .string(let string) = item else { throw CBOR.Error.invalidIndefiniteElement }
@@ -542,7 +542,7 @@ public final class CBORStreamReader: FormatStreamReader {
       .joined(separator: "")
   }
 
-  private func readIndefiniteByteString() throws -> Data {
+  private mutating func readIndefiniteByteString() throws -> Data {
     let datas = try decodeItemsUntilBreak()
       .map { item -> Data in
         guard case .bytes(let bytes) = item else { throw CBOR.Error.invalidIndefiniteElement }
@@ -554,31 +554,31 @@ public final class CBORStreamReader: FormatStreamReader {
 
   // MARK: - Byte Reading
 
-  private func readByte() throws -> UInt8 {
+  private mutating func readByte() throws -> UInt8 {
     return try inputBuffer.readByte()
   }
 
-  private func readBytes(count: Int) throws -> Data {
+  private mutating func readBytes(count: Int) throws -> Data {
     return try inputBuffer.readBytes(count: count)
   }
 
-  private func readInt<T>(_ type: T.Type) throws -> T where T: FixedWidthInteger {
+  private mutating func readInt<T>(_ type: T.Type) throws -> T where T: FixedWidthInteger {
     return try inputBuffer.readInt(type)
   }
 
-  private func readHalf() throws -> Float16 {
+  private mutating func readHalf() throws -> Float16 {
     return Float16(bitPattern: try readInt(UInt16.self))
   }
 
-  private func readFloat() throws -> Float32 {
+  private mutating func readFloat() throws -> Float32 {
     return Float32(bitPattern: try readInt(UInt32.self))
   }
 
-  private func readDouble() throws -> Float64 {
+  private mutating func readDouble() throws -> Float64 {
     return Float64(bitPattern: try readInt(UInt64.self))
   }
 
-  private func readVarUInt(_ initByte: UInt8, base: UInt8) throws -> UInt64 {
+  private mutating func readVarUInt(_ initByte: UInt8, base: UInt8) throws -> UInt64 {
     guard initByte > base + 0x17 else { return UInt64(initByte - base) }
 
     switch try VarUIntSize.from(serialized: initByte) {
@@ -593,7 +593,7 @@ public final class CBORStreamReader: FormatStreamReader {
     }
   }
 
-  private func readLength(_ initByte: UInt8, base: UInt8) throws -> Int {
+  private mutating func readLength(_ initByte: UInt8, base: UInt8) throws -> Int {
     let length = try readVarUInt(initByte, base: base)
     guard length <= Int.max else {
       throw CBOR.Error.sequenceTooLong

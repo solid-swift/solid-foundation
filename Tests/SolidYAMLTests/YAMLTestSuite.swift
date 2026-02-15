@@ -124,12 +124,14 @@ struct YAMLTestSuite {
       let yamlData = try Data(contentsOf: yamlURL)
       let jsonData = try Data(contentsOf: jsonURL)
 
-      let value = try YAMLValueReader(data: yamlData).read()
+      var yamlReader = try YAMLValueReader(data: yamlData)
+      let value = try yamlReader.read()
       let expected: Value
       if jsonData.isEmpty || jsonData.allSatisfy({ $0 == 0x20 || $0 == 0x0A || $0 == 0x0D || $0 == 0x09 }) {
         expected = .null
       } else {
-        expected = try JSONValueReader(data: jsonData).read()
+        var jsonReader = JSONValueReader(data: jsonData)
+        expected = try jsonReader.read()
       }
       let actual = Self.stripTags(from: value)
       #expect(
@@ -153,7 +155,7 @@ struct YAMLTestSuite {
       let jsonURL = testCase.directory.appendingPathComponent("in.json")
       #expect(FileManager.default.fileExists(atPath: jsonURL.path), "\(testCase.id): missing in.json")
       let jsonData = try Data(contentsOf: jsonURL)
-      let reader = JSONValueReader(data: jsonData)
+      var reader = JSONValueReader(data: jsonData)
       let value = try reader.read()
 
       let emitURL = testCase.directory.appendingPathComponent("emit.yaml")
@@ -285,7 +287,8 @@ struct YAMLTestSuite {
       let yamlURL = testCase.directory.appendingPathComponent("in.yaml")
       let yamlData = try Data(contentsOf: yamlURL)
       #expect(throws: Error.self) {
-        _ = try YAMLValueReader(data: yamlData).read()
+        var yamlErrorReader = try YAMLValueReader(data: yamlData)
+        _ = try yamlErrorReader.read()
       }
       if let limit = Self.maxResidentBytes, let bytes = Self.currentMaxResidentBytes() {
         let gb = Double(bytes) / 1024.0 / 1024.0 / 1024.0

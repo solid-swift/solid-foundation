@@ -19,7 +19,8 @@ struct JSONStreamReaderTests {
   func chunkSplitStrings() async throws {
     let json = #"{"message":"hello\nworld","emoji":"\uD83D\uDE00","quote":"a\"b"}"#
     let streamed = try await parseStreamed(json: json, chunkSizes: [1])
-    let expected = try JSONValueReader(string: json).read()
+    var jsonReader1 = JSONValueReader(string: json)
+    let expected = try jsonReader1.read()
     #expect(streamed == expected)
   }
 
@@ -27,7 +28,8 @@ struct JSONStreamReaderTests {
   func chunkSplitNumbers() async throws {
     let json = #"{"value":-12.34e-5,"other":0}"#
     let streamed = try await parseStreamed(json: json, chunkSizes: [1])
-    let expected = try JSONValueReader(string: json).read()
+    var jsonReader2 = JSONValueReader(string: json)
+    let expected = try jsonReader2.read()
     #expect(streamed == expected)
   }
 
@@ -35,7 +37,8 @@ struct JSONStreamReaderTests {
   func nestedContainers() async throws {
     let json = #"{"a":[1,{"b":[true,false,null]},[]],"c":{}}"#
     let streamed = try await parseStreamed(json: json, chunkSizes: [1])
-    let expected = try JSONValueReader(string: json).read()
+    var jsonReader3 = JSONValueReader(string: json)
+    let expected = try jsonReader3.read()
     #expect(streamed == expected)
   }
 }

@@ -613,12 +613,11 @@ private func encode(_ value: Value, deterministic: Bool, includeContainerSizes: 
 }
 
 private func encode(
-  block: (CBOREncoder) throws -> Void
+  block: (inout CBOREncoder) throws -> Void
 ) throws -> [UInt8] {
-  let stream = CBORByteBuffer()
-  let encoder = CBOREncoder(sink: stream)
-  try block(encoder)
-  return Array(stream.data)
+  var encoder = CBOREncoder()
+  try block(&encoder)
+  return Array(encoder.buffer)
 }
 
 private func object(_ pairs: [(Value, Value)]) -> Value {

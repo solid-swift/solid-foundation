@@ -9,7 +9,7 @@ import Foundation
 import SolidCore
 import SolidData
 /// Synchronous YAML stream encoder that consumes ``ValueEvent`` values.
-final class YAMLStreamEncoder: FormatStreamEncoder {
+struct YAMLStreamEncoder: FormatStreamEncoder {
 
   static let anchorTagPrefix = "tag:solid.foundation,2025:anchor:"
   typealias Options = YAMLStreamWriter.Options
@@ -67,7 +67,7 @@ final class YAMLStreamEncoder: FormatStreamEncoder {
 
   public var format: Format { YAML.format }
 
-  func writeEvent(_ event: ValueEvent) throws {
+  mutating func writeEvent(_ event: ValueEvent) throws {
     guard !finished else { throw YAML.EmitError.invalidState("Writer already finished") }
 
     switch event {
@@ -117,7 +117,7 @@ final class YAMLStreamEncoder: FormatStreamEncoder {
     String(repeating: " ", count: count)
   }
 
-  private func writeKey(_ key: Value) throws {
+  private mutating func writeKey(_ key: Value) throws {
     guard var container = containers.popLast() else {
       throw YAML.EmitError.invalidEvent("Key outside object")
     }
@@ -202,7 +202,7 @@ final class YAMLStreamEncoder: FormatStreamEncoder {
     containers.append(container)
   }
 
-  private func writeScalar(_ value: Value) throws {
+  private mutating func writeScalar(_ value: Value) throws {
     let scalarStyle = try consumePendingScalarStyle()
     if containers.isEmpty {
       guard rootState == .expectingValue else {
@@ -360,7 +360,7 @@ final class YAMLStreamEncoder: FormatStreamEncoder {
     }
   }
 
-  private func writeAlias(_ name: String) throws {
+  private mutating func writeAlias(_ name: String) throws {
     guard pendingTags.isEmpty, pendingAnchor == nil, pendingStyle == nil else {
       throw YAML.EmitError.invalidEvent("Alias cannot have tags or anchors")
     }
@@ -436,7 +436,7 @@ final class YAMLStreamEncoder: FormatStreamEncoder {
     }
   }
 
-  private func beginContainer(kind: ContainerKind) throws {
+  private mutating func beginContainer(kind: ContainerKind) throws {
     let context = try prepareForContainerValue(kind: kind)
     let tags = pendingTags
     pendingTags.removeAll(keepingCapacity: true)
@@ -484,7 +484,7 @@ final class YAMLStreamEncoder: FormatStreamEncoder {
     }
   }
 
-  private func endContainer(kind: ContainerKind) throws {
+  private mutating func endContainer(kind: ContainerKind) throws {
     guard pendingTags.isEmpty, pendingStyle == nil else {
       throw YAML.EmitError.invalidEvent("Tag or style without value")
     }
@@ -524,7 +524,7 @@ final class YAMLStreamEncoder: FormatStreamEncoder {
     try finishValue()
   }
 
-  private func prepareForContainerValue(kind: ContainerKind) throws -> ContainerContext {
+  private mutating func prepareForContainerValue(kind: ContainerKind) throws -> ContainerContext {
     if containers.isEmpty {
       guard rootState == .expectingValue else {
         throw YAML.EmitError.invalidState("Multiple root values")
@@ -564,7 +564,7 @@ final class YAMLStreamEncoder: FormatStreamEncoder {
     }
   }
 
-  private func openContainerIfNeeded(_ container: inout ContainerState) throws {
+  private mutating func openContainerIfNeeded(_ container: inout ContainerState) throws {
     guard !container.opened else { return }
     if container.style == .flow {
       container.opened = true
@@ -591,7 +591,7 @@ final class YAMLStreamEncoder: FormatStreamEncoder {
     }
   }
 
-  private func ensureLineStart(indent: Int) throws {
+  private mutating func ensureLineStart(indent: Int) throws {
     if !atLineStart {
       try appendString("\n")
     }
@@ -600,7 +600,7 @@ final class YAMLStreamEncoder: FormatStreamEncoder {
     }
   }
 
-  private func prepareForBlockEntry(_ container: inout ContainerState) throws {
+  private mutating func prepareForBlockEntry(_ container: inout ContainerState) throws {
     if container.inlineActive {
       container.inlineActive = false
       return
@@ -608,7 +608,7 @@ final class YAMLStreamEncoder: FormatStreamEncoder {
     try ensureLineStart(indent: container.indent)
   }
 
-  private func finishValue() throws {
+  private mutating func finishValue() throws {
     if containers.isEmpty {
       rootState = .complete
       return
@@ -629,14 +629,14 @@ final class YAMLStreamEncoder: FormatStreamEncoder {
     }
   }
 
-  private func consumePendingNodeProperties() -> String? {
+  private mutating func consumePendingNodeProperties() -> String? {
     let properties = formatNodeProperties(tags: pendingTags, anchor: pendingAnchor)
     pendingTags.removeAll(keepingCapacity: true)
     pendingAnchor = nil
     return properties
   }
 
-  private func consumePendingScalarStyle() throws -> ValueScalarStyle? {
+  private mutating func consumePendingScalarStyle() throws -> ValueScalarStyle? {
     guard let pendingStyle else {
       return nil
     }
@@ -649,7 +649,7 @@ final class YAMLStreamEncoder: FormatStreamEncoder {
     }
   }
 
-  private func consumePendingCollectionStyle() throws -> ValueCollectionStyle {
+  private mutating func consumePendingCollectionStyle() throws -> ValueCollectionStyle {
     guard let pendingStyle else {
       return .block
     }
@@ -1106,7 +1106,7 @@ final class YAMLStreamEncoder: FormatStreamEncoder {
     }
   }
 
-  private func writeExplicitKey(
+  private mutating func writeExplicitKey(
     _ key: Value,
     properties: String?,
     indent: Int,
@@ -1162,7 +1162,7 @@ final class YAMLStreamEncoder: FormatStreamEncoder {
 
   // MARK: - Output helpers
 
-  private func appendString(_ string: String) throws {
+  private mutating func appendString(_ string: String) throws {
     guard let data = string.data(using: .utf8) else {
       throw YAML.DataError.invalidEncoding(.utf8)
     }
@@ -1174,7 +1174,7 @@ final class YAMLStreamEncoder: FormatStreamEncoder {
 
   // MARK: - FormatStreamEncoder
 
-  func encode(_ event: ValueEvent, output: inout OutputSpan<UInt8>) throws -> FormatStreamEncodeStatus {
+  mutating func encode(_ event: ValueEvent, output: inout OutputSpan<UInt8>) throws -> FormatStreamEncodeStatus {
     if pendingEvent {
       let pendingStatus = drainPending(into: &output)
       if pendingStatus == .needMoreOutputSpace {
@@ -1197,7 +1197,7 @@ final class YAMLStreamEncoder: FormatStreamEncoder {
     return status
   }
 
-  func finish(output: inout OutputSpan<UInt8>) throws -> FormatStreamEncodeStatus {
+  mutating func finish(output: inout OutputSpan<UInt8>) throws -> FormatStreamEncodeStatus {
     let pendingStatus = drainPending(into: &output)
     if pendingStatus == .needMoreOutputSpace {
       return pendingStatus
@@ -1223,7 +1223,7 @@ final class YAMLStreamEncoder: FormatStreamEncoder {
     return finalStatus == .needMoreOutputSpace ? finalStatus : .endOfStream
   }
 
-  private func drainPending(into output: inout OutputSpan<UInt8>) -> FormatStreamEncodeStatus {
+  private mutating func drainPending(into output: inout OutputSpan<UInt8>) -> FormatStreamEncodeStatus {
     guard pendingOffset < buffer.count else {
       buffer.removeAll(keepingCapacity: true)
       pendingOffset = 0

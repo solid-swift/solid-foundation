@@ -35,8 +35,8 @@ public struct CBORValueReader: FormatReader {
 
   public var format: Format { CBOR.format }
 
-  public func read() throws -> Value {
-    let reader = CBORStreamReader(options: options)
+  public mutating func read() throws -> Value {
+    var reader = CBORStreamReader(options: options)
     var decoder = ValueEventDecoder()
     var firstValue: Value?
 

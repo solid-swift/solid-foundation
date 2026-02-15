@@ -16,13 +16,7 @@ enum CBORStreamItemType: UInt8 {
   case byteString = 0x5F
 }
 
-protocol CBORByteSink: AnyObject {
-  func writeByte(_ byte: UInt8) throws
-  func writeBytes(_ ptr: UnsafeBufferPointer<UInt8>) throws
-  func writeBytes(_ data: Data) throws
-}
-
-final class CBOREncoder: FormatStreamEncoder {
+struct CBOREncoder: FormatStreamEncoder {
 
   enum Error: Swift.Error {
     case invalidEventSequence(String)
@@ -162,10 +156,9 @@ final class CBOREncoder: FormatStreamEncoder {
     }
   }
 
-  private let stream: CBORByteSink
-  private var bufferStream: CBORByteBuffer?
   private let options: Options
 
+  var buffer = Data()
   private var pendingOffset = 0
   private var rootState: RootState = .expectingValue
   private var containers: [ContainerState] = []
@@ -176,35 +169,26 @@ final class CBOREncoder: FormatStreamEncoder {
 
   var format: Format { CBOR.format }
 
-  init(sink: CBORByteSink, options: Options = Options()) {
-    self.stream = sink
-    self.options = options
-  }
-
   init(options: Options = Options()) {
-    let bufferStream = CBORByteBuffer()
-    self.stream = bufferStream
-    self.bufferStream = bufferStream
     self.options = options
   }
 
   static func encodeValue(_ value: Value, deterministic: Bool) throws -> Data {
-    let buffer = CBORByteBuffer()
-    let encoder = CBOREncoder(sink: buffer, options: Options(deterministic: deterministic, deterministicMode: .none))
+    var encoder = CBOREncoder(options: Options(deterministic: deterministic, deterministicMode: .none))
     try encoder.writeValue(value)
-    return buffer.data
+    return encoder.buffer
   }
 
   // MARK: - Event Encoding
 
-  func writeEvent(_ event: ValueEvent) throws {
+  mutating func writeEvent(_ event: ValueEvent) throws {
     guard !finished else { throw Error.alreadyFinished }
-    if var buffer = mapBuffer {
-      if let completion = try buffer.handle(event) {
+    if var mapBuf = mapBuffer {
+      if let completion = try mapBuf.handle(event) {
         mapBuffer = nil
         try emitBufferedMap(completion)
       } else {
-        mapBuffer = buffer
+        mapBuffer = mapBuf
       }
       return
     }
@@ -247,24 +231,24 @@ final class CBOREncoder: FormatStreamEncoder {
 
     case .key(let key):
       try prepareForValue(isKey: true)
-      try writePendingTags()
+      writePendingTags()
       try writeValue(key)
       try setObjectExpectingValue()
 
     case .scalar(let value):
       try prepareForValue(isKey: false)
-      try writePendingTags()
+      writePendingTags()
       try writeValue(value)
       try finishValue()
 
     case .beginArray(let count):
       try prepareForValue(isKey: false)
-      try writePendingTags()
+      writePendingTags()
       if let count {
-        try writeLength(count, majorType: 0b100)
+        writeLength(count, majorType: 0b100)
         containers.append(.array(remaining: count))
       } else {
-        try writeIndefiniteStart(for: .array)
+        writeIndefiniteStart(for: .array)
         containers.append(.array(remaining: nil))
       }
 
@@ -279,18 +263,18 @@ final class CBOREncoder: FormatStreamEncoder {
         throw Error.invalidEventSequence("Missing array values")
       }
       if remaining == nil {
-        try writeIndefiniteEnd()
+        writeIndefiniteEnd()
       }
       try finishValue()
 
     case .beginObject(let count):
       try prepareForValue(isKey: false)
-      try writePendingTags()
+      writePendingTags()
       if let count {
-        try writeLength(count, majorType: 0b101)
+        writeLength(count, majorType: 0b101)
         containers.append(.object(remaining: count, expectingKey: true))
       } else {
-        try writeIndefiniteStart(for: .map)
+        writeIndefiniteStart(for: .map)
         containers.append(.object(remaining: nil, expectingKey: true))
       }
 
@@ -308,7 +292,7 @@ final class CBOREncoder: FormatStreamEncoder {
         throw Error.invalidEventSequence("Missing object values")
       }
       if remaining == nil {
-        try writeIndefiniteEnd()
+        writeIndefiniteEnd()
       }
       try finishValue()
     }
@@ -323,7 +307,7 @@ final class CBOREncoder: FormatStreamEncoder {
     }
   }
 
-  private func prepareForValue(isKey: Bool) throws {
+  private mutating func prepareForValue(isKey: Bool) throws {
     if containers.isEmpty {
       guard rootState == .expectingValue else {
         throw Error.invalidEventSequence("Unexpected value after root")
@@ -355,7 +339,7 @@ final class CBOREncoder: FormatStreamEncoder {
     }
   }
 
-  private func setObjectExpectingValue() throws {
+  private mutating func setObjectExpectingValue() throws {
     guard case .object(let remaining, let expectingKey) = containers.popLast() else {
       throw Error.invalidEventSequence("Key outside map")
     }
@@ -365,7 +349,7 @@ final class CBOREncoder: FormatStreamEncoder {
     containers.append(.object(remaining: remaining, expectingKey: false))
   }
 
-  private func finishValue() throws {
+  private mutating func finishValue() throws {
     if containers.isEmpty {
       rootState = .complete
       return
@@ -400,14 +384,14 @@ final class CBOREncoder: FormatStreamEncoder {
     }
   }
 
-  private func writePendingTags() throws {
+  private mutating func writePendingTags() {
     for tag in pendingTags {
-      try writeTagHeader(tag)
+      writeTagHeader(tag)
     }
     pendingTags.removeAll(keepingCapacity: true)
   }
 
-  private func emitBufferedMap(_ completion: MapBufferCompletion) throws {
+  private mutating func emitBufferedMap(_ completion: MapBufferCompletion) throws {
     let encodedPairs = try completion.pairs.map { pair -> (keyBytes: Data, valueBytes: Data, order: Int) in
       let valueBytes = try encodeValueEvents(pair.valueEvents)
       return (keyBytes: pair.keyBytes, valueBytes: valueBytes, order: pair.order)
@@ -442,19 +426,19 @@ final class CBOREncoder: FormatStreamEncoder {
       }
     }
 
-    try writePendingTags()
-    try writeLength(completion.expectedPairs, majorType: 0b101)
+    writePendingTags()
+    writeLength(completion.expectedPairs, majorType: 0b101)
     for pair in orderedPairs {
-      try stream.writeBytes(pair.keyBytes)
-      try stream.writeBytes(pair.valueBytes)
+      buffer.append(pair.keyBytes)
+      buffer.append(pair.valueBytes)
     }
     try finishValue()
   }
 
   private func encodeValueEvents(_ events: [ValueEvent]) throws -> Data {
     let encoder = CBOREncoder(options: Options(deterministic: false, deterministicMode: .none))
-    var buffer = FormatStreamEncoderBuffer(encoder: encoder)
-    return try buffer.encode(events: events)
+    var encoderBuffer = FormatStreamEncoderBuffer(encoder: encoder)
+    return try encoderBuffer.encode(events: events)
   }
 
   private func tagValue(_ tag: Value) throws -> UInt64 {
@@ -466,13 +450,13 @@ final class CBOREncoder: FormatStreamEncoder {
 
   // MARK: - Value Encoding
 
-  func writeValue(_ value: Value) throws {
+  mutating func writeValue(_ value: Value) throws {
     switch value {
     case .null:
-      try writeNull()
+      writeNull()
 
     case .bool(let bool):
-      try writeBool(bool)
+      writeBool(bool)
 
     case .number(let number):
       switch number {
@@ -480,39 +464,39 @@ final class CBOREncoder: FormatStreamEncoder {
         switch binary {
         case .int8(let int8):
           if int8 >= 0 {
-            try writeUInt8(UInt8(int8))
+            writeUInt8(UInt8(int8))
           } else {
-            try writeNegativeInt(Int64(int8))
+            writeNegativeInt(Int64(int8))
           }
         case .uint8(let uint8):
-          try writeUInt8(uint8)
+          writeUInt8(uint8)
 
         case .int16(let int16):
           if int16 >= 0 {
-            try writeUInt16(UInt16(int16))
+            writeUInt16(UInt16(int16))
           } else {
-            try writeNegativeInt(Int64(int16))
+            writeNegativeInt(Int64(int16))
           }
         case .uint16(let uint16):
-          try writeUInt16(uint16)
+          writeUInt16(uint16)
 
         case .int32(let int32):
           if int32 >= 0 {
-            try writeUInt32(UInt32(int32))
+            writeUInt32(UInt32(int32))
           } else {
-            try writeNegativeInt(Int64(int32))
+            writeNegativeInt(Int64(int32))
           }
         case .uint32(let uint32):
-          try writeUInt32(uint32)
+          writeUInt32(uint32)
 
         case .int64(let int64):
           if int64 >= 0 {
-            try writeVarUInt(UInt64(int64))
+            writeVarUInt(UInt64(int64))
           } else {
-            try writeNegativeInt(int64)
+            writeNegativeInt(int64)
           }
         case .uint64(let uint64):
-          try writeVarUInt(uint64)
+          writeVarUInt(uint64)
 
         case .int128(let int128):
           try writeBignum(BigInt(int128))
@@ -525,11 +509,11 @@ final class CBOREncoder: FormatStreamEncoder {
           try writeBignum(uint)
 
         case .float16(let float16):
-          try writeHalf(float16)
+          writeHalf(float16)
         case .float32(let float32):
-          try writeFloat(float32)
+          writeFloat(float32)
         case .float64(let float64):
-          try writeDouble(float64)
+          writeDouble(float64)
 
         case .decimal(let decimal):
           try writeTagged(tag: 4, value: [.number(decimal.exponent), .number(decimal.mantissa)])
@@ -540,33 +524,33 @@ final class CBOREncoder: FormatStreamEncoder {
 
       case let text as Value.TextNumber:
         if text.isNaN {
-          try writeFloat(Float32.nan)
+          writeFloat(Float32.nan)
         } else if text.isInfinity {
-          try writeFloat(text.isNegative ? -Float32.infinity : Float32.infinity)
+          writeFloat(text.isNegative ? -Float32.infinity : Float32.infinity)
         } else if let integer = text.integer {
           if integer >= 0 {
             if integer <= UInt8.max {
-              try writeUInt8(UInt8(integer))
+              writeUInt8(UInt8(integer))
             } else if integer <= UInt16.max {
-              try writeUInt16(UInt16(integer))
+              writeUInt16(UInt16(integer))
             } else if integer <= UInt32.max {
-              try writeUInt32(UInt32(integer))
+              writeUInt32(UInt32(integer))
             } else if integer <= UInt64.max {
-              try writeUInt64(UInt64(integer))
+              writeUInt64(UInt64(integer))
             } else {
               try writeBignum(integer)
             }
           } else if integer >= Int64.min {
-            try writeNegativeInt(Int64(integer))
+            writeNegativeInt(Int64(integer))
           } else {
             try writeBignum(integer)
           }
         } else if let float = text.float(as: Float16.self) {
-          try writeHalf(float)
+          writeHalf(float)
         } else if let float = text.float(as: Float32.self) {
-          try writeFloat(float)
+          writeFloat(float)
         } else if let float = text.float(as: Float64.self) {
-          try writeDouble(float)
+          writeDouble(float)
         } else {
           try writeDecimalFraction(text.decimal)
         }
@@ -576,10 +560,10 @@ final class CBOREncoder: FormatStreamEncoder {
       }
 
     case .bytes(let data):
-      try writeByteString(data)
+      writeByteString(data)
 
     case .string(let str):
-      try writeString(str)
+      writeString(str)
 
     case .array(let array):
       try writeArray(array)
@@ -595,87 +579,83 @@ final class CBOREncoder: FormatStreamEncoder {
     }
   }
 
-  func writeValue(_ value: Value, tag: UInt64) throws {
+  mutating func writeValue(_ value: Value, tag: UInt64) throws {
     try writeTagged(tag: tag, value: value)
   }
 
   // MARK: - major 0: unsigned integer
 
-  private func writeLength(_ val: Int, majorType: UInt8) throws {
-    try writeVarUInt(UInt64(val), modifier: (majorType << 5))
+  private mutating func writeLength(_ val: Int, majorType: UInt8) {
+    writeVarUInt(UInt64(val), modifier: (majorType << 5))
   }
 
-  private func writeUInt8(_ val: UInt8, modifier: UInt8 = 0) throws {
+  private mutating func writeUInt8(_ val: UInt8, modifier: UInt8 = 0) {
     if val < 24 {
-      try stream.writeByte(val | modifier)
+      buffer.append(val | modifier)
     } else {
-      try stream.writeByte(0x18 | modifier)
-      try stream.writeByte(val)
+      buffer.append(0x18 | modifier)
+      buffer.append(val)
     }
   }
 
-  private func writeUInt16(_ val: UInt16, modifier: UInt8 = 0) throws {
-    try stream.writeByte(0x19 | modifier)
-    try writeInt(val)
+  private mutating func writeUInt16(_ val: UInt16, modifier: UInt8 = 0) {
+    buffer.append(0x19 | modifier)
+    appendBigEndian(val)
   }
 
-  private func writeUInt32(_ val: UInt32, modifier: UInt8 = 0) throws {
-    try stream.writeByte(0x1A | modifier)
-    try writeInt(val)
+  private mutating func writeUInt32(_ val: UInt32, modifier: UInt8 = 0) {
+    buffer.append(0x1A | modifier)
+    appendBigEndian(val)
   }
 
-  private func writeUInt64(_ val: UInt64, modifier: UInt8 = 0) throws {
-    try stream.writeByte(0x1B | modifier)
-    try writeInt(val)
+  private mutating func writeUInt64(_ val: UInt64, modifier: UInt8 = 0) {
+    buffer.append(0x1B | modifier)
+    appendBigEndian(val)
   }
 
-  private func writeVarUInt(_ val: UInt64, modifier: UInt8 = 0) throws {
+  private mutating func writeVarUInt(_ val: UInt64, modifier: UInt8 = 0) {
     switch val {
-    case let val where val <= UInt8.max: try writeUInt8(UInt8(val), modifier: modifier)
-    case let val where val <= UInt16.max: try writeUInt16(UInt16(val), modifier: modifier)
-    case let val where val <= UInt32.max: try writeUInt32(UInt32(val), modifier: modifier)
-    default: try writeUInt64(val, modifier: modifier)
+    case let val where val <= UInt8.max: writeUInt8(UInt8(val), modifier: modifier)
+    case let val where val <= UInt16.max: writeUInt16(UInt16(val), modifier: modifier)
+    case let val where val <= UInt32.max: writeUInt32(UInt32(val), modifier: modifier)
+    default: writeUInt64(val, modifier: modifier)
     }
   }
 
   // MARK: - major 1: negative integer
 
-  private func writeNegativeInt(_ val: Int64) throws {
-    try writeNegativeInt(val, modifier: 0)
+  private mutating func writeNegativeInt(_ val: Int64) {
+    writeNegativeInt(val, modifier: 0)
   }
 
-  private func writeNegativeInt(_ val: Int64, modifier: UInt8) throws {
+  private mutating func writeNegativeInt(_ val: Int64, modifier: UInt8) {
     assert(val < 0)
-    try writeVarUInt(~UInt64(bitPattern: val), modifier: 0b0010_0000 | modifier)
+    writeVarUInt(~UInt64(bitPattern: val), modifier: 0b0010_0000 | modifier)
   }
 
   // MARK: - major 2: bytestring
 
-  private func writeByteString(_ str: Data) throws {
-    try writeLength(str.count, majorType: 0b010)
-    try stream.writeBytes(str)
+  private mutating func writeByteString(_ str: Data) {
+    writeLength(str.count, majorType: 0b010)
+    buffer.append(str)
   }
 
   // MARK: - major 3: UTF8 string
 
-  private func writeString(_ str: String) throws {
+  private mutating func writeString(_ str: String) {
     let len = str.utf8.count
-    try writeLength(len, majorType: 0b011)
-    try str.withCString { ptr in
-      try ptr.withMemoryRebound(to: UInt8.self, capacity: len) { ptr in
-        try stream.writeBytes(UnsafeBufferPointer(start: ptr, count: len))
-      }
-    }
+    writeLength(len, majorType: 0b011)
+    buffer.append(contentsOf: str.utf8)
   }
 
   // MARK: - major 4: array of data items
 
-  private func writeArray(_ array: Value.Array) throws {
-    try writeLength(array.count, majorType: 0b100)
+  private mutating func writeArray(_ array: Value.Array) throws {
+    writeLength(array.count, majorType: 0b100)
     try writeArrayChunk(array)
   }
 
-  func writeArrayChunk(_ chunk: some Sequence<Value>) throws {
+  mutating func writeArrayChunk(_ chunk: some Sequence<Value>) throws {
     for item in chunk {
       try writeValue(item)
     }
@@ -683,22 +663,21 @@ final class CBOREncoder: FormatStreamEncoder {
 
   // MARK: - major 5: a map of pairs of data items
 
-  private func writeMap(_ map: Value.Object) throws {
-    try writeLength(map.count, majorType: 0b101)
+  private mutating func writeMap(_ map: Value.Object) throws {
+    writeLength(map.count, majorType: 0b101)
     if options.deterministic {
-      try map.map { (try deterministicBytes(of: $0), ($0, $1)) }
+      let sorted = try map.map { (try deterministicBytes(of: $0), ($0, $1)) }
         .sorted { (itemA, itemB) in itemA.0.lexicographicallyPrecedes(itemB.0) }
-        .map { $1 }
-        .forEach { key, value in
-          try writeValue(key)
-          try writeValue(value)
-        }
+      for (_, pair) in sorted {
+        try writeValue(pair.0)
+        try writeValue(pair.1)
+      }
     } else {
       try writeMapChunk(map)
     }
   }
 
-  func writeMapChunk(_ map: some Sequence<(key: Value, value: Value)>) throws {
+  mutating func writeMapChunk(_ map: some Sequence<(key: Value, value: Value)>) throws {
     for (key, value) in map {
       try writeValue(key)
       try writeValue(value)
@@ -707,78 +686,78 @@ final class CBOREncoder: FormatStreamEncoder {
 
   // MARK: - major 6: tagged values
 
-  private func writeTagged(tag: UInt64, value: Value) throws {
-    try writeVarUInt(tag, modifier: 0b1100_0000)
+  private mutating func writeTagged(tag: UInt64, value: Value) throws {
+    writeVarUInt(tag, modifier: 0b1100_0000)
     try writeValue(value)
   }
 
   // MARK: - major 7: floats, simple values, the 'break' stop code
 
-  private func writeSimpleValue(_ val: UInt8) throws {
+  private mutating func writeSimpleValue(_ val: UInt8) {
     if val < 24 {
-      try stream.writeByte(0b1110_0000 | val)
+      buffer.append(0b1110_0000 | val)
     } else {
-      try stream.writeByte(0xF8)
-      try stream.writeByte(val)
+      buffer.append(0xF8)
+      buffer.append(val)
     }
   }
 
-  private func writeNull() throws {
-    try stream.writeByte(0xF6)
+  private mutating func writeNull() {
+    buffer.append(0xF6)
   }
 
-  private func writeUndefined() throws {
-    try stream.writeByte(0xF7)
+  private mutating func writeUndefined() {
+    buffer.append(0xF7)
   }
 
-  private func writeHalf(_ val: Float16) throws {
-    try stream.writeByte(0xF9)
-    try writeInt(val.bitPattern)
+  private mutating func writeHalf(_ val: Float16) {
+    buffer.append(0xF9)
+    appendBigEndian(val.bitPattern)
   }
 
-  private func writeFloat(_ val: Float32) throws {
+  private mutating func writeFloat(_ val: Float32) {
     if options.deterministic {
       if val.isNaN {
-        return try writeHalf(.nan)
+        return writeHalf(.nan)
       }
       let half = Float16(val)
       if Float32(half) == val {
-        return try writeHalf(half)
+        return writeHalf(half)
       }
     }
-    try stream.writeByte(0xFA)
-    try writeInt(val.bitPattern)
+    buffer.append(0xFA)
+    appendBigEndian(val.bitPattern)
   }
 
-  private func writeDouble(_ val: Double) throws {
+  private mutating func writeDouble(_ val: Double) {
     if options.deterministic {
       if val.isNaN {
-        return try writeFloat(Float32(val))
+        return writeFloat(Float32(val))
       }
       let float = Float32(val)
       if Double(float) == val {
-        return try writeFloat(float)
+        return writeFloat(float)
       }
     }
-    try stream.writeByte(0xFB)
-    try writeInt(val.bitPattern)
+    buffer.append(0xFB)
+    appendBigEndian(val.bitPattern)
   }
 
-  private func writeBool(_ val: Bool) throws {
-    try stream.writeByte(val ? 0xF5 : 0xF4)
+  private mutating func writeBool(_ val: Bool) {
+    buffer.append(val ? 0xF5 : 0xF4)
   }
 
-  private func writeBignum(_ value: BigInt) throws {
+  private mutating func writeBignum(_ value: BigInt) throws {
     let bytes = value.magnitude.encode()
     try writeTagged(tag: value.isNegative ? 3 : 2, value: .bytes(Data(bytes)))
   }
 
-  private func writeBignum(_ value: BigUInt) throws {
+  private mutating func writeBignum(_ value: BigUInt) throws {
     let bytes = value.encode()
     try writeTagged(tag: 2, value: .bytes(Data(bytes)))
   }
 
-  private func writeDecimalFraction(_ value: BigDecimal) throws {
+  private mutating func writeDecimalFraction(_ value: BigDecimal) throws {
     let exponent = value.exponent
     let mantissa = value.mantissa
     try writeTagged(tag: CBORStructure.Tags.decimalFractionTag, value: [.number(exponent), .number(mantissa)])
@@ -786,21 +765,21 @@ final class CBOREncoder: FormatStreamEncoder {
 
   // MARK: - Indefinite length items
 
-  func writeIndefiniteStart(for type: CBORStreamItemType) throws {
-    try stream.writeByte(type.rawValue)
+  mutating func writeIndefiniteStart(for type: CBORStreamItemType) {
+    buffer.append(type.rawValue)
   }
 
-  func writeIndefiniteEnd() throws {
-    try stream.writeByte(0xFF)
+  mutating func writeIndefiniteEnd() {
+    buffer.append(0xFF)
   }
 
-  func writeTagHeader(_ tag: UInt64) throws {
-    try writeVarUInt(tag, modifier: 0b1100_0000)
+  mutating func writeTagHeader(_ tag: UInt64) {
+    writeVarUInt(tag, modifier: 0b1100_0000)
   }
 
-  private func writeInt<T: FixedWidthInteger>(_ int: T) throws {
-    try withUnsafeBytes(of: int.bigEndian) { ptr in
-      try stream.writeBytes(ptr.bindMemory(to: UInt8.self))
+  private mutating func appendBigEndian<T: FixedWidthInteger>(_ int: T) {
+    withUnsafeBytes(of: int.bigEndian) { ptr in
+      buffer.append(contentsOf: ptr)
     }
   }
 
@@ -810,7 +789,7 @@ final class CBOREncoder: FormatStreamEncoder {
 
   // MARK: - FormatStreamEncoder
 
-  func encode(_ event: ValueEvent, output: inout OutputSpan<UInt8>) throws -> FormatStreamEncodeStatus {
+  mutating func encode(_ event: ValueEvent, output: inout OutputSpan<UInt8>) throws -> FormatStreamEncodeStatus {
     if pendingEvent {
       let pendingStatus = drainPending(into: &output)
       if pendingStatus == .needMoreOutputSpace {
@@ -833,7 +812,7 @@ final class CBOREncoder: FormatStreamEncoder {
     return status
   }
 
-  func finish(output: inout OutputSpan<UInt8>) throws -> FormatStreamEncodeStatus {
+  mutating func finish(output: inout OutputSpan<UInt8>) throws -> FormatStreamEncodeStatus {
     let pendingStatus = drainPending(into: &output)
     if pendingStatus == .needMoreOutputSpace {
       return pendingStatus
@@ -850,55 +829,27 @@ final class CBOREncoder: FormatStreamEncoder {
     return finalStatus == .needMoreOutputSpace ? finalStatus : .endOfStream
   }
 
-  private func drainPending(into output: inout OutputSpan<UInt8>) -> FormatStreamEncodeStatus {
-    guard let bufferStream else { return .producedOutput }
-
-    let data = bufferStream.data
-    guard pendingOffset < data.count else {
-      bufferStream.data.removeAll(keepingCapacity: true)
+  private mutating func drainPending(into output: inout OutputSpan<UInt8>) -> FormatStreamEncodeStatus {
+    guard pendingOffset < buffer.count else {
+      buffer.removeAll(keepingCapacity: true)
       pendingOffset = 0
       return .producedOutput
     }
 
     guard !output.isFull else { return .needMoreOutputSpace }
 
-    while pendingOffset < data.count && !output.isFull {
-      output.append(data[pendingOffset])
+    while pendingOffset < buffer.count && !output.isFull {
+      output.append(buffer[pendingOffset])
       pendingOffset += 1
     }
 
-    if pendingOffset >= data.count {
-      bufferStream.data.removeAll(keepingCapacity: true)
+    if pendingOffset >= buffer.count {
+      buffer.removeAll(keepingCapacity: true)
       pendingOffset = 0
       return .producedOutput
     }
 
     return .needMoreOutputSpace
-  }
-}
-
-final class CBORByteBuffer: CBORByteSink {
-  var data = Data()
-
-  func writeByte(_ byte: UInt8) throws {
-    data.append(byte)
-  }
-
-  func writeBytes(_ ptr: UnsafeBufferPointer<UInt8>) throws {
-    guard let baseAddress = ptr.baseAddress else {
-      return
-    }
-    data.append(baseAddress, count: ptr.count)
-  }
-
-  func writeBytes(_ data: Data) throws {
-    self.data.append(data)
-  }
-
-  func writeInt<T>(_ int: T) throws where T: FixedWidthInteger {
-    try withUnsafeBytes(of: int.bigEndian) { ptr in
-      try writeBytes(ptr.bindMemory(to: UInt8.self))
-    }
   }
 }
 
