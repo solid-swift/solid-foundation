@@ -59,7 +59,7 @@ public final class JSONValueWriter: FormatWriter {
   public func write(_ value: Value) {
     let encoder = ValueEventEncoder()
     let streamEncoder = JSONStreamEncoder(
-      options: .init(tagShape: options.tagShape, escapeSlashes: false)
+      writer: JSONEventWriter(options: .init(tagShape: options.tagShape, escapeSlashes: false))
     )
     var buffer = FormatStreamEncoderBuffer(encoder: streamEncoder)
     output = (try? buffer.encode(events: encoder.encode(value))) ?? Data()

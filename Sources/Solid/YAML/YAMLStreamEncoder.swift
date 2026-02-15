@@ -8,8 +8,11 @@
 import Foundation
 import SolidCore
 import SolidData
-/// Synchronous YAML stream encoder that consumes ``ValueEvent`` values.
-struct YAMLStreamEncoder: FormatStreamEncoder {
+/// Typealias preserving the original name for use by ``YAMLStreamWriter`` and ``YAMLValueWriter``.
+typealias YAMLStreamEncoder = BufferedStreamEncoder<YAMLEventWriter>
+
+/// Synchronous YAML event writer that serializes ``ValueEvent`` values into bytes.
+struct YAMLEventWriter: FormatEventWriter {
 
   static let anchorTagPrefix = "tag:solid.foundation,2025:anchor:"
   typealias Options = YAMLStreamWriter.Options
@@ -51,14 +54,11 @@ struct YAMLStreamEncoder: FormatStreamEncoder {
   private let options: Options
 
   private var buffer = Data()
-  private var pendingOffset = 0
   private var containers: [ContainerState] = []
   private var pendingTags: [Value] = []
   private var pendingAnchor: String?
   private var pendingStyle: ValueStyle?
   private var rootState: RootState = .expectingValue
-  private var finished = false
-  private var pendingEvent = false
   private var atLineStart = true
 
   init(options: Options = .default) {
@@ -67,9 +67,32 @@ struct YAMLStreamEncoder: FormatStreamEncoder {
 
   public var format: Format { YAML.format }
 
-  mutating func writeEvent(_ event: ValueEvent) throws {
-    guard !finished else { throw YAML.EmitError.invalidState("Writer already finished") }
+  // MARK: - FormatEventWriter
 
+  mutating func writeEvent(_ event: ValueEvent, into output: inout Data) throws {
+    swap(&buffer, &output)
+    defer { swap(&buffer, &output) }
+    try writeEventImpl(event)
+  }
+
+  mutating func finishWriting(into output: inout Data) throws {
+    guard
+      containers.isEmpty, pendingTags.isEmpty,
+      pendingAnchor == nil, pendingStyle == nil,
+      rootState == .complete
+    else {
+      throw YAML.EmitError.invalidState("Incomplete YAML document")
+    }
+    if !output.isEmpty, !atLineStart {
+      swap(&buffer, &output)
+      defer { swap(&buffer, &output) }
+      try appendString("\n")
+    }
+  }
+
+  // MARK: - Event Implementation
+
+  private mutating func writeEventImpl(_ event: ValueEvent) throws {
     switch event {
     case .style(let style):
       guard pendingStyle == nil else {
@@ -1172,77 +1195,4 @@ struct YAMLStreamEncoder: FormatStreamEncoder {
     }
   }
 
-  // MARK: - FormatStreamEncoder
-
-  mutating func encode(_ event: ValueEvent, output: inout OutputSpan<UInt8>) throws -> FormatStreamEncodeStatus {
-    if pendingEvent {
-      let pendingStatus = drainPending(into: &output)
-      if pendingStatus == .needMoreOutputSpace {
-        return pendingStatus
-      }
-      pendingEvent = false
-      return .producedOutput
-    }
-
-    let pendingStatus = drainPending(into: &output)
-    if pendingStatus == .needMoreOutputSpace {
-      return pendingStatus
-    }
-
-    try writeEvent(event)
-    let status = drainPending(into: &output)
-    if status == .needMoreOutputSpace {
-      pendingEvent = true
-    }
-    return status
-  }
-
-  mutating func finish(output: inout OutputSpan<UInt8>) throws -> FormatStreamEncodeStatus {
-    let pendingStatus = drainPending(into: &output)
-    if pendingStatus == .needMoreOutputSpace {
-      return pendingStatus
-    }
-
-    if finished {
-      let finalStatus = drainPending(into: &output)
-      return finalStatus == .needMoreOutputSpace ? finalStatus : .endOfStream
-    }
-    guard
-      containers.isEmpty, pendingTags.isEmpty,
-      pendingAnchor == nil, pendingStyle == nil,
-      rootState == .complete
-    else {
-      throw YAML.EmitError.invalidState("Incomplete YAML document")
-    }
-    if !buffer.isEmpty, !atLineStart {
-      try appendString("\n")
-    }
-    finished = true
-
-    let finalStatus = drainPending(into: &output)
-    return finalStatus == .needMoreOutputSpace ? finalStatus : .endOfStream
-  }
-
-  private mutating func drainPending(into output: inout OutputSpan<UInt8>) -> FormatStreamEncodeStatus {
-    guard pendingOffset < buffer.count else {
-      buffer.removeAll(keepingCapacity: true)
-      pendingOffset = 0
-      return .producedOutput
-    }
-
-    guard !output.isFull else { return .needMoreOutputSpace }
-
-    while pendingOffset < buffer.count && !output.isFull {
-      output.append(buffer[pendingOffset])
-      pendingOffset += 1
-    }
-
-    if pendingOffset >= buffer.count {
-      buffer.removeAll(keepingCapacity: true)
-      pendingOffset = 0
-      return .producedOutput
-    }
-
-    return .needMoreOutputSpace
-  }
 }

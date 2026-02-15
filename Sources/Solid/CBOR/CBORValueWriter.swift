@@ -46,7 +46,9 @@ public final class CBORValueWriter: FormatWriter {
       includeContainerSizes: options.includeContainerSizes
     )
     let events = try encoder.encode(value)
-    let streamEncoder = CBOREncoder(options: .init(deterministic: options.deterministic, deterministicMode: .none))
+    let streamEncoder = CBORStreamEncoder(
+      writer: CBOREncoder(options: .init(deterministic: options.deterministic, deterministicMode: .none))
+    )
     var buffer = FormatStreamEncoderBuffer(encoder: streamEncoder)
     output = try buffer.encode(events: events)
   }

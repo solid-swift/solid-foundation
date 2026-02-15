@@ -7,8 +7,12 @@
 
 import Foundation
 import SolidData
-/// Synchronous JSON stream encoder that consumes ``ValueEvent`` values.
-struct JSONStreamEncoder: FormatStreamEncoder {
+
+/// Typealias preserving the original name for use by ``JSONStreamWriter`` and ``JSONValueWriter``.
+typealias JSONStreamEncoder = BufferedStreamEncoder<JSONEventWriter>
+
+/// Synchronous JSON event writer that serializes ``ValueEvent`` values into bytes.
+struct JSONEventWriter: FormatEventWriter {
 
   public typealias TagShape = JSONValueWriter.Options.TagShape
   typealias Options = JSONStreamWriter.Options
@@ -37,13 +41,10 @@ struct JSONStreamEncoder: FormatStreamEncoder {
   private let options: Options
 
   private var buffer = Data()
-  private var pendingOffset = 0
   private var rootState: RootState = .expectingValue
   private var containers: [ContainerState] = []
   private var wrapperStack: [WrapperContext] = []
   private var pendingTags: [Value] = []
-  private var finished = false
-  private var pendingEvent = false
 
   init(options: Options = .default) {
     self.options = options
@@ -51,11 +52,23 @@ struct JSONStreamEncoder: FormatStreamEncoder {
 
   public var format: Format { JSON.format }
 
-  mutating func writeEvent(_ event: ValueEvent) throws {
-    guard !finished else {
-      throw Error.alreadyFinished
-    }
+  // MARK: - FormatEventWriter
 
+  mutating func writeEvent(_ event: ValueEvent, into output: inout Data) throws {
+    swap(&buffer, &output)
+    defer { swap(&buffer, &output) }
+    try writeEventImpl(event)
+  }
+
+  mutating func finishWriting(into output: inout Data) throws {
+    guard containers.isEmpty, wrapperStack.isEmpty, pendingTags.isEmpty, rootState == .complete else {
+      throw Error.incompleteJSON
+    }
+  }
+
+  // MARK: - Event Implementation
+
+  private mutating func writeEventImpl(_ event: ValueEvent) throws {
     switch event {
     case .style:
       break
@@ -349,71 +362,5 @@ struct JSONStreamEncoder: FormatStreamEncoder {
 
   private mutating func appendByte(_ byte: UInt8) {
     buffer.append(byte)
-  }
-
-  // MARK: - FormatStreamEncoder
-
-  mutating func encode(_ event: ValueEvent, output: inout OutputSpan<UInt8>) throws -> FormatStreamEncodeStatus {
-    if pendingEvent {
-      let pendingStatus = drainPending(into: &output)
-      if pendingStatus == .needMoreOutputSpace {
-        return pendingStatus
-      }
-      pendingEvent = false
-      return .producedOutput
-    }
-
-    let pendingStatus = drainPending(into: &output)
-    if pendingStatus == .needMoreOutputSpace {
-      return pendingStatus
-    }
-
-    try writeEvent(event)
-    let status = drainPending(into: &output)
-    if status == .needMoreOutputSpace {
-      pendingEvent = true
-    }
-    return status
-  }
-
-  mutating func finish(output: inout OutputSpan<UInt8>) throws -> FormatStreamEncodeStatus {
-    let pendingStatus = drainPending(into: &output)
-    if pendingStatus == .needMoreOutputSpace {
-      return pendingStatus
-    }
-
-    if finished {
-      let finalStatus = drainPending(into: &output)
-      return finalStatus == .needMoreOutputSpace ? finalStatus : .endOfStream
-    }
-    guard containers.isEmpty, wrapperStack.isEmpty, pendingTags.isEmpty, rootState == .complete else {
-      throw Error.incompleteJSON
-    }
-    finished = true
-    let finalStatus = drainPending(into: &output)
-    return finalStatus == .needMoreOutputSpace ? finalStatus : .endOfStream
-  }
-
-  private mutating func drainPending(into output: inout OutputSpan<UInt8>) -> FormatStreamEncodeStatus {
-    guard pendingOffset < buffer.count else {
-      buffer.removeAll(keepingCapacity: true)
-      pendingOffset = 0
-      return .producedOutput
-    }
-
-    guard !output.isFull else { return .needMoreOutputSpace }
-
-    while pendingOffset < buffer.count && !output.isFull {
-      output.append(buffer[pendingOffset])
-      pendingOffset += 1
-    }
-
-    if pendingOffset >= buffer.count {
-      buffer.removeAll(keepingCapacity: true)
-      pendingOffset = 0
-      return .producedOutput
-    }
-
-    return .needMoreOutputSpace
   }
 }

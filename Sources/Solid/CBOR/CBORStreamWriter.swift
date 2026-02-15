@@ -50,13 +50,15 @@ public final class CBORStreamWriter: FormatStreamWriter {
     }
   }
 
-  private var driver: FormatStreamWriterDriver<CBOREncoder>
+  private var driver: FormatStreamWriterDriver<CBORStreamEncoder>
   private var finished = false
 
   public init(sink: any Sink, options: Options = .default, bufferSize: Int = BufferedSink.segmentSize) {
     self.driver = FormatStreamWriterDriver(
-      encoder: CBOREncoder(
-        options: .init(deterministic: false, deterministicMode: .init(options.deterministicMode))
+      encoder: CBORStreamEncoder(
+        writer: CBOREncoder(
+          options: .init(deterministic: false, deterministicMode: .init(options.deterministicMode))
+        )
       ),
       sink: sink,
       bufferSize: bufferSize

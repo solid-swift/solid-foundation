@@ -16,7 +16,10 @@ enum CBORStreamItemType: UInt8 {
   case byteString = 0x5F
 }
 
-struct CBOREncoder: FormatStreamEncoder {
+/// Typealias for the stream encoder wrapping ``CBOREncoder`` with buffer management.
+typealias CBORStreamEncoder = BufferedStreamEncoder<CBOREncoder>
+
+struct CBOREncoder: FormatEventWriter {
 
   enum Error: Swift.Error {
     case invalidEventSequence(String)
@@ -159,12 +162,9 @@ struct CBOREncoder: FormatStreamEncoder {
   private let options: Options
 
   var buffer = Data()
-  private var pendingOffset = 0
   private var rootState: RootState = .expectingValue
   private var containers: [ContainerState] = []
   private var pendingTags: [UInt64] = []
-  private var finished = false
-  private var pendingEvent = false
   private var mapBuffer: MapBuffer?
 
   var format: Format { CBOR.format }
@@ -179,10 +179,26 @@ struct CBOREncoder: FormatStreamEncoder {
     return encoder.buffer
   }
 
+  // MARK: - FormatEventWriter
+
+  mutating func writeEvent(_ event: ValueEvent, into output: inout Data) throws {
+    swap(&buffer, &output)
+    defer { swap(&buffer, &output) }
+    try writeEventImpl(event)
+  }
+
+  mutating func finishWriting(into output: inout Data) throws {
+    guard mapBuffer == nil else {
+      throw Error.incompleteCBOR
+    }
+    guard containers.isEmpty, pendingTags.isEmpty, rootState == .complete else {
+      throw Error.incompleteCBOR
+    }
+  }
+
   // MARK: - Event Encoding
 
-  mutating func writeEvent(_ event: ValueEvent) throws {
-    guard !finished else { throw Error.alreadyFinished }
+  private mutating func writeEventImpl(_ event: ValueEvent) throws {
     if var mapBuf = mapBuffer {
       if let completion = try mapBuf.handle(event) {
         mapBuffer = nil
@@ -295,15 +311,6 @@ struct CBOREncoder: FormatStreamEncoder {
         writeIndefiniteEnd()
       }
       try finishValue()
-    }
-  }
-
-  func finishEvents() throws {
-    guard mapBuffer == nil else {
-      throw Error.incompleteCBOR
-    }
-    guard containers.isEmpty, pendingTags.isEmpty, rootState == .complete else {
-      throw Error.incompleteCBOR
     }
   }
 
@@ -436,8 +443,10 @@ struct CBOREncoder: FormatStreamEncoder {
   }
 
   private func encodeValueEvents(_ events: [ValueEvent]) throws -> Data {
-    let encoder = CBOREncoder(options: Options(deterministic: false, deterministicMode: .none))
-    var encoderBuffer = FormatStreamEncoderBuffer(encoder: encoder)
+    let streamEncoder = CBORStreamEncoder(
+      writer: CBOREncoder(options: Options(deterministic: false, deterministicMode: .none))
+    )
+    var encoderBuffer = FormatStreamEncoderBuffer(encoder: streamEncoder)
     return try encoderBuffer.encode(events: events)
   }
 
@@ -787,70 +796,6 @@ struct CBOREncoder: FormatStreamEncoder {
     return try Self.encodeValue(value, deterministic: true)
   }
 
-  // MARK: - FormatStreamEncoder
-
-  mutating func encode(_ event: ValueEvent, output: inout OutputSpan<UInt8>) throws -> FormatStreamEncodeStatus {
-    if pendingEvent {
-      let pendingStatus = drainPending(into: &output)
-      if pendingStatus == .needMoreOutputSpace {
-        return pendingStatus
-      }
-      pendingEvent = false
-      return .producedOutput
-    }
-
-    let pendingStatus = drainPending(into: &output)
-    if pendingStatus == .needMoreOutputSpace {
-      return pendingStatus
-    }
-
-    try writeEvent(event)
-    let status = drainPending(into: &output)
-    if status == .needMoreOutputSpace {
-      pendingEvent = true
-    }
-    return status
-  }
-
-  mutating func finish(output: inout OutputSpan<UInt8>) throws -> FormatStreamEncodeStatus {
-    let pendingStatus = drainPending(into: &output)
-    if pendingStatus == .needMoreOutputSpace {
-      return pendingStatus
-    }
-
-    if finished {
-      let finalStatus = drainPending(into: &output)
-      return finalStatus == .needMoreOutputSpace ? finalStatus : .endOfStream
-    }
-    try finishEvents()
-    finished = true
-
-    let finalStatus = drainPending(into: &output)
-    return finalStatus == .needMoreOutputSpace ? finalStatus : .endOfStream
-  }
-
-  private mutating func drainPending(into output: inout OutputSpan<UInt8>) -> FormatStreamEncodeStatus {
-    guard pendingOffset < buffer.count else {
-      buffer.removeAll(keepingCapacity: true)
-      pendingOffset = 0
-      return .producedOutput
-    }
-
-    guard !output.isFull else { return .needMoreOutputSpace }
-
-    while pendingOffset < buffer.count && !output.isFull {
-      output.append(buffer[pendingOffset])
-      pendingOffset += 1
-    }
-
-    if pendingOffset >= buffer.count {
-      buffer.removeAll(keepingCapacity: true)
-      pendingOffset = 0
-      return .producedOutput
-    }
-
-    return .needMoreOutputSpace
-  }
 }
 
 extension CBOREncoder.DeterministicMode {

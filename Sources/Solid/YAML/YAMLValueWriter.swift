@@ -39,7 +39,7 @@ public final class YAMLValueWriter: FormatWriter {
   public func write(_ value: Value) throws {
     let encoder = ValueEventEncoder()
     let streamEncoder = YAMLStreamEncoder(
-      options: .init(indent: options.indent, allowImplicitTyping: false)
+      writer: YAMLEventWriter(options: .init(indent: options.indent, allowImplicitTyping: false))
     )
     var buffer = FormatStreamEncoderBuffer(encoder: streamEncoder)
     output = try buffer.encode(events: encoder.encode(value))

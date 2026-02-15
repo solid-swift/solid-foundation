@@ -38,7 +38,7 @@ public final class JSONStreamWriter: FormatStreamWriter {
 
   public init(sink: any Sink, bufferSize: Int = BufferedSink.segmentSize, options: Options = .default) {
     self.driver = FormatStreamWriterDriver(
-      encoder: JSONStreamEncoder(options: options),
+      encoder: JSONStreamEncoder(writer: JSONEventWriter(options: options)),
       sink: sink,
       bufferSize: bufferSize
     )

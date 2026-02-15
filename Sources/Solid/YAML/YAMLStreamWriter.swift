@@ -12,7 +12,7 @@ import SolidIO
 /// Async YAML stream writer that consumes ``ValueEvent`` values.
 public final class YAMLStreamWriter: FormatStreamWriter {
 
-  static let anchorTagPrefix = YAMLStreamEncoder.anchorTagPrefix
+  static let anchorTagPrefix = YAMLEventWriter.anchorTagPrefix
 
   public struct Options: Sendable {
     public static let `default` = Self()
@@ -39,7 +39,7 @@ public final class YAMLStreamWriter: FormatStreamWriter {
 
   public init(sink: any Sink, bufferSize: Int = BufferedSink.segmentSize, options: Options = .default) {
     self.driver = FormatStreamWriterDriver(
-      encoder: YAMLStreamEncoder(options: options),
+      encoder: YAMLStreamEncoder(writer: YAMLEventWriter(options: options)),
       sink: sink,
       bufferSize: bufferSize
     )
