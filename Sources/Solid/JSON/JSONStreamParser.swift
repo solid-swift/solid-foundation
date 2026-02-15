@@ -655,16 +655,14 @@ private struct JSONStreamingTokenizer {
     }
   }
 
-  private static let whitespaceASCII: [UInt8] = [
-    0x09,    // Horizontal tab
-    0x0A,    // Line feed
-    0x0D,    // Carriage return
-    0x20,    // Space
-  ]
-
   private mutating func consumeWhitespace() {
-    while let byte = peekByte(), Self.whitespaceASCII.contains(byte) {
-      advance()
+    while let byte = peekByte() {
+      switch byte {
+      case 0x09, 0x0A, 0x0D, 0x20:
+        advance()
+      default:
+        return
+      }
     }
   }
 

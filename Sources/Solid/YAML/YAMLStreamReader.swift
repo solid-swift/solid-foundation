@@ -12,7 +12,7 @@ import SolidData
 public struct YAMLStreamReader: FormatStreamReader {
 
   private var eventIterator: YAMLNodeEventIterator?
-  private var buffers = DataBufferPair()
+  private var remainingText = ""
   private var allowDirectives = true
   private var requireDocumentStart = false
   private var finished = false
@@ -29,7 +29,10 @@ public struct YAMLStreamReader: FormatStreamReader {
     guard !finished else { return .endOfStream }
 
     if !input.isEmpty {
-      buffers.append(input)
+      guard let chunk = String(data: input, encoding: .utf8) else {
+        throw YAML.DataError.invalidEncoding(.utf8)
+      }
+      remainingText += chunk
     }
 
     var produced = false
@@ -60,19 +63,12 @@ public struct YAMLStreamReader: FormatStreamReader {
   }
 
   private mutating func readNextDocument(isFinal: Bool) throws -> YAMLDocument? {
-    let data = buffers.combinedData()
-    guard !data.isEmpty else {
-      return nil
-    }
-    guard let text = String(data: data, encoding: .utf8) else {
-      if isFinal {
-        throw YAML.DataError.invalidEncoding(.utf8)
-      }
+    guard !remainingText.isEmpty else {
       return nil
     }
 
     var parser = try YAMLParser(
-      text: text,
+      text: remainingText,
       allowIncompleteInput: !isFinal,
       allowDirectives: allowDirectives,
       requireDocumentStart: requireDocumentStart
@@ -80,10 +76,9 @@ public struct YAMLStreamReader: FormatStreamReader {
     guard let document = try parser.parseNextDocument() else {
       return nil
     }
-    let remaining = parser.remainingText()
     allowDirectives = parser.allowsDirectives
     requireDocumentStart = parser.requiresDocumentStart
-    buffers.replace(with: Data(remaining.utf8))
+    remainingText = parser.remainingText()
     return document
   }
 }

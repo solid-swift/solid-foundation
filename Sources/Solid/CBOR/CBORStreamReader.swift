@@ -5,6 +5,7 @@
 //  Created by Kevin Wooten on 2/17/26.
 //
 
+import Collections
 import Foundation
 import SolidData
 import SolidNumeric
@@ -35,7 +36,7 @@ public struct CBORStreamReader: FormatStreamReader {
 
   private var inputBuffer = CBORInputBuffer()
   private var frames: [Frame] = []
-  private var pendingEvents: [ValueEvent] = []
+  private var pendingEvents: Deque<ValueEvent> = []
   private var finished = false
   private var completedRootInCall = false
   private let options: CBORValueReader.Options
@@ -96,7 +97,7 @@ public struct CBORStreamReader: FormatStreamReader {
       return completion
     }
 
-    if inputBuffer.isEmpty {
+    if inputBuffer.peekByte() == nil {
       if isFinal {
         if !frames.isEmpty {
           throw CBOR.Error.unexpectedEndOfStream

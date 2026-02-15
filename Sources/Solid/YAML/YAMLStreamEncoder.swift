@@ -616,10 +616,14 @@ struct YAMLEventWriter: FormatEventWriter {
 
   private mutating func ensureLineStart(indent: Int) throws {
     if !atLineStart {
-      try appendString("\n")
+      buffer.append(0x0A) // newline
+      atLineStart = true
+    }
+    for _ in 0..<indent {
+      buffer.append(0x20) // space
     }
     if indent > 0 {
-      try appendString(indentString(count: indent))
+      atLineStart = false
     }
   }
 
@@ -1162,8 +1166,7 @@ struct YAMLEventWriter: FormatEventWriter {
       if !bodyLines.isEmpty {
         let isBlockScalar = firstLine.hasPrefix("|") || firstLine.hasPrefix(">")
         let lineIndent = indent + options.indent
-        let padding = indentString(count: lineIndent)
-        let blockIndent = indentString(count: options.indent)
+        let blockIndent = String(repeating: " ", count: options.indent)
         for line in bodyLines {
           try appendString("\n")
           var renderedLine = line
@@ -1171,8 +1174,8 @@ struct YAMLEventWriter: FormatEventWriter {
             renderedLine = String(renderedLine.dropFirst(blockIndent.count))
           }
           if !renderedLine.isEmpty {
-            if !padding.isEmpty {
-              try appendString(padding)
+            if lineIndent > 0 {
+              appendIndent(count: lineIndent)
             }
             try appendString(renderedLine)
           }
@@ -1186,12 +1189,17 @@ struct YAMLEventWriter: FormatEventWriter {
   // MARK: - Output helpers
 
   private mutating func appendString(_ string: String) throws {
-    guard let data = string.data(using: .utf8) else {
-      throw YAML.DataError.invalidEncoding(.utf8)
+    guard !string.isEmpty else { return }
+    buffer.append(contentsOf: string.utf8)
+    atLineStart = string.utf8.last == 0x0A
+  }
+
+  private mutating func appendIndent(count: Int) {
+    for _ in 0..<count {
+      buffer.append(0x20)
     }
-    buffer.append(data)
-    if let last = string.last {
-      atLineStart = last == "\n"
+    if count > 0 {
+      atLineStart = false
     }
   }
 

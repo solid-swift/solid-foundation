@@ -86,10 +86,17 @@ public struct BufferedStreamEncoder<Writer: FormatEventWriter>: FormatStreamEnco
 
     guard !output.isFull else { return .needMoreOutputSpace }
 
-    while pendingOffset < buffer.count && !output.isFull {
-      output.append(buffer[pendingOffset])
-      pendingOffset += 1
+    let available = buffer.count - pendingOffset
+    let outputRemaining = output.capacity - output.count
+    let toCopy = min(available, outputRemaining)
+    buffer.withUnsafeBytes { rawBuffer in
+      let base = rawBuffer.baseAddress!.advanced(by: pendingOffset)
+        .assumingMemoryBound(to: UInt8.self)
+      for i in 0..<toCopy {
+        output.append(base[i])
+      }
     }
+    pendingOffset += toCopy
 
     if pendingOffset >= buffer.count {
       buffer.removeAll(keepingCapacity: true)

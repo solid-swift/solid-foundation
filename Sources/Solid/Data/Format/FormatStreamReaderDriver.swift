@@ -5,6 +5,7 @@
 //  Created by Kevin Wooten on 2/14/26.
 //
 
+import Collections
 import Foundation
 import SolidIO
 
@@ -16,7 +17,7 @@ public final class FormatStreamReaderDriver<Reader: FormatStreamReader> {
   private let bufferSize: Int
   private let outputCapacity: Int
   private let outputBuffer: UnsafeMutableBufferPointer<ValueEvent>
-  private var queue: [ValueEvent] = []
+  private var queue: Deque<ValueEvent> = []
   private var reachedEOF = false
   private var finished = false
 

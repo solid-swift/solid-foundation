@@ -37,12 +37,6 @@ struct JSONTokenReader {
     }
   }
 
-  private static let whitespaceASCII: [UInt8] = [
-    0x09,    // Horizontal tab
-    0x0A,    // Line feed or New line
-    0x0D,    // Carriage return
-    0x20,    // Space
-  ]
 
   typealias Index = Int
   typealias IndexDistance = Int
@@ -129,8 +123,13 @@ struct JSONTokenReader {
   }
 
   mutating func consumeWhitespace() {
-    while let char = try? source.peekASCII(), Self.whitespaceASCII.contains(char) {
-      try? source.skip(count: 1)
+    while let char = try? source.peekASCII() {
+      switch char {
+      case 0x09, 0x0A, 0x0D, 0x20:
+        try? source.skip(count: 1)
+      default:
+        return
+      }
     }
   }
 

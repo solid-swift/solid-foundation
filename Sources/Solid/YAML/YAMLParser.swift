@@ -14,14 +14,23 @@ struct YAMLParser {
     let indent: Int
     let raw: String
     let hasTabIndent: Bool
+    let strippedComment: String
+
+    init(number: Int, indent: Int, raw: String, hasTabIndent: Bool) {
+      self.number = number
+      self.indent = indent
+      self.raw = raw
+      self.hasTabIndent = hasTabIndent
+      let content = String(raw.dropFirst(indent))
+      self.strippedComment = Line.stripComment(from: content)
+    }
 
     var content: String {
       String(raw.dropFirst(indent))
     }
 
     func contentStrippingComment() -> String {
-      let withoutComment = Line.stripComment(from: content)
-      return withoutComment
+      strippedComment
     }
 
     static func stripComment(from text: String) -> String {
@@ -67,7 +76,7 @@ struct YAMLParser {
     allowDirectives: Bool = true,
     requireDocumentStart: Bool = false
   ) throws {
-    let normalized = text.replacingOccurrences(of: "\r\n", with: "\n").replacingOccurrences(of: "\r", with: "\n")
+    let normalized = Self.normalizeCRLF(text)
     let rawLines = normalized.split(separator: "\n", omittingEmptySubsequences: false)
     var parsed: [Line] = []
     parsed.reserveCapacity(rawLines.count)
@@ -92,6 +101,29 @@ struct YAMLParser {
     self.allowIncompleteInput = allowIncompleteInput
     self.allowDirectives = allowDirectives
     self.requireDocumentStart = requireDocumentStart
+  }
+
+  /// Single-pass CRLF normalization: handles both `\r\n` and lone `\r`.
+  private static func normalizeCRLF(_ text: String) -> String {
+    guard text.utf8.contains(UInt8(ascii: "\r")) else { return text }
+    var result = ""
+    result.reserveCapacity(text.count)
+    var iterator = text.makeIterator()
+    while let ch = iterator.next() {
+      if ch == "\r" {
+        result.append("\n")
+        // Skip the \n in a \r\n pair
+        var peeked = iterator.next()
+        if let next = peeked, next != "\n" {
+          result.append(next)
+        }
+        // If peeked was nil, we're done
+        if peeked == nil { break }
+      } else {
+        result.append(ch)
+      }
+    }
+    return result
   }
 
   private func lineNumber(for lineIndex: Int) -> Int {

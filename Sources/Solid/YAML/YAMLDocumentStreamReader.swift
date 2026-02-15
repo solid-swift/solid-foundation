@@ -14,7 +14,7 @@ public final class YAMLDocumentStreamReader {
 
   private let source: any Source
   private let bufferSize: Int
-  private var buffers = DataBufferPair()
+  private var remainingText = ""
   private var allowDirectives = true
   private var requireDocumentStart = false
   private var reachedEOF = false
@@ -44,24 +44,20 @@ public final class YAMLDocumentStreamReader {
         reachedEOF = true
         continue
       }
-      buffers.append(chunk)
+      guard let text = String(data: chunk, encoding: .utf8) else {
+        throw YAML.DataError.invalidEncoding(.utf8)
+      }
+      remainingText += text
     }
   }
 
   private func readNextDocument(isFinal: Bool) throws -> YAMLDocument? {
-    let data = buffers.combinedData()
-    guard !data.isEmpty else {
-      return nil
-    }
-    guard let text = String(data: data, encoding: .utf8) else {
-      if isFinal {
-        throw YAML.DataError.invalidEncoding(.utf8)
-      }
+    guard !remainingText.isEmpty else {
       return nil
     }
 
     var parser = try YAMLParser(
-      text: text,
+      text: remainingText,
       allowIncompleteInput: !isFinal,
       allowDirectives: allowDirectives,
       requireDocumentStart: requireDocumentStart
@@ -71,8 +67,7 @@ public final class YAMLDocumentStreamReader {
     }
     allowDirectives = parser.allowsDirectives
     requireDocumentStart = parser.requiresDocumentStart
-    let remaining = parser.remainingText()
-    buffers.replace(with: Data(remaining.utf8))
+    remainingText = parser.remainingText()
     return document
   }
 }
