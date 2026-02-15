@@ -28,6 +28,8 @@ struct CBOREncoder: FormatEventWriter {
     case invalidTagValue
   }
 
+  typealias DeterministicMode = CBORStreamWriter.DeterministicMode
+
   struct Options: Sendable {
     var deterministic: Bool
     var deterministicMode: DeterministicMode
@@ -36,13 +38,6 @@ struct CBOREncoder: FormatEventWriter {
       self.deterministic = deterministic
       self.deterministicMode = deterministicMode
     }
-  }
-
-  enum DeterministicMode: Sendable, Equatable {
-    case none
-    case assumeSortedKeys
-    case buffered(maxPairs: Int, maxBytes: Int)
-    case strict(maxPairs: Int, maxBytes: Int)
   }
 
   private enum RootState {
@@ -796,19 +791,4 @@ struct CBOREncoder: FormatEventWriter {
     return try Self.encodeValue(value, deterministic: true)
   }
 
-}
-
-extension CBOREncoder.DeterministicMode {
-  init(_ mode: CBORStreamWriter.DeterministicMode) {
-    switch mode {
-    case .none:
-      self = .none
-    case .assumeSortedKeys:
-      self = .assumeSortedKeys
-    case .buffered(let maxPairs, let maxBytes):
-      self = .buffered(maxPairs: maxPairs, maxBytes: maxBytes)
-    case .strict(let maxPairs, let maxBytes):
-      self = .strict(maxPairs: maxPairs, maxBytes: maxBytes)
-    }
-  }
 }

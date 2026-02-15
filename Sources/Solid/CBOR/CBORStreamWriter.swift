@@ -56,7 +56,7 @@ public final class CBORStreamWriter: FormatStreamWriter {
     self.adapter = FormatStreamWriterAdapter(
       encoder: CBORStreamEncoder(
         writer: CBOREncoder(
-          options: .init(deterministic: false, deterministicMode: .init(options.deterministicMode))
+          options: .init(deterministic: false, deterministicMode: options.deterministicMode)
         )
       ),
       sink: sink,
