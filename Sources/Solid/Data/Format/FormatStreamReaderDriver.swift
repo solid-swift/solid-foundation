@@ -59,19 +59,15 @@ public final class FormatStreamReaderDriver<Reader: FormatStreamReader> {
         isFinal = true
       }
 
-      var events: [ValueEvent] = []
       var out = OutputSpan<ValueEvent>(buffer: outputBuffer, initializedCount: 0)
       let status = try reader.read(input: input, isFinal: isFinal, output: &out)
       let count = out.finalize(for: outputBuffer)
-      if count > 0 {
-        events = Array(outputBuffer[..<count])
-      }
       if status == .endOfStream {
         finished = true
       }
 
-      if !events.isEmpty {
-        queue.append(contentsOf: events)
+      if count > 0 {
+        queue.append(contentsOf: outputBuffer[..<count])
         break
       }
 

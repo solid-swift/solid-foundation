@@ -465,6 +465,7 @@ public struct CBORStreamReader: FormatStreamReader {
 
   private mutating func decodeItems(count: Int) throws -> Value.Array {
     var result: Value.Array = []
+    result.reserveCapacity(count)
     for _ in 0..<count {
       let item = try decodeRequiredItem()
       result.append(item)
@@ -482,6 +483,7 @@ public struct CBORStreamReader: FormatStreamReader {
 
   private mutating func decodeItemPairs(count: Int) throws -> Value.Object {
     var result: Value.Object = [:]
+    result.reserveCapacity(count)
     for _ in 0..<count {
       let key = try decodeRequiredItem()
       let val = try decodeRequiredItem()

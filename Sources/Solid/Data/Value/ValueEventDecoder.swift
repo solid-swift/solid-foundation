@@ -15,9 +15,43 @@ public struct ValueEventDecoder {
     case incompleteValue
   }
 
-  private enum Container {
-    case array(Value.Array, tags: [Value])
-    case object(Value.Object, expectingKey: Bool, currentKey: Value?, tags: [Value])
+  /// Reference-type container to avoid ARC churn from enum pop/push cycles.
+  /// Using a class allows in-place mutation of the contained array/object
+  /// without destroying and recreating the container on every appended value.
+  private final class Container {
+    enum Kind { case array, object }
+
+    let kind: Kind
+    var values: Value.Array
+    var object: Value.Object
+    let tags: [Value]
+    var expectingKey: Bool
+    var currentKey: Value?
+
+    private init(kind: Kind, values: Value.Array, object: Value.Object, tags: [Value], expectingKey: Bool) {
+      self.kind = kind
+      self.values = values
+      self.object = object
+      self.tags = tags
+      self.expectingKey = expectingKey
+      self.currentKey = nil
+    }
+
+    static func array(capacity: Int?, tags: [Value]) -> Container {
+      var values: Value.Array = []
+      if let capacity {
+        values.reserveCapacity(capacity)
+      }
+      return Container(kind: .array, values: values, object: [:], tags: tags, expectingKey: false)
+    }
+
+    static func object(capacity: Int?, tags: [Value]) -> Container {
+      var object = Value.Object()
+      if let capacity {
+        object.reserveCapacity(capacity)
+      }
+      return Container(kind: .object, values: [], object: object, tags: tags, expectingKey: true)
+    }
   }
 
   private var stack: [Container] = []
@@ -60,51 +94,44 @@ public struct ValueEventDecoder {
 
     case .beginArray(let count):
       let tags = pendingTags
-      pendingTags.removeAll()
-      var values: [Value] = []
-      if let count {
-        values.reserveCapacity(count)
-      }
-      stack.append(.array(values, tags: tags))
+      pendingTags.removeAll(keepingCapacity: true)
+      stack.append(.array(capacity: count, tags: tags))
 
     case .endArray:
-      guard case .array(let values, let tags) = stack.popLast() else {
+      guard let container = stack.popLast(), container.kind == .array else {
         throw Error.invalidEventSequence("Unexpected endArray")
       }
-      try appendValue(applyTags(.array(values), tags: tags))
+      try appendValue(applyTags(.array(container.values), tags: container.tags))
 
     case .beginObject(let count):
       let tags = pendingTags
-      pendingTags.removeAll()
-      var object = Value.Object()
-      if let count {
-        object.reserveCapacity(count)
-      }
-      stack.append(.object(object, expectingKey: true, currentKey: nil, tags: tags))
+      pendingTags.removeAll(keepingCapacity: true)
+      stack.append(.object(capacity: count, tags: tags))
 
     case .endObject:
-      guard case .object(let object, let expectingKey, _, let tags) = stack.popLast() else {
+      guard let container = stack.popLast(), container.kind == .object else {
         throw Error.invalidEventSequence("Unexpected endObject")
       }
-      guard expectingKey else {
+      guard container.expectingKey else {
         throw Error.invalidEventSequence("Missing value for key")
       }
-      try appendValue(applyTags(.object(object), tags: tags))
+      try appendValue(applyTags(.object(container.object), tags: container.tags))
 
     case .key(let key):
-      guard case .object(let object, let expectingKey, let currentKey, let tags) = stack.popLast() else {
+      guard let container = stack.last, container.kind == .object else {
         throw Error.invalidEventSequence("Unexpected key")
       }
-      guard expectingKey, currentKey == nil else {
+      guard container.expectingKey, container.currentKey == nil else {
         throw Error.invalidEventSequence("Unexpected key position")
       }
       let taggedKey = applyTags(key, tags: pendingTags)
-      pendingTags.removeAll()
+      pendingTags.removeAll(keepingCapacity: true)
       if let anchor = pendingAnchor {
         anchors[anchor] = taggedKey
         pendingAnchor = nil
       }
-      stack.append(.object(object, expectingKey: false, currentKey: taggedKey, tags: tags))
+      container.expectingKey = false
+      container.currentKey = taggedKey
     }
   }
 
@@ -125,13 +152,13 @@ public struct ValueEventDecoder {
 
   private mutating func appendValue(_ value: Value) throws {
     let taggedValue = applyTags(value, tags: pendingTags)
-    pendingTags.removeAll()
+    pendingTags.removeAll(keepingCapacity: true)
     if let anchor = pendingAnchor {
       anchors[anchor] = taggedValue
       pendingAnchor = nil
     }
 
-    guard let container = stack.popLast() else {
+    guard let container = stack.last else {
       guard root == nil else {
         throw Error.invalidEventSequence("Multiple root values")
       }
@@ -139,29 +166,29 @@ public struct ValueEventDecoder {
       return
     }
 
-    switch container {
-    case .array(var values, let tags):
-      values.append(taggedValue)
-      stack.append(.array(values, tags: tags))
+    switch container.kind {
+    case .array:
+      container.values.append(taggedValue)
 
-    case .object(var object, let expectingKey, let currentKey, let tags):
-      guard !expectingKey, let key = currentKey else {
+    case .object:
+      guard !container.expectingKey, let key = container.currentKey else {
         throw Error.invalidEventSequence("Missing key for value")
       }
-      object[key] = taggedValue
-      stack.append(.object(object, expectingKey: true, currentKey: nil, tags: tags))
+      container.object[key] = taggedValue
+      container.expectingKey = true
+      container.currentKey = nil
     }
   }
 
   private mutating func appendAliasValue(_ value: Value) throws {
     let taggedValue = applyTags(value, tags: pendingTags)
-    pendingTags.removeAll()
+    pendingTags.removeAll(keepingCapacity: true)
     if let anchor = pendingAnchor {
       anchors[anchor] = taggedValue
       pendingAnchor = nil
     }
 
-    guard let container = stack.popLast() else {
+    guard let container = stack.last else {
       guard root == nil else {
         throw Error.invalidEventSequence("Multiple root values")
       }
@@ -169,20 +196,21 @@ public struct ValueEventDecoder {
       return
     }
 
-    switch container {
-    case .array(var values, let tags):
-      values.append(taggedValue)
-      stack.append(.array(values, tags: tags))
+    switch container.kind {
+    case .array:
+      container.values.append(taggedValue)
 
-    case .object(var object, let expectingKey, let currentKey, let tags):
-      if expectingKey {
-        stack.append(.object(object, expectingKey: false, currentKey: taggedValue, tags: tags))
+    case .object:
+      if container.expectingKey {
+        container.expectingKey = false
+        container.currentKey = taggedValue
       } else {
-        guard let key = currentKey else {
+        guard let key = container.currentKey else {
           throw Error.invalidEventSequence("Missing key for value")
         }
-        object[key] = taggedValue
-        stack.append(.object(object, expectingKey: true, currentKey: nil, tags: tags))
+        container.object[key] = taggedValue
+        container.expectingKey = true
+        container.currentKey = nil
       }
     }
   }

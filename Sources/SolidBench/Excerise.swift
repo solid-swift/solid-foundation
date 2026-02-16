@@ -5,7 +5,11 @@
 //  Created by Kevin Wooten on 4/24/25.
 //
 
+import Foundation
+import SolidData
 import SolidNumeric
+import SolidJSON
+import SolidYAML
 import ArgumentParser
 
 @main
@@ -17,6 +21,8 @@ struct ExcerciseNumerics: ParsableCommand {
       ExceriseBigDecimal.self,
       ExceriseBigUInt.self,
       ExceriseBigInt.self,
+      ExceriseYAMLDecode.self,
+      ExceriseJSONDecode.self,
     ]
   )
 }
@@ -147,6 +153,100 @@ struct ExceriseBigInt: ParsableCommand {
 
     if printDuration {
       print("Duration: \(duration)")
+    }
+  }
+}
+
+struct ExceriseYAMLDecode: ParsableCommand {
+
+  static let configuration = CommandConfiguration(
+    commandName: "excercise-yaml-decode",
+    abstract: "Excerise YAML Decode",
+    discussion: """
+    Excerise YAML decoding of a large array.
+
+    This command is used to exercise the YAML decode path. It decodes a large YAML
+    array (10k integers) for the specified number of iterations.
+    """,
+    aliases: ["eyd"]
+  )
+
+  @Argument(help: "The number of iterations to run")
+  var iterations: Int = 20
+
+  @Flag(name: .shortAndLong, help: "Print the duration of the operation")
+  var printDuration: Bool = false
+
+  func run() throws {
+
+    let largeArray: Value = .array((0..<10_000).map { .number($0) })
+    let largeArrayYaml = try YAMLValueWriter.write(largeArray)
+
+    // Warm up
+    var warmupReader = try YAMLValueReader(data: largeArrayYaml)
+    blackHole(try warmupReader.read())
+
+    let clock = ContinuousClock()
+    let start = clock.now
+
+    for _ in 0..<iterations {
+      var reader = try YAMLValueReader(data: largeArrayYaml)
+      blackHole(try reader.read())
+    }
+
+    let end = clock.now
+    let duration = end - start
+
+    if printDuration {
+      let perIteration = duration / iterations
+      print("Duration: \(duration) (\(perIteration) per iteration)")
+    }
+  }
+}
+
+struct ExceriseJSONDecode: ParsableCommand {
+
+  static let configuration = CommandConfiguration(
+    commandName: "excercise-json-decode",
+    abstract: "Excerise JSON Decode",
+    discussion: """
+    Excerise JSON decoding of a large array.
+
+    This command is used to exercise the JSON decode path. It decodes a large JSON
+    array (10k integers) for the specified number of iterations.
+    """,
+    aliases: ["ejd"]
+  )
+
+  @Argument(help: "The number of iterations to run")
+  var iterations: Int = 20
+
+  @Flag(name: .shortAndLong, help: "Print the duration of the operation")
+  var printDuration: Bool = false
+
+  func run() throws {
+
+    let largeArray: Value = .array((0..<10_000).map { .number($0) })
+    let largeArrayJson = JSONValueWriter.write(largeArray)
+
+    // Warm up
+    var warmupReader = JSONValueReader(data: largeArrayJson)
+    blackHole(try warmupReader.read())
+
+    let clock = ContinuousClock()
+    let start = clock.now
+
+    for _ in 0..<iterations {
+      var reader = JSONValueReader(data: largeArrayJson)
+      blackHole(try reader.read())
+    }
+
+    let end = clock.now
+    let duration = end - start
+
+    if printDuration {
+      let perIteration = duration / iterations
+      print("Duration: \(duration) (\(perIteration) per iteration)")
     }
   }
 }

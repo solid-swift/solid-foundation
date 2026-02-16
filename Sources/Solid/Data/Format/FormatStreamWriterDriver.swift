@@ -33,17 +33,18 @@ public final class FormatStreamWriterDriver<Encoder: FormatStreamEncoder>: Forma
   public func write(_ event: ValueEvent) async throws {
     guard !finished else { throw IOError.streamClosed }
 
+    var outputData = Data()
     var done = false
     while !done {
-      var outputData = Data()
       var status: FormatStreamEncodeStatus = .producedOutput
+      outputData.removeAll(keepingCapacity: true)
 
       try buffer.withUnsafeMutableBufferPointer { ptr in
         var out = OutputSpan<UInt8>(buffer: ptr, initializedCount: 0)
         status = try encoder.encode(event, output: &out)
         let count = out.finalize(for: ptr)
         if count > 0, let base = ptr.baseAddress {
-          outputData = Data(bytes: base, count: count)
+          outputData.append(base, count: count)
         }
       }
 
@@ -66,17 +67,18 @@ public final class FormatStreamWriterDriver<Encoder: FormatStreamEncoder>: Forma
   public func finish() async throws {
     guard !finished else { throw IOError.streamClosed }
 
+    var outputData = Data()
     var done = false
     while !done {
-      var outputData = Data()
       var status: FormatStreamEncodeStatus = .producedOutput
+      outputData.removeAll(keepingCapacity: true)
 
       try buffer.withUnsafeMutableBufferPointer { ptr in
         var out = OutputSpan<UInt8>(buffer: ptr, initializedCount: 0)
         status = try encoder.finish(output: &out)
         let count = out.finalize(for: ptr)
         if count > 0, let base = ptr.baseAddress {
-          outputData = Data(bytes: base, count: count)
+          outputData.append(base, count: count)
         }
       }
 

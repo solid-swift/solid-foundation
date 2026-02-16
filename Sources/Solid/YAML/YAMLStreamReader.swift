@@ -161,6 +161,8 @@ private struct YAMLNodeEventIterator {
       }
 
     case .sequence(let items, _, let tag, let anchor):
+      // Reserve capacity: endArray + items + beginArray + optional tag + optional anchor
+      actions.reserveCapacity(actions.count + items.count + 4)
       if let anchor {
         anchorNodes[anchor] = node
         actions.append(.registerAnchor(anchor, node))
@@ -175,6 +177,8 @@ private struct YAMLNodeEventIterator {
       }
 
     case .mapping(let pairs, _, let tag, let anchor):
+      // Reserve capacity: endObject + pairs*(value+key+optionalTag) + beginObject + optional tag + optional anchor
+      actions.reserveCapacity(actions.count + pairs.count * 3 + 4)
       if let anchor {
         anchorNodes[anchor] = node
         actions.append(.registerAnchor(anchor, node))
@@ -182,22 +186,17 @@ private struct YAMLNodeEventIterator {
       actions.append(.endObject)
       for (keyNode, valueNode) in pairs.reversed() {
         actions.append(.emitNode(valueNode))
-        let keyActions = try emitKeyActions(for: keyNode)
-        actions.append(contentsOf: keyActions)
+        // Inline emitKeyActions to avoid temporary array allocation
+        if let tag = nodeTag(keyNode) {
+          actions.append(.emitTag(tag))
+        }
+        actions.append(.emitKeyNode(keyNode))
       }
       actions.append(.beginObject)
       if let tag {
         actions.append(.emitTag(tag))
       }
     }
-  }
-
-  private mutating func emitKeyActions(for node: YAMLNode) throws -> [Action] {
-    var result: [Action] = [.emitKeyNode(node)]
-    if let tag = nodeTag(node) {
-      result.append(.emitTag(tag))
-    }
-    return result
   }
 
   private func nodeTag(_ node: YAMLNode) -> String? {

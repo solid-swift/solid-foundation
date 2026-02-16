@@ -15,6 +15,8 @@ struct YAMLParser {
     let raw: String
     let hasTabIndent: Bool
     let strippedComment: String
+    /// Cached: strippedComment with leading+trailing ASCII whitespace removed.
+    let trimmedContent: String
 
     init(number: Int, indent: Int, raw: String, hasTabIndent: Bool) {
       self.number = number
@@ -22,7 +24,9 @@ struct YAMLParser {
       self.raw = raw
       self.hasTabIndent = hasTabIndent
       let content = String(raw.dropFirst(indent))
-      self.strippedComment = Line.stripComment(from: content)
+      let stripped = Line.stripComment(from: content)
+      self.strippedComment = stripped
+      self.trimmedContent = stripped.yamlTrimmed()
     }
 
     var content: String {
@@ -34,26 +38,26 @@ struct YAMLParser {
     }
 
     static func stripComment(from text: String) -> String {
+      // Fast path: no '#' means no comment possible
+      guard text.utf8.contains(UInt8(ascii: "#")) else { return text }
+
       var inSingle = false
       var inDouble = false
-      for (idx, char) in text.enumerated() {
+      var prevWasWhitespace = true
+      var scalarIdx = text.startIndex
+      for char in text {
         switch char {
         case "'" where !inDouble:
           inSingle.toggle()
         case "\"" where !inSingle:
           inDouble.toggle()
-        case "#" where !inSingle && !inDouble:
-          if idx > 0 {
-            let prevIndex = text.index(text.startIndex, offsetBy: idx - 1)
-            if !text[prevIndex].isWhitespace {
-              continue
-            }
-          }
-          let cutIndex = text.index(text.startIndex, offsetBy: idx)
-          return String(text[..<cutIndex])
+        case "#" where !inSingle && !inDouble && prevWasWhitespace:
+          return String(text[..<scalarIdx])
         default:
-          continue
+          break
         }
+        prevWasWhitespace = char.isWhitespace
+        scalarIdx = text.index(after: scalarIdx)
       }
       return text
     }
@@ -214,13 +218,13 @@ struct YAMLParser {
       pendingTagHandles = YAMLParser.defaultTagHandles
       skipEmptyLines()
       if requireDocumentStart, index < lines.count {
-        let trimmed = lines[index].contentStrippingComment().trimmingCharacters(in: .whitespaces)
+        let trimmed = lines[index].trimmedContent
         if !isDocumentStart(lines[index]), !isDocumentEnd(lines[index]), !trimmed.hasPrefix("%") {
           throw syntaxError("Missing document start marker")
         }
       }
       while index < lines.count {
-        let content = lines[index].contentStrippingComment().trimmingCharacters(in: .whitespaces)
+        let content = lines[index].trimmedContent
         if content.hasPrefix("...") && content != "..." {
           let index = content.index(content.startIndex, offsetBy: 3)
           if index < content.endIndex, content[index].isWhitespace {
@@ -238,7 +242,7 @@ struct YAMLParser {
             throw syntaxError("Directive without document end marker")
           }
           sawDirective = true
-          let directive = lines[index].contentStrippingComment().trimmingCharacters(in: .whitespaces)
+          let directive = lines[index].trimmedContent
           let parts = directive.split(whereSeparator: { $0.isWhitespace })
           if let name = parts.first, name == "%YAML" {
             if sawYamlDirective {
@@ -284,7 +288,7 @@ struct YAMLParser {
         break
       }
 
-      let trimmed = lines[index].contentStrippingComment().trimmingCharacters(in: .whitespaces)
+      let trimmed = lines[index].trimmedContent
       if trimmed.hasPrefix("...") && trimmed != "..." {
         let index = trimmed.index(trimmed.startIndex, offsetBy: 3)
         if index < trimmed.endIndex, trimmed[index].isWhitespace {
@@ -319,7 +323,7 @@ struct YAMLParser {
         if !remainder.isEmpty {
           let decorated = try parseDecorators(from: remainder, lineIndex: index, baseColumn: remainderColumn)
           let trimmedLeading = trimLeadingWhitespace(decorated.remainder)
-          let trimmed = trimmedLeading.trimmed.trimmingCharacters(in: .whitespaces)
+          let trimmed = trimmedLeading.trimmed.yamlTrimmed()
           let trimmedColumn = decorated.remainderColumn + trimmedLeading.offset
           if trimmed.isEmpty {
             index += 1
@@ -434,7 +438,7 @@ struct YAMLParser {
         if isDocumentStart(lines[index]) || isDocumentEnd(lines[index]) {
           break
         }
-        if !lines[index].contentStrippingComment().trimmingCharacters(in: .whitespaces).isEmpty {
+        if !lines[index].trimmedContent.isEmpty {
           break
         }
         index += 1
@@ -467,13 +471,13 @@ struct YAMLParser {
       pendingTagHandles = YAMLParser.defaultTagHandles
       skipEmptyLines()
       if requireDocumentStart, index < lines.count {
-        let trimmed = lines[index].contentStrippingComment().trimmingCharacters(in: .whitespaces)
+        let trimmed = lines[index].trimmedContent
         if !isDocumentStart(lines[index]), !isDocumentEnd(lines[index]), !trimmed.hasPrefix("%") {
           throw syntaxError("Missing document start marker")
         }
       }
       while index < lines.count {
-        let content = lines[index].contentStrippingComment().trimmingCharacters(in: .whitespaces)
+        let content = lines[index].trimmedContent
         if content.hasPrefix("...") && content != "..." {
           let index = content.index(content.startIndex, offsetBy: 3)
           if index < content.endIndex, content[index].isWhitespace {
@@ -491,7 +495,7 @@ struct YAMLParser {
             throw syntaxError("Directive without document end marker")
           }
           sawDirective = true
-          let directive = lines[index].contentStrippingComment().trimmingCharacters(in: .whitespaces)
+          let directive = lines[index].trimmedContent
           let parts = directive.split(whereSeparator: { $0.isWhitespace })
           if let name = parts.first, name == "%YAML" {
             if sawYamlDirective {
@@ -537,7 +541,7 @@ struct YAMLParser {
         return nil
       }
 
-      let trimmed = lines[index].contentStrippingComment().trimmingCharacters(in: .whitespaces)
+      let trimmed = lines[index].trimmedContent
       if trimmed.hasPrefix("...") && trimmed != "..." {
         let index = trimmed.index(trimmed.startIndex, offsetBy: 3)
         if index < trimmed.endIndex, trimmed[index].isWhitespace {
@@ -572,7 +576,7 @@ struct YAMLParser {
         if !remainder.isEmpty {
           let decorated = try parseDecorators(from: remainder, lineIndex: index, baseColumn: remainderColumn)
           let trimmedLeading = trimLeadingWhitespace(decorated.remainder)
-          let trimmed = trimmedLeading.trimmed.trimmingCharacters(in: .whitespaces)
+          let trimmed = trimmedLeading.trimmed.yamlTrimmed()
           let trimmedColumn = decorated.remainderColumn + trimmedLeading.offset
           if trimmed.isEmpty {
             index += 1
@@ -690,7 +694,7 @@ struct YAMLParser {
         if isDocumentStart(lines[index]) || isDocumentEnd(lines[index]) {
           break
         }
-        if !lines[index].contentStrippingComment().trimmingCharacters(in: .whitespaces).isEmpty {
+        if !lines[index].trimmedContent.isEmpty {
           break
         }
         index += 1
@@ -723,7 +727,7 @@ struct YAMLParser {
     }
 
     let line = lines[index]
-    let trimmedLine = line.contentStrippingComment().trimmingCharacters(in: .whitespaces)
+    let trimmedLine = line.trimmedContent
 
     if line.indent < expectedIndent {
       throw indentationError()
@@ -742,7 +746,7 @@ struct YAMLParser {
     let decorators = decorated.decorators
     let rawContent = decorated.remainder
     let rawContentColumn = decorated.remainderColumn
-    let trimmedContent = rawContent.trimmingCharacters(in: .whitespaces)
+    let trimmedContent = rawContent.yamlTrimmed()
     let tabIndentCheck = expectedIndent > 0 ? expectedIndent : 1
     if hasTabInIndent(line, requiredIndent: tabIndentCheck),
       !trimmedLine.isEmpty,
@@ -760,7 +764,7 @@ struct YAMLParser {
         return try attach(node, tag: decorators.tag, anchor: decorators.anchor)
       }
       let nextLine = lines[index]
-      let nextContent = nextLine.contentStrippingComment().trimmingCharacters(in: .whitespaces)
+      let nextContent = nextLine.trimmedContent
       if nextLine.indent < expectedIndent, isSequenceIndicator(nextContent) {
         let nested = try parseBlockSequence(
           decorators: Decorators(tag: nil, anchor: nil),
@@ -881,6 +885,7 @@ struct YAMLParser {
     consumeFirstLine: Bool = true
   ) throws -> YAMLNode {
     var items: [YAMLNode] = []
+    items.reserveCapacity(min(lines.count - index, 256))
     var initialRemainder = firstRemainder
     var consumeFirst = consumeFirstLine
     var sequenceIndent = expectedIndent
@@ -889,7 +894,7 @@ struct YAMLParser {
     while index < lines.count {
       let line = lines[index]
       if initialRemainder == nil {
-        let trimmed = line.contentStrippingComment().trimmingCharacters(in: .whitespaces)
+        let trimmed = line.trimmedContent
         if trimmed.isEmpty {
           index += 1
           continue
@@ -917,7 +922,7 @@ struct YAMLParser {
         effectiveIndent = line.indent
       }
       if !skipAdvance {
-        let trimmedSource = sourceContent.trimmingCharacters(in: .whitespaces)
+        let trimmedSource = sourceContent.yamlTrimmed()
         let tabIndentCheck = sequenceIndent > 0 ? sequenceIndent : 1
         if hasTabInIndent(line, requiredIndent: tabIndentCheck),
           !trimmedSource.isEmpty,
@@ -931,11 +936,11 @@ struct YAMLParser {
       }
 
       // Move past '-'
-      let trimmed = content.trimmingCharacters(in: .whitespaces)
+      let trimmed = content.yamlTrimmed()
       guard trimmed.first == "-" else { break }
       let tabSeparated = hasTabAfterIndicator(content, indicator: "-")
       let afterDash = trimmed[trimmed.index(after: trimmed.startIndex)...]
-      let remainder = String(afterDash).trimmingCharacters(in: .whitespaces)
+      let remainder = String(afterDash).yamlTrimmed()
       if tabSeparated {
         if isSequenceIndicator(remainder) || isExplicitMappingIndicator(remainder)
           || splitMappingEntry(remainder) != nil
@@ -1034,7 +1039,7 @@ struct YAMLParser {
             items.append(decoratedNode)
           }
         } else {
-          let remainderContent = inline.remaining.trimmingCharacters(in: .whitespaces)
+          let remainderContent = inline.remaining.yamlTrimmed()
           if remainderContent.hasPrefix("|") || remainderContent.hasPrefix(">") {
             let savedIndex = index
             index = entryLineIndex
@@ -1098,7 +1103,7 @@ struct YAMLParser {
           if skipAdvance && allowIndentIncrease, index < lines.count {
             let nextLine = lines[index]
             if nextLine.indent > sequenceIndent,
-              isSequenceIndicator(nextLine.contentStrippingComment())
+              isSequenceIndicator(nextLine.trimmedContent)
             {
               sequenceIndent = nextLine.indent
               allowIndentIncrease = false
@@ -1137,13 +1142,14 @@ struct YAMLParser {
     consumeFirstLine: Bool = true
   ) throws -> YAMLNode {
     var pairs: [(YAMLNode, YAMLNode)] = []
+    pairs.reserveCapacity(min(lines.count - index, 256))
     var initialRemainder = firstRemainder
     var consumeFirst = consumeFirstLine
 
     while index < lines.count {
       let line = lines[index]
       if initialRemainder == nil {
-        let trimmed = line.contentStrippingComment().trimmingCharacters(in: .whitespaces)
+        let trimmed = line.trimmedContent
         if trimmed.isEmpty {
           index += 1
           continue
@@ -1165,10 +1171,10 @@ struct YAMLParser {
       )
       let contentColumn = decorated.remainderColumn
       if !skipAdvance {
-        let trimmedSource = sourceContent.trimmingCharacters(in: .whitespaces)
+        let trimmedSource = sourceContent.yamlTrimmed()
         let tabIndentCheck = expectedIndent > 0 ? expectedIndent : 1
         if hasTabInIndent(line, requiredIndent: tabIndentCheck), !trimmedSource.isEmpty {
-          let remainder = decorated.remainder.trimmingCharacters(in: .whitespaces)
+          let remainder = decorated.remainder.yamlTrimmed()
           if !remainder.isEmpty && !isFlowCollectionIndicator(remainder) {
             throw indentationError()
           }
@@ -1180,7 +1186,7 @@ struct YAMLParser {
         let tabSeparated = hasTabAfterIndicator(content, indicator: "?")
         var explicitContent = content
         explicitContent.removeFirst()
-        let keyContent = explicitContent.trimmingCharacters(in: .whitespaces)
+        let keyContent = explicitContent.yamlTrimmed()
         let keyLineIndex = entryLineIndex
         let baseAdvance = skipAdvance ? 0 : 1
         if tabSeparated {
@@ -1281,11 +1287,11 @@ struct YAMLParser {
             lineIndex: valueIndex,
             baseColumn: valueLine.indent + 1
           )
-          var valueContent = valueDecorated.remainder.trimmingCharacters(in: .whitespaces)
+          var valueContent = valueDecorated.remainder.yamlTrimmed()
           if valueContent.hasPrefix(":") {
             let tabSeparated = hasTabAfterIndicator(valueContent, indicator: ":")
             valueContent.removeFirst()
-            let remainder = valueContent.trimmingCharacters(in: .whitespaces)
+            let remainder = valueContent.yamlTrimmed()
             if tabSeparated {
               if isSequenceIndicator(remainder) || isExplicitMappingIndicator(remainder)
                 || splitMappingEntry(remainder) != nil
@@ -1306,7 +1312,7 @@ struct YAMLParser {
                     anchor: valueDecorated.decorators.anchor
                   )
                 } else if nextLine.indent == expectedIndent,
-                  isSequenceIndicator(nextLine.contentStrippingComment())
+                  isSequenceIndicator(nextLine.trimmedContent)
                 {
                   skipEmptyLines()
                   let nested = try parseBlockSequence(
@@ -1448,7 +1454,7 @@ struct YAMLParser {
 
       guard let entry = splitMappingEntry(content) else { break }
 
-      let trimmedKey = entry.key.trimmingCharacters(in: .whitespaces)
+      let trimmedKey = entry.key.yamlTrimmed()
       let keyNode: YAMLNode
       let entryLine = lines[entryLineIndex]
       let entryBaseColumn = entryLine.indent + 1
@@ -1474,7 +1480,7 @@ struct YAMLParser {
         index += 1
       }
 
-      let inlineValue = entry.value?.trimmingCharacters(in: .whitespaces) ?? ""
+      let inlineValue = entry.value?.yamlTrimmed() ?? ""
       if inlineValue.isEmpty {
         if let nextIndex = nextNonEmptyLineIndex(from: index) {
           let nextLine = lines[nextIndex]
@@ -1483,7 +1489,7 @@ struct YAMLParser {
             let valueNode = try parseNode(expectedIndent: expectedIndent + 1)
             pairs.append((decoratedKeyNode, valueNode))
           } else if nextLine.indent == expectedIndent,
-            isSequenceIndicator(nextLine.contentStrippingComment())
+            isSequenceIndicator(nextLine.trimmedContent)
           {
             skipEmptyLines()
             let nested = try parseBlockSequence(
@@ -1512,7 +1518,7 @@ struct YAMLParser {
         let resolvedValueTag = try resolveTag(rawValueDecorators.tag)
         let valueDecorators = Decorators(tag: resolvedValueTag, anchor: rawValueDecorators.anchor)
         valueParser.skipWhitespaceAndComments()
-        let remainder = valueParser.remaining.trimmingCharacters(in: .whitespaces)
+        let remainder = valueParser.remaining.yamlTrimmed()
         if remainder.isEmpty {
           if let nextIndex = nextNonEmptyLineIndex(from: index) {
             let nextLine = lines[nextIndex]
@@ -1522,7 +1528,7 @@ struct YAMLParser {
               let decoratedNode = try attach(node, tag: valueDecorators.tag, anchor: valueDecorators.anchor)
               pairs.append((decoratedKeyNode, decoratedNode))
             } else if nextLine.indent == expectedIndent,
-              isSequenceIndicator(nextLine.contentStrippingComment())
+              isSequenceIndicator(nextLine.trimmedContent)
             {
               skipEmptyLines()
               let nested = try parseBlockSequence(
@@ -1649,21 +1655,21 @@ struct YAMLParser {
         baseColumn: baseColumn
       )
       let contentColumn = decorated.remainderColumn
-      let trimmedSource = sourceContent.trimmingCharacters(in: .whitespaces)
+      let trimmedSource = sourceContent.yamlTrimmed()
       let tabIndentCheck = expectedIndent > 0 ? expectedIndent : 1
       if hasTabInIndent(line, requiredIndent: tabIndentCheck), !trimmedSource.isEmpty {
-        let remainder = decorated.remainder.trimmingCharacters(in: .whitespaces)
+        let remainder = decorated.remainder.yamlTrimmed()
         if !remainder.isEmpty && !isFlowCollectionIndicator(remainder) {
           throw indentationError()
         }
       }
-      var content = decorated.remainder.trimmingCharacters(in: .whitespaces)
+      var content = decorated.remainder.yamlTrimmed()
       guard isExplicitMappingIndicator(content) else { break }
       let tabSeparated = hasTabAfterIndicator(content, indicator: "?")
 
       // Trim leading '?' and whitespace.
       content.removeFirst()
-      let keyContent = content.trimmingCharacters(in: .whitespaces)
+      let keyContent = content.yamlTrimmed()
       let keyLineIndex = index
       if tabSeparated {
         if isSequenceIndicator(keyContent) || isExplicitMappingIndicator(keyContent)
@@ -1736,11 +1742,11 @@ struct YAMLParser {
           lineIndex: valueIndex,
           baseColumn: valueLine.indent + 1
         )
-        var valueContent = valueDecorated.remainder.trimmingCharacters(in: .whitespaces)
+        var valueContent = valueDecorated.remainder.yamlTrimmed()
         if valueContent.hasPrefix(":") {
           let tabSeparated = hasTabAfterIndicator(valueContent, indicator: ":")
           valueContent.removeFirst()
-          let remainder = valueContent.trimmingCharacters(in: .whitespaces)
+          let remainder = valueContent.yamlTrimmed()
           if tabSeparated {
             if isSequenceIndicator(remainder) || isExplicitMappingIndicator(remainder)
               || splitMappingEntry(remainder) != nil
@@ -1761,7 +1767,7 @@ struct YAMLParser {
                   anchor: valueDecorated.decorators.anchor
                 )
               } else if nextLine.indent == expectedIndent,
-                isSequenceIndicator(nextLine.contentStrippingComment())
+                isSequenceIndicator(nextLine.trimmedContent)
               {
                 skipEmptyLines()
                 let nested = try parseBlockSequence(
@@ -1960,7 +1966,7 @@ struct YAMLParser {
       var maxBlankIndent: Int?
       while cursor < lines.count {
         let line = lines[cursor]
-        let trimmed = line.raw.trimmingCharacters(in: .whitespaces)
+        let trimmed = line.raw.yamlTrimmed()
         let spaceIndent = leadingSpaceCount(line.raw)
         if trimmed.isEmpty {
           if !line.raw.isEmpty {
@@ -1993,7 +1999,7 @@ struct YAMLParser {
     while index < lines.count {
       let line = lines[index]
       let raw = line.raw
-      let trimmed = raw.trimmingCharacters(in: .whitespaces)
+      let trimmed = raw.yamlTrimmed()
       let spaceIndent = leadingSpaceCount(raw)
       if hasTabInIndent(line, requiredIndent: requiredIndent) {
         throw indentationError()
@@ -2010,7 +2016,7 @@ struct YAMLParser {
         break
       }
       if requiredIndent == 0 && spaceIndent == 0 {
-        let marker = line.contentStrippingComment().trimmingCharacters(in: .whitespaces)
+        let marker = line.trimmedContent
         if marker == "..." || isDocumentStart(line) {
           break
         }
@@ -2546,13 +2552,13 @@ struct YAMLParser {
   ) -> (text: String, linesConsumed: Int) {
     let initialLine = lines[startIndex]
     let initialIndent = contextIndent ?? initialLine.indent
-    let initialContent = initialLine.contentStrippingComment().trimmingCharacters(in: .whitespaces)
+    let initialContent = initialLine.trimmedContent
     var requireMoreIndent = false
     if isSequenceIndicator(initialContent) {
       requireMoreIndent = true
     } else if let entry = splitMappingEntry(initialContent),
       let value = entry.value,
-      !value.trimmingCharacters(in: .whitespaces).isEmpty
+      !value.yamlTrimmed().isEmpty
     {
       requireMoreIndent = true
     }
@@ -2563,11 +2569,10 @@ struct YAMLParser {
 
     while cursor < lines.count {
       let line = lines[cursor]
-      let rawTrimmed = line.raw.trimmingCharacters(in: .whitespaces)
-      let content = line.contentStrippingComment()
-      let trimmed = content.trimmingCharacters(in: .whitespaces)
+      let trimmed = line.trimmedContent
       if trimmed.isEmpty {
-        if !rawTrimmed.isEmpty {
+        // Check if raw line has non-whitespace (comment-only line)
+        if !line.raw.yamlTrimmed().isEmpty {
           break
         }
         collected.append((line: "", indent: line.indent))
@@ -2577,30 +2582,30 @@ struct YAMLParser {
       if line.indent < minIndent {
         break
       }
-      let stripped = content.trimmingCharacters(in: .whitespaces)
-      if stripped == "..." {
+      if trimmed == "..." {
         break
       }
-      if stripped.hasPrefix("---") {
-        let markerIndex = stripped.index(stripped.startIndex, offsetBy: 3)
-        if markerIndex == stripped.endIndex || stripped[markerIndex].isWhitespace {
+      if trimmed.hasPrefix("---") {
+        let markerIndex = trimmed.index(trimmed.startIndex, offsetBy: 3)
+        if markerIndex == trimmed.endIndex || trimmed[markerIndex].isWhitespace {
           break
         }
       }
-      if stripped.hasPrefix("...") {
-        let markerIndex = stripped.index(stripped.startIndex, offsetBy: 3)
-        if markerIndex == stripped.endIndex || stripped[markerIndex].isWhitespace {
+      if trimmed.hasPrefix("...") {
+        let markerIndex = trimmed.index(trimmed.startIndex, offsetBy: 3)
+        if markerIndex == trimmed.endIndex || trimmed[markerIndex].isWhitespace {
           break
         }
       }
       if line.indent == initialIndent {
-        if isSequenceIndicator(stripped) || splitMappingEntry(stripped) != nil || isExplicitMappingIndicator(stripped) {
+        if isSequenceIndicator(trimmed) || splitMappingEntry(trimmed) != nil || isExplicitMappingIndicator(trimmed) {
           break
         }
       }
       if baseIndent == nil {
         baseIndent = line.indent
       }
+      let content = line.contentStrippingComment()
       collected.append((line: content, indent: line.indent))
       if line.content != content {
         cursor += 1
@@ -2631,13 +2636,13 @@ struct YAMLParser {
     contextIndent: Int
   ) -> (text: String, linesConsumed: Int) {
     let initialIndent = contextIndent
-    let initialContent = initial.trimmingCharacters(in: .whitespaces)
+    let initialContent = initial.yamlTrimmed()
     var requireMoreIndent = false
     if isSequenceIndicator(initialContent) {
       requireMoreIndent = true
     } else if let entry = splitMappingEntry(initialContent),
       let value = entry.value,
-      !value.trimmingCharacters(in: .whitespaces).isEmpty
+      !value.yamlTrimmed().isEmpty
     {
       requireMoreIndent = true
     }
@@ -2648,11 +2653,10 @@ struct YAMLParser {
 
     while cursor < lines.count {
       let line = lines[cursor]
-      let rawTrimmed = line.raw.trimmingCharacters(in: .whitespaces)
-      let content = line.contentStrippingComment()
-      let trimmed = content.trimmingCharacters(in: .whitespaces)
+      let trimmed = line.trimmedContent
       if trimmed.isEmpty {
-        if !rawTrimmed.isEmpty {
+        // Check if raw line has non-whitespace (comment-only line)
+        if !line.raw.yamlTrimmed().isEmpty {
           break
         }
         collected.append((line: "", indent: line.indent))
@@ -2662,30 +2666,30 @@ struct YAMLParser {
       if line.indent < minIndent {
         break
       }
-      let stripped = content.trimmingCharacters(in: .whitespaces)
-      if stripped == "..." {
+      if trimmed == "..." {
         break
       }
-      if stripped.hasPrefix("---") {
-        let markerIndex = stripped.index(stripped.startIndex, offsetBy: 3)
-        if markerIndex == stripped.endIndex || stripped[markerIndex].isWhitespace {
+      if trimmed.hasPrefix("---") {
+        let markerIndex = trimmed.index(trimmed.startIndex, offsetBy: 3)
+        if markerIndex == trimmed.endIndex || trimmed[markerIndex].isWhitespace {
           break
         }
       }
-      if stripped.hasPrefix("...") {
-        let markerIndex = stripped.index(stripped.startIndex, offsetBy: 3)
-        if markerIndex == stripped.endIndex || stripped[markerIndex].isWhitespace {
+      if trimmed.hasPrefix("...") {
+        let markerIndex = trimmed.index(trimmed.startIndex, offsetBy: 3)
+        if markerIndex == trimmed.endIndex || trimmed[markerIndex].isWhitespace {
           break
         }
       }
       if line.indent == initialIndent {
-        if isSequenceIndicator(stripped) || splitMappingEntry(stripped) != nil || isExplicitMappingIndicator(stripped) {
+        if isSequenceIndicator(trimmed) || splitMappingEntry(trimmed) != nil || isExplicitMappingIndicator(trimmed) {
           break
         }
       }
       if baseIndent == nil {
         baseIndent = line.indent
       }
+      let content = line.contentStrippingComment()
       collected.append((line: content, indent: line.indent))
       if line.content != content {
         cursor += 1
@@ -2746,7 +2750,7 @@ struct YAMLParser {
 
   private mutating func skipEmptyLines() {
     while index < lines.count {
-      let content = lines[index].contentStrippingComment().trimmingCharacters(in: .whitespaces)
+      let content = lines[index].trimmedContent
       guard content.isEmpty else {
         break
       }
@@ -2757,7 +2761,7 @@ struct YAMLParser {
   private func nextNonEmptyLineIndex(from start: Int) -> Int? {
     var cursor = start
     while cursor < lines.count {
-      let content = lines[cursor].contentStrippingComment().trimmingCharacters(in: .whitespaces)
+      let content = lines[cursor].trimmedContent
       if !content.isEmpty {
         return cursor
       }
@@ -2767,7 +2771,7 @@ struct YAMLParser {
   }
 
   private func isDocumentStart(_ line: Line) -> Bool {
-    let trimmed = line.contentStrippingComment().trimmingCharacters(in: .whitespaces)
+    let trimmed = line.trimmedContent
     guard trimmed.hasPrefix("---") else { return false }
     if trimmed == "---" {
       return true
@@ -2777,32 +2781,34 @@ struct YAMLParser {
   }
 
   private func isDocumentEnd(_ line: Line) -> Bool {
-    line.contentStrippingComment().trimmingCharacters(in: .whitespaces) == "..."
+    line.trimmedContent == "..."
   }
 
+  /// Checks if content starts with "- " or is just "-".
+  /// Content is expected to be already trimmed.
   private func isSequenceIndicator(_ content: String) -> Bool {
-    let trimmed = content.trimmingCharacters(in: .whitespaces)
-    guard trimmed.first == "-" else { return false }
-    if trimmed.count == 1 {
-      return true
-    }
-    let next = trimmed[trimmed.index(after: trimmed.startIndex)]
-    return next.isWhitespace
+    guard let first = content.utf8.first, first == UInt8(ascii: "-") else { return false }
+    let utf8 = content.utf8
+    if utf8.count == 1 { return true }
+    let second = utf8[utf8.index(after: utf8.startIndex)]
+    return second == 0x20 || second == 0x09  // space or tab
   }
 
+  /// Checks if content starts with "? " or is just "?".
+  /// Content is expected to be already trimmed.
   private func isExplicitMappingIndicator(_ content: String) -> Bool {
-    let trimmed = content.trimmingCharacters(in: .whitespaces)
-    guard trimmed.first == "?" else { return false }
-    if trimmed.count == 1 {
-      return true
-    }
-    let next = trimmed[trimmed.index(after: trimmed.startIndex)]
-    return next.isWhitespace
+    guard let first = content.utf8.first, first == UInt8(ascii: "?") else { return false }
+    let utf8 = content.utf8
+    if utf8.count == 1 { return true }
+    let second = utf8[utf8.index(after: utf8.startIndex)]
+    return second == 0x20 || second == 0x09
   }
 
+  /// Checks if content starts with "[" or "{".
+  /// Content is expected to be already trimmed.
   private func isFlowCollectionIndicator(_ content: String) -> Bool {
-    let trimmed = content.trimmingCharacters(in: .whitespaces)
-    return trimmed.hasPrefix("[") || trimmed.hasPrefix("{")
+    guard let first = content.utf8.first else { return false }
+    return first == UInt8(ascii: "[") || first == UInt8(ascii: "{")
   }
 
   fileprivate struct Decorators {
@@ -2994,11 +3000,11 @@ struct YAMLParser {
     }
   }
 
+  /// Content is expected to be already trimmed by the caller.
   private func splitMappingEntry(_ content: String) -> (key: String, value: String?)? {
-    let trimmedContent = content.trimmingCharacters(in: .whitespaces)
-    if (trimmedContent.first == "*" || trimmedContent.first == "&"),
-      !trimmedContent.contains(where: { $0.isWhitespace }),
-      trimmedContent.hasSuffix(":")
+    if (content.first == "*" || content.first == "&"),
+      !content.contains(where: { $0.isWhitespace }),
+      content.hasSuffix(":")
     {
       return nil
     }
@@ -3152,7 +3158,7 @@ struct YAMLParser {
     while cursor < lines.count {
       let line = lines[cursor]
       if line.indent == 0 {
-        let trimmedLine = line.contentStrippingComment().trimmingCharacters(in: .whitespaces)
+        let trimmedLine = line.trimmedContent
         if trimmedLine.hasPrefix("---") {
           let markerIndex = trimmedLine.index(trimmedLine.startIndex, offsetBy: 3)
           if markerIndex == trimmedLine.endIndex || trimmedLine[markerIndex].isWhitespace {
@@ -3167,7 +3173,7 @@ struct YAMLParser {
         }
       }
       let content = line.contentStrippingComment()
-      let trimmed = content.trimmingCharacters(in: .whitespaces)
+      let trimmed = content.yamlTrimmed()
       if !trimmed.isEmpty {
         let spaceIndent = leadingSpaceCount(line.raw)
         if spaceIndent < minimumIndent {
@@ -3275,7 +3281,7 @@ struct YAMLParser {
     while cursor < lines.count {
       let line = lines[cursor]
       if line.indent == 0 {
-        let trimmedLine = line.contentStrippingComment().trimmingCharacters(in: .whitespaces)
+        let trimmedLine = line.trimmedContent
         if trimmedLine.hasPrefix("---") {
           let markerIndex = trimmedLine.index(trimmedLine.startIndex, offsetBy: 3)
           if markerIndex == trimmedLine.endIndex || trimmedLine[markerIndex].isWhitespace {
@@ -3289,7 +3295,7 @@ struct YAMLParser {
           }
         }
       }
-      let trimmed = line.content.trimmingCharacters(in: .whitespaces)
+      let trimmed = line.content.yamlTrimmed()
       if trimmed.isEmpty {
         pieces.append("")
         lineStartColumns.append(line.indent + 1)
@@ -3713,7 +3719,7 @@ private struct InlineParser {
       output.append(current)
       text.formIndex(after: &index)
     }
-    return output.trimmingCharacters(in: .whitespaces)
+    return output.yamlTrimmed()
   }
 
   mutating func consumeIf(_ char: Character) -> Bool {
@@ -3773,5 +3779,73 @@ private struct InlineParser {
       text.formIndex(after: &index)
     }
     return value
+  }
+}
+
+// MARK: - Fast ASCII Whitespace Trimming
+
+extension String {
+  /// Trims leading and trailing ASCII whitespace (space and tab only).
+  /// This is much faster than `trimmingCharacters(in: .whitespaces)` which
+  /// goes through Foundation's CharacterSet and creates a new String even
+  /// when there is nothing to trim.
+  @inline(__always)
+  func yamlTrimmed() -> String {
+    let utf8 = self.utf8
+    guard !utf8.isEmpty else { return self }
+
+    // Find first non-whitespace byte
+    var start = utf8.startIndex
+    while start < utf8.endIndex {
+      let byte = utf8[start]
+      if byte != 0x20 && byte != 0x09 { break }
+      utf8.formIndex(after: &start)
+    }
+
+    // All whitespace or empty
+    if start == utf8.endIndex { return "" }
+
+    // Find last non-whitespace byte
+    var end = utf8.index(before: utf8.endIndex)
+    while end > start {
+      let byte = utf8[end]
+      if byte != 0x20 && byte != 0x09 { break }
+      utf8.formIndex(before: &end)
+    }
+    let afterEnd = utf8.index(after: end)
+
+    // If no trimming needed, return original string (avoids allocation)
+    if start == utf8.startIndex && afterEnd == utf8.endIndex {
+      return self
+    }
+
+    return String(self[start..<afterEnd])
+  }
+}
+
+extension Substring {
+  /// Trims leading and trailing ASCII whitespace (space and tab only).
+  @inline(__always)
+  func yamlTrimmed() -> String {
+    let utf8 = self.utf8
+    guard !utf8.isEmpty else { return "" }
+
+    var start = utf8.startIndex
+    while start < utf8.endIndex {
+      let byte = utf8[start]
+      if byte != 0x20 && byte != 0x09 { break }
+      utf8.formIndex(after: &start)
+    }
+
+    if start == utf8.endIndex { return "" }
+
+    var end = utf8.index(before: utf8.endIndex)
+    while end > start {
+      let byte = utf8[end]
+      if byte != 0x20 && byte != 0x09 { break }
+      utf8.formIndex(before: &end)
+    }
+
+    return String(self[start...end])
   }
 }

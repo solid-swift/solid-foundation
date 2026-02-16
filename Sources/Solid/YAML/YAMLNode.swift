@@ -110,22 +110,52 @@ struct YAMLScalarResolver {
   }
 
   private func resolveBool(_ text: String) -> Value? {
-    switch text.lowercased() {
-    case "true":
-      return .bool(true)
-    case "false":
-      return .bool(false)
-    default:
-      return nil
+    let utf8 = text.utf8
+    if utf8.count == 4 {
+      if text.utf8EqualsCaseInsensitiveASCII("true") {
+        return .bool(true)
+      }
+    } else if utf8.count == 5 {
+      if text.utf8EqualsCaseInsensitiveASCII("false") {
+        return .bool(false)
+      }
     }
+    return nil
   }
 
   private func isNull(_ text: String) -> Bool {
-    let lowered = text.lowercased()
-    return lowered == "null" || lowered == "~" || lowered.isEmpty
+    text.isEmpty || text == "~" || text.utf8EqualsCaseInsensitiveASCII("null")
   }
 
   private func resolveNumber(_ text: String, allowSpecial: Bool = false) -> Value? {
+    // Ultra-fast path: simple integer (all ASCII digits, optionally prefixed with - or +)
+    // This avoids all the intermediate String allocations for the common case.
+    if !text.isEmpty {
+      let utf8 = text.utf8
+      var idx = utf8.startIndex
+      let first = utf8[idx]
+      if first == UInt8(ascii: "-") || first == UInt8(ascii: "+") {
+        utf8.formIndex(after: &idx)
+      }
+      if idx < utf8.endIndex {
+        var allDigits = true
+        var cursor = idx
+        while cursor < utf8.endIndex {
+          let byte = utf8[cursor]
+          if byte < UInt8(ascii: "0") || byte > UInt8(ascii: "9") {
+            allDigits = false
+            break
+          }
+          utf8.formIndex(after: &cursor)
+        }
+        if allDigits {
+          if let textNumber = Value.TextNumber(text: text) {
+            return .number(textNumber)
+          }
+        }
+      }
+    }
+
     if allowSpecial {
       let lowered = text.lowercased()
       if lowered == ".nan" {
@@ -139,7 +169,8 @@ struct YAMLScalarResolver {
       }
     }
 
-    let trimmed = text.replacingOccurrences(of: "_", with: "")
+    // Fast path: skip replacingOccurrences if no underscores
+    let trimmed = text.contains("_") ? text.replacingOccurrences(of: "_", with: "") : text
     if trimmed.contains(where: { $0.isWhitespace }) {
       return nil
     }
@@ -179,8 +210,8 @@ struct YAMLScalarResolver {
       return .number(Value.TextNumber(decimal: decimal))
     }
 
-    if let decimal = BigDecimal(trimmed) {
-      return .number(Value.TextNumber(decimal: decimal))
+    if let textNumber = Value.TextNumber(text: trimmed) {
+      return .number(textNumber)
     }
 
     return nil
@@ -241,6 +272,7 @@ extension YAMLNode {
 
     case .mapping(let pairs, _, let tag, let anchor):
       var object = Value.Object()
+      object.reserveCapacity(pairs.count)
       for (rawKey, rawValue) in pairs {
         let key = try rawKey.toValue(resolver: resolver, anchors: &anchors, wrapTag: wrapTag)
         let val = try rawValue.toValue(resolver: resolver, anchors: &anchors, wrapTag: wrapTag)
@@ -254,6 +286,31 @@ extension YAMLNode {
         anchors[anchor] = value
       }
       return value
+    }
+  }
+}
+
+// MARK: - Fast ASCII Case-Insensitive Comparison
+
+extension String {
+  /// Compares against a lowercase ASCII literal without going through Foundation's locale-aware comparison.
+  /// The `other` parameter MUST be all-lowercase ASCII.
+  @inline(__always)
+  func utf8EqualsCaseInsensitiveASCII(_ other: StaticString) -> Bool {
+    let selfUTF8 = self.utf8
+    return other.withUTF8Buffer { otherUTF8 in
+      guard selfUTF8.count == otherUTF8.count else { return false }
+      var selfIdx = selfUTF8.startIndex
+      for i in 0..<otherUTF8.count {
+        var byte = selfUTF8[selfIdx]
+        // Fast ASCII lowercase: if byte is A-Z, convert to a-z
+        if byte >= 0x41 && byte <= 0x5A {
+          byte |= 0x20
+        }
+        if byte != otherUTF8[i] { return false }
+        selfUTF8.formIndex(after: &selfIdx)
+      }
+      return true
     }
   }
 }

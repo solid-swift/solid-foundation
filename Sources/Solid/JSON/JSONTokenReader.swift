@@ -334,7 +334,7 @@ struct JSONTokenReader {
     let start = source.location
 
     var isNegative = false
-    var string = ""
+    var bytes: [UInt8] = []
     var isInteger = true
     var exponent = 0
     var ascii: UInt8 = 0    // set by nextASCII()
@@ -349,7 +349,7 @@ struct JSONTokenReader {
         guard let char = try source.peekASCII(), Self.numberCodePoints.contains(char) else { return false }
         try source.skip(count: 1)
         ascii = char
-        string.append(Character(UnicodeScalar(ascii)))
+        bytes.append(ascii)
         return true
       }
 
@@ -360,7 +360,7 @@ struct JSONTokenReader {
           if !Self.allDigits.contains(char) {
             return char
           }
-          string.append(Character(UnicodeScalar(char)))
+          bytes.append(char)
           try source.skip(count: 1)
         }
         return nil
@@ -376,7 +376,7 @@ struct JSONTokenReader {
       if Self.oneToNine.contains(ascii) {
         guard let char = try readDigits() else { return true }
         ascii = char
-        if [Self.decimalSeparator, Self.lowerExponent, Self.upperExponent].contains(ascii) {
+        if ascii == Self.decimalSeparator || ascii == Self.lowerExponent || ascii == Self.upperExponent {
           guard try nextASCII()
           else { return false }    // There should be at least one char as readDigits didn't remove the '.eE'
         }
@@ -418,6 +418,8 @@ struct JSONTokenReader {
       throw Error.invalidData(.invalidNumber, location: start)
     }
 
+    // Convert collected bytes to String in one shot (all number chars are ASCII)
+    let string = String(bytes: bytes, encoding: .utf8) ?? String(bytes.map { Character(UnicodeScalar($0)) })
     return .init(string, isInteger: isInteger, isNegative: isNegative)
   }
 

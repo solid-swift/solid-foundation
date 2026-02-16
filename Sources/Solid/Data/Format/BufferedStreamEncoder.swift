@@ -90,10 +90,12 @@ public struct BufferedStreamEncoder<Writer: FormatEventWriter>: FormatStreamEnco
     let outputRemaining = output.capacity - output.count
     let toCopy = min(available, outputRemaining)
     buffer.withUnsafeBytes { rawBuffer in
-      let base = rawBuffer.baseAddress!.advanced(by: pendingOffset)
+      let src = rawBuffer.baseAddress!.advanced(by: pendingOffset)
         .assumingMemoryBound(to: UInt8.self)
-      for i in 0..<toCopy {
-        output.append(base[i])
+      output.withUnsafeMutableBufferPointer { destBuf, initializedCount in
+        destBuf.baseAddress!.advanced(by: initializedCount)
+          .initialize(from: src, count: toCopy)
+        initializedCount += toCopy
       }
     }
     pendingOffset += toCopy

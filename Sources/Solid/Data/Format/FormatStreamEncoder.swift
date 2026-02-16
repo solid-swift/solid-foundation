@@ -59,18 +59,14 @@ public struct FormatStreamEncoderBuffer<Encoder: FormatStreamEncoder> {
     for event in events {
       var done = false
       while !done {
-        var outputData = Data()
         let status = try buffer.withUnsafeMutableBufferPointer { ptr -> FormatStreamEncodeStatus in
           var out = OutputSpan<UInt8>(buffer: ptr, initializedCount: 0)
           let status = try encoder.encode(event, output: &out)
           let count = out.finalize(for: ptr)
           if count > 0, let base = ptr.baseAddress {
-            outputData = Data(bytes: base, count: count)
+            data.append(base, count: count)
           }
           return status
-        }
-        if !outputData.isEmpty {
-          data.append(outputData)
         }
         switch status {
         case .producedOutput:
@@ -85,18 +81,14 @@ public struct FormatStreamEncoderBuffer<Encoder: FormatStreamEncoder> {
 
     var finishing = false
     while !finishing {
-      var outputData = Data()
       let status = try buffer.withUnsafeMutableBufferPointer { ptr -> FormatStreamEncodeStatus in
         var out = OutputSpan<UInt8>(buffer: ptr, initializedCount: 0)
         let status = try encoder.finish(output: &out)
         let count = out.finalize(for: ptr)
         if count > 0, let base = ptr.baseAddress {
-          outputData = Data(bytes: base, count: count)
+          data.append(base, count: count)
         }
         return status
-      }
-      if !outputData.isEmpty {
-        data.append(outputData)
       }
       switch status {
       case .producedOutput, .needMoreOutputSpace:

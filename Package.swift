@@ -415,5 +415,27 @@ if benchmarkEnbled {
         .plugin(name: "BenchmarkPlugin", package: "package-benchmark")
       ]
     ),
+    .executableTarget(
+      name: "SolidYAMLBenchmark",
+      dependencies: [
+        "Solid",
+        .product(name: "Benchmark", package: "package-benchmark"),
+      ],
+      path: "Benchmarks/SolidYAMLBenchmark",
+      plugins: [
+        .plugin(name: "BenchmarkPlugin", package: "package-benchmark")
+      ]
+    ),
+    .executableTarget(
+      name: "SolidJSONBenchmark",
+      dependencies: [
+        "Solid",
+        .product(name: "Benchmark", package: "package-benchmark"),
+      ],
+      path: "Benchmarks/SolidJSONBenchmark",
+      plugins: [
+        .plugin(name: "BenchmarkPlugin", package: "package-benchmark")
+      ]
+    ),
   ]
 }
