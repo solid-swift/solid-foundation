@@ -14,3 +14,4 @@ DerivedData/
 *.xcscheme
 .idea
 /.cache
+*.trace
