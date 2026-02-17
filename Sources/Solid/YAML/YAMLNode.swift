@@ -38,6 +38,10 @@ enum YAMLNode: Sendable {
   case sequence([YAMLNode], style: YAMLCollectionStyle, tag: String?, anchor: String?)
   case mapping([(YAMLNode, YAMLNode)], style: YAMLCollectionStyle, tag: String?, anchor: String?)
   case alias(String)
+
+  static let emptyPlainScalar = YAMLNode.scalar(
+    YAMLScalar(text: "", style: .plain), tag: nil, anchor: nil
+  )
 }
 
 struct YAMLDocument: Sendable {

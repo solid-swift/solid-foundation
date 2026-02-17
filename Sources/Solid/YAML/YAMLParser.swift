@@ -121,7 +121,6 @@ struct YAMLParser {
         if let next = peeked, next != "\n" {
           result.append(next)
         }
-        // If peeked was nil, we're done
         if peeked == nil { break }
       } else {
         result.append(ch)
@@ -186,13 +185,210 @@ struct YAMLParser {
     if let first = docs.first {
       return first
     }
-    let emptyScalar = YAMLScalar(text: "", style: .plain)
-    return .scalar(emptyScalar, tag: nil, anchor: nil)
+    return .emptyPlainScalar
   }
 
   mutating func parseDocuments(limit: Int? = nil) throws -> [YAMLNode] {
     try parseDocumentStream(limit: limit).map { $0.node }
   }
+
+  // MARK: - Directive Parsing
+
+  /// Parses %YAML and %TAG directives, document-end markers, and returns whether any directives were seen.
+  /// On return, `index` points at the first non-directive, non-empty, non-document-end line.
+  private mutating func parseDirectives(
+    allowDirectives: inout Bool,
+    requireDocumentStart: Bool,
+    pendingTagHandles: inout [String: String]
+  ) throws -> Bool {
+    var sawDirective = false
+    var sawYamlDirective = false
+    skipEmptyLines()
+    if requireDocumentStart, index < lines.count {
+      let trimmed = lines[index].trimmedContent
+      if !isDocumentStart(lines[index]), !isDocumentEnd(lines[index]), !trimmed.hasPrefix("%") {
+        throw syntaxError("Missing document start marker")
+      }
+    }
+    while index < lines.count {
+      let content = lines[index].trimmedContent
+      if content.hasPrefix("...") && content != "..." {
+        let idx = content.index(content.startIndex, offsetBy: 3)
+        if idx < content.endIndex, content[idx].isWhitespace {
+          throw syntaxError("Invalid document end marker")
+        }
+      }
+      if isDocumentEnd(lines[index]) {
+        allowDirectives = true
+        index += 1
+        skipEmptyLines()
+        continue
+      }
+      if content.hasPrefix("%") {
+        if !allowDirectives {
+          throw syntaxError("Directive without document end marker")
+        }
+        sawDirective = true
+        let directive = lines[index].trimmedContent
+        let parts = directive.split(whereSeparator: { $0.isWhitespace })
+        if let name = parts.first, name == "%YAML" {
+          if sawYamlDirective {
+            throw syntaxError("Duplicate %YAML directive")
+          }
+          if parts.count != 2 || parts[0] != "%YAML" {
+            throw syntaxError("Invalid %YAML directive")
+          }
+          let version = parts[1]
+          let versionParts = version.split(separator: ".")
+          if versionParts.count != 2
+            || versionParts.contains(where: { $0.isEmpty || $0.contains(where: { !$0.isNumber }) })
+          {
+            throw syntaxError("Invalid %YAML directive")
+          }
+          sawYamlDirective = true
+        } else if let name = parts.first, name == "%TAG" {
+          if parts.count != 3 || parts[0] != "%TAG" {
+            throw syntaxError("Invalid %TAG directive")
+          }
+          let handle = String(parts[1])
+          let prefix = String(parts[2])
+          if handle != "!" {
+            if !handle.hasPrefix("!") || !handle.hasSuffix("!") || handle.count < 2 {
+              throw syntaxError("Invalid %TAG directive")
+            }
+          }
+          if prefix.isEmpty {
+            throw syntaxError("Invalid %TAG directive")
+          }
+          pendingTagHandles[handle] = prefix
+        }
+        index += 1
+        continue
+      }
+      break
+    }
+    skipEmptyLines()
+    return sawDirective
+  }
+
+  /// Parses the content that appears after `---` on a document start line.
+  /// Returns the parsed node, or nil if the remainder was empty (caller should fall through to parseNode).
+  private mutating func parseDocumentStartContent(
+    explicitStart: Bool,
+    pendingTagHandles: inout [String: String]
+  ) throws -> YAMLNode? {
+    let line = lines[index]
+    let content = line.contentStrippingComment()
+    var cursor = content.startIndex
+    while cursor < content.endIndex, content[cursor].isWhitespace {
+      content.formIndex(after: &cursor)
+    }
+    if content[cursor...].hasPrefix("---") {
+      cursor = content.index(cursor, offsetBy: 3)
+    }
+    while cursor < content.endIndex, content[cursor].isWhitespace {
+      content.formIndex(after: &cursor)
+    }
+    let remainder = String(content[cursor...])
+    let remainderColumn = line.indent + 1 + content.distance(from: content.startIndex, to: cursor)
+
+    if !remainder.isEmpty {
+      let decorated = try parseDecorators(from: remainder, lineIndex: index, baseColumn: remainderColumn)
+      let trimmedLeading = trimLeadingWhitespace(decorated.remainder)
+      let trimmed = trimmedLeading.trimmed.yamlTrimmed()
+      let trimmedColumn = decorated.remainderColumn + trimmedLeading.offset
+      if trimmed.isEmpty {
+        index += 1
+        skipEmptyLines()
+        guard index < lines.count else {
+          throw allowIncompleteInput ? incompleteError() : syntaxError("Unexpected end of document")
+        }
+        let indent = lines[index].indent
+        var node = try parseNode(expectedIndent: indent)
+        node = try attach(node, tag: decorated.decorators.tag, anchor: decorated.decorators.anchor)
+        return node
+      }
+      if splitMappingEntry(trimmed) != nil {
+        throw syntaxError("Invalid document start content")
+      }
+      if trimmed.hasPrefix("|") || trimmed.hasPrefix(">") {
+        let node = try parseBlockScalar(content: trimmed, decorators: decorated.decorators, baseIndent: -1)
+        return node
+      }
+      let startIndex = index
+      var inlineText = trimmed
+      var extraLines = 0
+      var lineStartColumns = [trimmedColumn]
+      if inlineText.first == "[" || inlineText.first == "{" {
+        let flow = try collectFlowText(
+          startIndex: startIndex,
+          firstContent: decorated.remainder,
+          firstColumn: decorated.remainderColumn,
+          minimumIndent: leadingSpaceCount(lines[startIndex].raw)
+        )
+        inlineText = flow.text
+        extraLines = flow.linesConsumed - 1
+        lineStartColumns = flow.lineStartColumns
+      } else if inlineText.first == "\"" {
+        let expanded = try expandDoubleQuotedInlineText(
+          inlineText,
+          startIndex: startIndex,
+          parentIndent: 0,
+          firstColumn: trimmedColumn
+        )
+        inlineText = expanded.text
+        extraLines = expanded.extraLines
+        lineStartColumns = expanded.lineStartColumns
+      } else if inlineText.first == "'" {
+        let expanded = try expandSingleQuotedInlineText(
+          inlineText,
+          startIndex: startIndex,
+          parentIndent: 0,
+          firstColumn: trimmedColumn
+        )
+        inlineText = expanded.text
+        extraLines = expanded.extraLines
+        lineStartColumns = expanded.lineStartColumns
+      }
+      var inlineParser = InlineParser(
+        text: inlineText,
+        baseLine: line.number,
+        lineStartColumns: lineStartColumns
+      )
+      let inlineStart = inlineParser.location()
+      var node = try parseInlineNode(parser: &inlineParser, baseIndent: 0)
+      node = try attach(node, tag: decorated.decorators.tag, anchor: decorated.decorators.anchor)
+      inlineParser.skipWhitespaceAndComments()
+      if inlineParser.peek != nil {
+        throw inlineParser.syntaxError("Unexpected trailing content")
+      }
+      var linesConsumed = 1 + extraLines
+      if case .scalar(let scalar, let tag, let anchor) = node,
+        case .plain = scalar.style
+      {
+        try validatePlainScalarText(scalar.text, location: inlineStart)
+        let folded = foldPlainScalarFromInline(initial: scalar.text, startIndex: startIndex, contextIndent: 0)
+        if folded.linesConsumed > 0 {
+          try validatePlainScalarText(folded.text, location: inlineStart)
+          let updated = YAMLScalar(text: folded.text, style: .plain)
+          node = .scalar(updated, tag: tag, anchor: anchor)
+          linesConsumed += folded.linesConsumed
+        }
+      }
+      index += linesConsumed
+      return node
+    }
+
+    // Empty remainder after `---`
+    index += 1
+    skipEmptyLines()
+    if index >= lines.count || isDocumentStart(lines[index]) || isDocumentEnd(lines[index]) {
+      return .emptyPlainScalar
+    }
+    return nil
+  }
+
+  // MARK: - Document Parsing
 
   mutating func parseDocumentStream(limit: Int? = nil) throws -> [YAMLDocument] {
     var documents: [YAMLDocument] = []
@@ -213,74 +409,12 @@ struct YAMLParser {
     }
 
     while index < lines.count && limit.map({ documents.count < $0 }) ?? true {
-      var sawDirective = false
-      var sawYamlDirective = false
       pendingTagHandles = YAMLParser.defaultTagHandles
-      skipEmptyLines()
-      if requireDocumentStart, index < lines.count {
-        let trimmed = lines[index].trimmedContent
-        if !isDocumentStart(lines[index]), !isDocumentEnd(lines[index]), !trimmed.hasPrefix("%") {
-          throw syntaxError("Missing document start marker")
-        }
-      }
-      while index < lines.count {
-        let content = lines[index].trimmedContent
-        if content.hasPrefix("...") && content != "..." {
-          let index = content.index(content.startIndex, offsetBy: 3)
-          if index < content.endIndex, content[index].isWhitespace {
-            throw syntaxError("Invalid document end marker")
-          }
-        }
-        if isDocumentEnd(lines[index]) {
-          allowDirectives = true
-          index += 1
-          skipEmptyLines()
-          continue
-        }
-        if content.hasPrefix("%") {
-          if !allowDirectives {
-            throw syntaxError("Directive without document end marker")
-          }
-          sawDirective = true
-          let directive = lines[index].trimmedContent
-          let parts = directive.split(whereSeparator: { $0.isWhitespace })
-          if let name = parts.first, name == "%YAML" {
-            if sawYamlDirective {
-              throw syntaxError("Duplicate %YAML directive")
-            }
-            if parts.count != 2 || parts[0] != "%YAML" {
-              throw syntaxError("Invalid %YAML directive")
-            }
-            let version = parts[1]
-            let versionParts = version.split(separator: ".")
-            if versionParts.count != 2
-              || versionParts.contains(where: { $0.isEmpty || $0.contains(where: { !$0.isNumber }) })
-            {
-              throw syntaxError("Invalid %YAML directive")
-            }
-            sawYamlDirective = true
-          } else if let name = parts.first, name == "%TAG" {
-            if parts.count != 3 || parts[0] != "%TAG" {
-              throw syntaxError("Invalid %TAG directive")
-            }
-            let handle = String(parts[1])
-            let prefix = String(parts[2])
-            if handle != "!" {
-              if !handle.hasPrefix("!") || !handle.hasSuffix("!") || handle.count < 2 {
-                throw syntaxError("Invalid %TAG directive")
-              }
-            }
-            if prefix.isEmpty {
-              throw syntaxError("Invalid %TAG directive")
-            }
-            pendingTagHandles[handle] = prefix
-          }
-          index += 1
-          continue
-        }
-        break
-      }
-      skipEmptyLines()
+      let sawDirective = try parseDirectives(
+        allowDirectives: &allowDirectives,
+        requireDocumentStart: requireDocumentStart,
+        pendingTagHandles: &pendingTagHandles
+      )
       guard index < lines.count else {
         if sawDirective {
           throw syntaxError("Directive without document")
@@ -290,8 +424,8 @@ struct YAMLParser {
 
       let trimmed = lines[index].trimmedContent
       if trimmed.hasPrefix("...") && trimmed != "..." {
-        let index = trimmed.index(trimmed.startIndex, offsetBy: 3)
-        if index < trimmed.endIndex, trimmed[index].isWhitespace {
+        let idx = trimmed.index(trimmed.startIndex, offsetBy: 3)
+        if idx < trimmed.endIndex, trimmed[idx].isWhitespace {
           throw syntaxError("Invalid document end marker")
         }
       }
@@ -306,120 +440,11 @@ struct YAMLParser {
       allowDirectives = false
       let explicitStart = isDocumentStart(lines[index])
       if explicitStart {
-        let line = lines[index]
-        let content = line.contentStrippingComment()
-        var cursor = content.startIndex
-        while cursor < content.endIndex, content[cursor].isWhitespace {
-          content.formIndex(after: &cursor)
-        }
-        if content[cursor...].hasPrefix("---") {
-          cursor = content.index(cursor, offsetBy: 3)
-        }
-        while cursor < content.endIndex, content[cursor].isWhitespace {
-          content.formIndex(after: &cursor)
-        }
-        let remainder = String(content[cursor...])
-        let remainderColumn = line.indent + 1 + content.distance(from: content.startIndex, to: cursor)
-        if !remainder.isEmpty {
-          let decorated = try parseDecorators(from: remainder, lineIndex: index, baseColumn: remainderColumn)
-          let trimmedLeading = trimLeadingWhitespace(decorated.remainder)
-          let trimmed = trimmedLeading.trimmed.yamlTrimmed()
-          let trimmedColumn = decorated.remainderColumn + trimmedLeading.offset
-          if trimmed.isEmpty {
-            index += 1
-            skipEmptyLines()
-            guard index < lines.count else {
-              throw allowIncompleteInput ? incompleteError() : syntaxError("Unexpected end of document")
-            }
-            let indent = lines[index].indent
-            var node = try parseNode(expectedIndent: indent)
-            node = try attach(node, tag: decorated.decorators.tag, anchor: decorated.decorators.anchor)
-            appendDocument(node, explicitStart: explicitStart)
-            tagHandles = YAMLParser.defaultTagHandles
-            requireDocumentStart = true
-            continue
-          }
-          if splitMappingEntry(trimmed) != nil {
-            throw syntaxError("Invalid document start content")
-          }
-          if trimmed.hasPrefix("|") || trimmed.hasPrefix(">") {
-            let node = try parseBlockScalar(content: trimmed, decorators: decorated.decorators, baseIndent: -1)
-            appendDocument(node, explicitStart: explicitStart)
-            tagHandles = YAMLParser.defaultTagHandles
-            requireDocumentStart = true
-            continue
-          }
-          let startIndex = index
-          var inlineText = trimmed
-          var extraLines = 0
-          var lineStartColumns = [trimmedColumn]
-          if inlineText.first == "[" || inlineText.first == "{" {
-            let flow = try collectFlowText(
-              startIndex: startIndex,
-              firstContent: decorated.remainder,
-              firstColumn: decorated.remainderColumn,
-              minimumIndent: leadingSpaceCount(lines[startIndex].raw)
-            )
-            inlineText = flow.text
-            extraLines = flow.linesConsumed - 1
-            lineStartColumns = flow.lineStartColumns
-          } else if inlineText.first == "\"" {
-            let expanded = try expandDoubleQuotedInlineText(
-              inlineText,
-              startIndex: startIndex,
-              parentIndent: 0,
-              firstColumn: trimmedColumn
-            )
-            inlineText = expanded.text
-            extraLines = expanded.extraLines
-            lineStartColumns = expanded.lineStartColumns
-          } else if inlineText.first == "'" {
-            let expanded = try expandSingleQuotedInlineText(
-              inlineText,
-              startIndex: startIndex,
-              parentIndent: 0,
-              firstColumn: trimmedColumn
-            )
-            inlineText = expanded.text
-            extraLines = expanded.extraLines
-            lineStartColumns = expanded.lineStartColumns
-          }
-          var inlineParser = InlineParser(
-            text: inlineText,
-            baseLine: line.number,
-            lineStartColumns: lineStartColumns
-          )
-          let inlineStart = inlineParser.location()
-          var node = try parseInlineNode(parser: &inlineParser, baseIndent: 0)
-          node = try attach(node, tag: decorated.decorators.tag, anchor: decorated.decorators.anchor)
-          inlineParser.skipWhitespaceAndComments()
-          if inlineParser.peek != nil {
-            throw inlineParser.syntaxError("Unexpected trailing content")
-          }
-          var linesConsumed = 1 + extraLines
-          if case .scalar(let scalar, let tag, let anchor) = node,
-            case .plain = scalar.style
-          {
-            try validatePlainScalarText(scalar.text, location: inlineStart)
-            let folded = foldPlainScalarFromInline(initial: scalar.text, startIndex: startIndex, contextIndent: 0)
-            if folded.linesConsumed > 0 {
-              try validatePlainScalarText(folded.text, location: inlineStart)
-              let updated = YAMLScalar(text: folded.text, style: .plain)
-              node = .scalar(updated, tag: tag, anchor: anchor)
-              linesConsumed += folded.linesConsumed
-            }
-          }
-          index += linesConsumed
+        if let node = try parseDocumentStartContent(
+          explicitStart: explicitStart,
+          pendingTagHandles: &pendingTagHandles
+        ) {
           appendDocument(node, explicitStart: explicitStart)
-          tagHandles = YAMLParser.defaultTagHandles
-          requireDocumentStart = true
-          continue
-        }
-        index += 1
-        skipEmptyLines()
-        if index >= lines.count || isDocumentStart(lines[index]) || isDocumentEnd(lines[index]) {
-          let emptyScalar = YAMLScalar(text: "", style: .plain)
-          appendDocument(.scalar(emptyScalar, tag: nil, anchor: nil), explicitStart: explicitStart)
           tagHandles = YAMLParser.defaultTagHandles
           requireDocumentStart = true
           continue
@@ -433,7 +458,6 @@ struct YAMLParser {
       tagHandles = YAMLParser.defaultTagHandles
       requireDocumentStart = true
 
-      // Skip until the next document marker or end.
       while index < lines.count {
         if isDocumentStart(lines[index]) || isDocumentEnd(lines[index]) {
           break
@@ -449,8 +473,6 @@ struct YAMLParser {
   }
 
   mutating func parseNextDocument() throws -> YAMLDocument? {
-    var sawDirective = false
-    var sawYamlDirective = false
     var pendingTagHandles = YAMLParser.defaultTagHandles
 
     func hasExplicitDocumentEnd(after index: Int) -> Bool {
@@ -466,85 +488,25 @@ struct YAMLParser {
     }
 
     while index < lines.count {
-      sawDirective = false
-      sawYamlDirective = false
       pendingTagHandles = YAMLParser.defaultTagHandles
-      skipEmptyLines()
-      if requireDocumentStart, index < lines.count {
-        let trimmed = lines[index].trimmedContent
-        if !isDocumentStart(lines[index]), !isDocumentEnd(lines[index]), !trimmed.hasPrefix("%") {
-          throw syntaxError("Missing document start marker")
-        }
-      }
-      while index < lines.count {
-        let content = lines[index].trimmedContent
-        if content.hasPrefix("...") && content != "..." {
-          let index = content.index(content.startIndex, offsetBy: 3)
-          if index < content.endIndex, content[index].isWhitespace {
-            throw syntaxError("Invalid document end marker")
-          }
-        }
-        if isDocumentEnd(lines[index]) {
-          allowDirectives = true
-          index += 1
-          skipEmptyLines()
-          continue
-        }
-        if content.hasPrefix("%") {
-          if !allowDirectives {
-            throw syntaxError("Directive without document end marker")
-          }
-          sawDirective = true
-          let directive = lines[index].trimmedContent
-          let parts = directive.split(whereSeparator: { $0.isWhitespace })
-          if let name = parts.first, name == "%YAML" {
-            if sawYamlDirective {
-              throw syntaxError("Duplicate %YAML directive")
-            }
-            if parts.count != 2 || parts[0] != "%YAML" {
-              throw syntaxError("Invalid %YAML directive")
-            }
-            let version = parts[1]
-            let versionParts = version.split(separator: ".")
-            if versionParts.count != 2
-              || versionParts.contains(where: { $0.isEmpty || $0.contains(where: { !$0.isNumber }) })
-            {
-              throw syntaxError("Invalid %YAML directive")
-            }
-            sawYamlDirective = true
-          } else if let name = parts.first, name == "%TAG" {
-            if parts.count != 3 || parts[0] != "%TAG" {
-              throw syntaxError("Invalid %TAG directive")
-            }
-            let handle = String(parts[1])
-            let prefix = String(parts[2])
-            if handle != "!" {
-              if !handle.hasPrefix("!") || !handle.hasSuffix("!") || handle.count < 2 {
-                throw syntaxError("Invalid %TAG directive")
-              }
-            }
-            if prefix.isEmpty {
-              throw syntaxError("Invalid %TAG directive")
-            }
-            pendingTagHandles[handle] = prefix
-          }
-          index += 1
-          continue
-        }
-        break
-      }
-      skipEmptyLines()
+      var localAllowDirectives = allowDirectives
+      let sawDirective = try parseDirectives(
+        allowDirectives: &localAllowDirectives,
+        requireDocumentStart: requireDocumentStart,
+        pendingTagHandles: &pendingTagHandles
+      )
+      allowDirectives = localAllowDirectives
       guard index < lines.count else {
         if sawDirective {
-          throw syntaxError("Directive without document")
+          throw allowIncompleteInput ? incompleteError() : syntaxError("Directive without document")
         }
         return nil
       }
 
       let trimmed = lines[index].trimmedContent
       if trimmed.hasPrefix("...") && trimmed != "..." {
-        let index = trimmed.index(trimmed.startIndex, offsetBy: 3)
-        if index < trimmed.endIndex, trimmed[index].isWhitespace {
+        let idx = trimmed.index(trimmed.startIndex, offsetBy: 3)
+        if idx < trimmed.endIndex, trimmed[idx].isWhitespace {
           throw syntaxError("Invalid document end marker")
         }
       }
@@ -559,123 +521,11 @@ struct YAMLParser {
       allowDirectives = false
       let explicitStart = isDocumentStart(lines[index])
       if explicitStart {
-        let line = lines[index]
-        let content = line.contentStrippingComment()
-        var cursor = content.startIndex
-        while cursor < content.endIndex, content[cursor].isWhitespace {
-          content.formIndex(after: &cursor)
-        }
-        if content[cursor...].hasPrefix("---") {
-          cursor = content.index(cursor, offsetBy: 3)
-        }
-        while cursor < content.endIndex, content[cursor].isWhitespace {
-          content.formIndex(after: &cursor)
-        }
-        let remainder = String(content[cursor...])
-        let remainderColumn = line.indent + 1 + content.distance(from: content.startIndex, to: cursor)
-        if !remainder.isEmpty {
-          let decorated = try parseDecorators(from: remainder, lineIndex: index, baseColumn: remainderColumn)
-          let trimmedLeading = trimLeadingWhitespace(decorated.remainder)
-          let trimmed = trimmedLeading.trimmed.yamlTrimmed()
-          let trimmedColumn = decorated.remainderColumn + trimmedLeading.offset
-          if trimmed.isEmpty {
-            index += 1
-            skipEmptyLines()
-          guard index < lines.count else {
-            throw allowIncompleteInput ? incompleteError() : syntaxError("Unexpected end of document")
-          }
-            let indent = lines[index].indent
-            var node = try parseNode(expectedIndent: indent)
-            node = try attach(node, tag: decorated.decorators.tag, anchor: decorated.decorators.anchor)
-            let document = buildDocument(node, explicitStart: explicitStart)
-            tagHandles = YAMLParser.defaultTagHandles
-            requireDocumentStart = true
-            skipEmptyLines()
-            return document
-          }
-          if splitMappingEntry(trimmed) != nil {
-            throw syntaxError("Invalid document start content")
-          }
-          if trimmed.hasPrefix("|") || trimmed.hasPrefix(">") {
-            let node = try parseBlockScalar(content: trimmed, decorators: decorated.decorators, baseIndent: -1)
-            let document = buildDocument(node, explicitStart: explicitStart)
-            tagHandles = YAMLParser.defaultTagHandles
-            requireDocumentStart = true
-            skipEmptyLines()
-            return document
-          }
-          let startIndex = index
-          var inlineText = trimmed
-          var extraLines = 0
-          var lineStartColumns = [trimmedColumn]
-          if inlineText.first == "[" || inlineText.first == "{" {
-            let flow = try collectFlowText(
-              startIndex: startIndex,
-              firstContent: decorated.remainder,
-              firstColumn: decorated.remainderColumn,
-              minimumIndent: leadingSpaceCount(lines[startIndex].raw)
-            )
-            inlineText = flow.text
-            extraLines = flow.linesConsumed - 1
-            lineStartColumns = flow.lineStartColumns
-          } else if inlineText.first == "\"" {
-            let expanded = try expandDoubleQuotedInlineText(
-              inlineText,
-              startIndex: startIndex,
-              parentIndent: 0,
-              firstColumn: trimmedColumn
-            )
-            inlineText = expanded.text
-            extraLines = expanded.extraLines
-            lineStartColumns = expanded.lineStartColumns
-          } else if inlineText.first == "'" {
-            let expanded = try expandSingleQuotedInlineText(
-              inlineText,
-              startIndex: startIndex,
-              parentIndent: 0,
-              firstColumn: trimmedColumn
-            )
-            inlineText = expanded.text
-            extraLines = expanded.extraLines
-            lineStartColumns = expanded.lineStartColumns
-          }
-          var inlineParser = InlineParser(
-            text: inlineText,
-            baseLine: line.number,
-            lineStartColumns: lineStartColumns
-          )
-          let inlineStart = inlineParser.location()
-          var node = try parseInlineNode(parser: &inlineParser, baseIndent: 0)
-          node = try attach(node, tag: decorated.decorators.tag, anchor: decorated.decorators.anchor)
-          inlineParser.skipWhitespaceAndComments()
-          if inlineParser.peek != nil {
-            throw inlineParser.syntaxError("Unexpected trailing content")
-          }
-          var linesConsumed = 1 + extraLines
-          if case .scalar(let scalar, let tag, let anchor) = node,
-            case .plain = scalar.style
-          {
-            try validatePlainScalarText(scalar.text, location: inlineStart)
-            let folded = foldPlainScalarFromInline(initial: scalar.text, startIndex: startIndex, contextIndent: 0)
-            if folded.linesConsumed > 0 {
-              try validatePlainScalarText(folded.text, location: inlineStart)
-              let updated = YAMLScalar(text: folded.text, style: .plain)
-              node = .scalar(updated, tag: tag, anchor: anchor)
-              linesConsumed += folded.linesConsumed
-            }
-          }
-          index += linesConsumed
+        if let node = try parseDocumentStartContent(
+          explicitStart: explicitStart,
+          pendingTagHandles: &pendingTagHandles
+        ) {
           let document = buildDocument(node, explicitStart: explicitStart)
-          tagHandles = YAMLParser.defaultTagHandles
-          requireDocumentStart = true
-          skipEmptyLines()
-          return document
-        }
-        index += 1
-        skipEmptyLines()
-        if index >= lines.count || isDocumentStart(lines[index]) || isDocumentEnd(lines[index]) {
-          let emptyScalar = YAMLScalar(text: "", style: .plain)
-          let document = buildDocument(.scalar(emptyScalar, tag: nil, anchor: nil), explicitStart: explicitStart)
           tagHandles = YAMLParser.defaultTagHandles
           requireDocumentStart = true
           skipEmptyLines()
@@ -702,9 +552,6 @@ struct YAMLParser {
       return document
     }
 
-    if sawDirective {
-      throw allowIncompleteInput ? incompleteError() : syntaxError("Directive without document")
-    }
     return nil
   }
 
@@ -759,8 +606,7 @@ struct YAMLParser {
       index += 1
       skipEmptyLines()
       if index >= lines.count || isDocumentStart(lines[index]) || isDocumentEnd(lines[index]) {
-        let emptyScalar = YAMLScalar(text: "", style: .plain)
-        let node = YAMLNode.scalar(emptyScalar, tag: nil, anchor: nil)
+        let node = YAMLNode.emptyPlainScalar
         return try attach(node, tag: decorators.tag, anchor: decorators.anchor)
       }
       let nextLine = lines[index]
@@ -837,40 +683,23 @@ struct YAMLParser {
       return node
     }
 
-    var inlineText = rawContent
-    var lineStartColumns = [rawContentColumn]
-    var extraLines = 0
-    if inlineText.first == "\"" {
-      let expanded = try expandDoubleQuotedInlineText(
-        inlineText,
-        startIndex: index,
-        parentIndent: expectedIndent,
-        firstColumn: rawContentColumn
-      )
-      inlineText = expanded.text
-      extraLines = expanded.extraLines
-      lineStartColumns = expanded.lineStartColumns
-    } else if inlineText.first == "'" {
-      let expanded = try expandSingleQuotedInlineText(
-        inlineText,
-        startIndex: index,
-        parentIndent: expectedIndent,
-        firstColumn: rawContentColumn
-      )
-      inlineText = expanded.text
-      extraLines = expanded.extraLines
-      lineStartColumns = expanded.lineStartColumns
-    }
+    let expanded = try expandInlineText(
+      rawContent,
+      startIndex: index,
+      parentIndent: expectedIndent,
+      firstColumn: rawContentColumn,
+      minimumFlowIndent: 0
+    )
     var inlineParser = InlineParser(
-      text: inlineText,
+      text: expanded.text,
       baseLine: line.number,
-      lineStartColumns: lineStartColumns
+      lineStartColumns: expanded.lineStartColumns
     )
     var node = try parseInlineNode(parser: &inlineParser, baseIndent: expectedIndent)
     if decorators.tag != nil || decorators.anchor != nil {
       node = try attach(node, tag: decorators.tag, anchor: decorators.anchor)
     }
-    var linesConsumed = 1 + extraLines
+    var linesConsumed = 1 + expanded.extraLines
     let folded = try foldPlainScalarIfNeeded(node, startIndex: index)
     node = folded.node
     linesConsumed += folded.linesConsumed
@@ -935,7 +764,6 @@ struct YAMLParser {
         break
       }
 
-      // Move past '-'
       let trimmed = content.yamlTrimmed()
       guard trimmed.first == "-" else { break }
       let tabSeparated = hasTabAfterIndicator(content, indicator: "-")
@@ -961,8 +789,7 @@ struct YAMLParser {
           let decoratedNode = try attach(node, tag: currentDecorators.tag, anchor: currentDecorators.anchor)
           items.append(decoratedNode)
         } else {
-          let emptyScalar = YAMLScalar(text: "", style: .plain)
-          let emptyNode = YAMLNode.scalar(emptyScalar, tag: nil, anchor: nil)
+          let emptyNode = YAMLNode.emptyPlainScalar
           let decoratedNode = try attach(emptyNode, tag: currentDecorators.tag, anchor: currentDecorators.anchor)
           items.append(decoratedNode)
         }
@@ -1029,8 +856,7 @@ struct YAMLParser {
             )
             items.append(node)
           } else {
-            let emptyScalar = YAMLScalar(text: "", style: .plain)
-            let emptyNode = YAMLNode.scalar(emptyScalar, tag: nil, anchor: nil)
+            let emptyNode = YAMLNode.emptyPlainScalar
             let decoratedNode = try attach(
               emptyNode,
               tag: valueDecorators.tag ?? currentDecorators.tag,
@@ -1054,45 +880,17 @@ struct YAMLParser {
             consumeFirst = true
             continue
           }
-          var inlineText = inline.remaining
-          var lineStartColumns = [contentColumn]
-          var extraLines = 0
-          if inlineText.first == "[" || inlineText.first == "{" {
-            let flow = try collectFlowText(
-              startIndex: entryLineIndex,
-              firstContent: inlineText,
-              firstColumn: contentColumn,
-              minimumIndent: leadingSpaceCount(lines[entryLineIndex].raw) + 1
-            )
-            inlineText = flow.text
-            extraLines = max(extraLines, flow.linesConsumed - 1)
-            lineStartColumns = flow.lineStartColumns
-          }
-          if inlineText.first == "\"" {
-            let expanded = try expandDoubleQuotedInlineText(
-              inlineText,
-              startIndex: entryLineIndex,
-              parentIndent: sequenceIndent + 1,
-              firstColumn: contentColumn
-            )
-            inlineText = expanded.text
-            extraLines = expanded.extraLines
-            lineStartColumns = expanded.lineStartColumns
-          } else if inlineText.first == "'" {
-            let expanded = try expandSingleQuotedInlineText(
-              inlineText,
-              startIndex: entryLineIndex,
-              parentIndent: sequenceIndent + 1,
-              firstColumn: contentColumn
-            )
-            inlineText = expanded.text
-            extraLines = expanded.extraLines
-            lineStartColumns = expanded.lineStartColumns
-          }
+          let expanded = try expandInlineText(
+            inline.remaining,
+            startIndex: entryLineIndex,
+            parentIndent: sequenceIndent + 1,
+            firstColumn: contentColumn,
+            minimumFlowIndent: leadingSpaceCount(lines[entryLineIndex].raw) + 1
+          )
           var valueParser = InlineParser(
-            text: inlineText,
+            text: expanded.text,
             baseLine: lines[entryLineIndex].number,
-            lineStartColumns: lineStartColumns
+            lineStartColumns: expanded.lineStartColumns
           )
           var node = try parseInlineNode(parser: &valueParser, baseIndent: sequenceIndent + 2)
           node = try attach(
@@ -1114,8 +912,8 @@ struct YAMLParser {
           if folded.linesConsumed > 0 {
             index += folded.linesConsumed
           }
-          if extraLines > 0 {
-            index += extraLines
+          if expanded.extraLines > 0 {
+            index += expanded.extraLines
           }
           valueParser.skipWhitespaceAndComments()
           if valueParser.peek != nil {
@@ -1277,174 +1075,10 @@ struct YAMLParser {
 
         keyNode = try attach(keyNode, tag: entryDecorators.tag, anchor: entryDecorators.anchor)
 
-        var valueNode: YAMLNode
-        if let valueIndex = nextNonEmptyLineIndex(from: index),
-          lines[valueIndex].indent == expectedIndent
-        {
-          let valueLine = lines[valueIndex]
-          let valueDecorated = try parseDecorators(
-            from: valueLine.contentStrippingComment(),
-            lineIndex: valueIndex,
-            baseColumn: valueLine.indent + 1
-          )
-          var valueContent = valueDecorated.remainder.yamlTrimmed()
-          if valueContent.hasPrefix(":") {
-            let tabSeparated = hasTabAfterIndicator(valueContent, indicator: ":")
-            valueContent.removeFirst()
-            let remainder = valueContent.yamlTrimmed()
-            if tabSeparated {
-              if isSequenceIndicator(remainder) || isExplicitMappingIndicator(remainder)
-                || splitMappingEntry(remainder) != nil
-              {
-                throw indentationError()
-              }
-            }
-            index = valueIndex + 1
-            if remainder.isEmpty {
-              if let nextIndex = nextNonEmptyLineIndex(from: index) {
-                let nextLine = lines[nextIndex]
-                if nextLine.indent > expectedIndent {
-                  skipEmptyLines()
-                  let node = try parseNode(expectedIndent: expectedIndent + 1)
-                  valueNode = try attach(
-                    node,
-                    tag: valueDecorated.decorators.tag,
-                    anchor: valueDecorated.decorators.anchor
-                  )
-                } else if nextLine.indent == expectedIndent,
-                  isSequenceIndicator(nextLine.trimmedContent)
-                {
-                  skipEmptyLines()
-                  let nested = try parseBlockSequence(
-                    decorators: Decorators(tag: nil, anchor: nil),
-                    expectedIndent: expectedIndent,
-                    firstRemainder: lines[index].contentStrippingComment()
-                  )
-                  valueNode = try attach(
-                    nested,
-                    tag: valueDecorated.decorators.tag,
-                    anchor: valueDecorated.decorators.anchor
-                  )
-                } else {
-                  let emptyScalar = YAMLScalar(text: "", style: .plain)
-                  let emptyNode = YAMLNode.scalar(emptyScalar, tag: nil, anchor: nil)
-                  valueNode = try attach(
-                    emptyNode,
-                    tag: valueDecorated.decorators.tag,
-                    anchor: valueDecorated.decorators.anchor
-                  )
-                }
-              } else {
-                let emptyScalar = YAMLScalar(text: "", style: .plain)
-                let emptyNode = YAMLNode.scalar(emptyScalar, tag: nil, anchor: nil)
-                valueNode = try attach(
-                  emptyNode,
-                  tag: valueDecorated.decorators.tag,
-                  anchor: valueDecorated.decorators.anchor
-                )
-              }
-            } else if remainder.hasPrefix("|") || remainder.hasPrefix(">") {
-              let savedIndex = index
-              index = valueIndex
-              let node = try parseBlockScalar(
-                content: remainder,
-                decorators: valueDecorated.decorators,
-                baseIndent: expectedIndent
-              )
-              valueNode = node
-              index = max(index, savedIndex)
-            } else if isSequenceIndicator(remainder) {
-              let nested = try parseBlockSequence(
-                decorators: Decorators(tag: nil, anchor: nil),
-                expectedIndent: expectedIndent + 2,
-                firstRemainder: remainder,
-                consumeFirstLine: false
-              )
-              valueNode = try attach(
-                nested,
-                tag: valueDecorated.decorators.tag,
-                anchor: valueDecorated.decorators.anchor
-              )
-            } else if splitMappingEntry(remainder) != nil || isExplicitMappingIndicator(remainder) {
-              let nested = try parseBlockMapping(
-                decorators: Decorators(tag: nil, anchor: nil),
-                expectedIndent: expectedIndent + 2,
-                firstRemainder: remainder,
-                consumeFirstLine: false
-              )
-              valueNode = try attach(
-                nested,
-                tag: valueDecorated.decorators.tag,
-                anchor: valueDecorated.decorators.anchor
-              )
-            } else {
-              var inlineText = remainder
-              var lineStartColumns = [valueDecorated.remainderColumn]
-              var extraLines = 0
-              if inlineText.first == "[" || inlineText.first == "{" {
-                let flow = try collectFlowText(
-                  startIndex: valueIndex,
-                  firstContent: inlineText,
-                  firstColumn: valueDecorated.remainderColumn,
-                  minimumIndent: leadingSpaceCount(lines[valueIndex].raw) + 1
-                )
-                inlineText = flow.text
-                extraLines = max(extraLines, flow.linesConsumed - 1)
-                lineStartColumns = flow.lineStartColumns
-              }
-              if inlineText.first == "\"" {
-                let expanded = try expandDoubleQuotedInlineText(
-                  inlineText,
-                  startIndex: valueIndex,
-                  parentIndent: expectedIndent + 1,
-                  firstColumn: valueDecorated.remainderColumn
-                )
-                inlineText = expanded.text
-                extraLines = expanded.extraLines
-                lineStartColumns = expanded.lineStartColumns
-              } else if inlineText.first == "'" {
-                let expanded = try expandSingleQuotedInlineText(
-                  inlineText,
-                  startIndex: valueIndex,
-                  parentIndent: expectedIndent + 1,
-                  firstColumn: valueDecorated.remainderColumn
-                )
-                inlineText = expanded.text
-                extraLines = expanded.extraLines
-                lineStartColumns = expanded.lineStartColumns
-              }
-              var inlineParser = InlineParser(
-                text: inlineText,
-                baseLine: valueLine.number,
-                lineStartColumns: lineStartColumns
-              )
-              valueNode = try parseInlineNode(parser: &inlineParser, baseIndent: expectedIndent + 1)
-              valueNode = try attach(
-                valueNode,
-                tag: valueDecorated.decorators.tag,
-                anchor: valueDecorated.decorators.anchor
-              )
-              let folded = try foldPlainScalarIfNeeded(valueNode, startIndex: valueIndex, contextIndent: expectedIndent)
-              valueNode = folded.node
-              if folded.linesConsumed > 0 {
-                index += folded.linesConsumed
-              }
-              if extraLines > 0 {
-                index += extraLines
-              }
-              inlineParser.skipWhitespaceAndComments()
-              if inlineParser.peek != nil {
-                throw inlineParser.syntaxError("Unexpected trailing content")
-              }
-            }
-          } else {
-            let emptyScalar = YAMLScalar(text: "", style: .plain)
-            valueNode = YAMLNode.scalar(emptyScalar, tag: nil, anchor: nil)
-          }
-        } else {
-          let emptyScalar = YAMLScalar(text: "", style: .plain)
-          valueNode = YAMLNode.scalar(emptyScalar, tag: nil, anchor: nil)
-        }
+        let valueNode = try resolveBlockMappingValue(
+          expectedIndent: expectedIndent,
+          allowNestedMapping: true
+        )
 
         pairs.append((keyNode, valueNode))
         initialRemainder = nil
@@ -1459,8 +1093,7 @@ struct YAMLParser {
       let entryLine = lines[entryLineIndex]
       let entryBaseColumn = entryLine.indent + 1
       if trimmedKey.isEmpty {
-        let emptyScalar = YAMLScalar(text: "", style: .plain)
-        keyNode = YAMLNode.scalar(emptyScalar, tag: nil, anchor: nil)
+        keyNode = .emptyPlainScalar
       } else {
         var keyParser = InlineParser(
           text: trimmedKey,
@@ -1499,13 +1132,11 @@ struct YAMLParser {
             )
             pairs.append((decoratedKeyNode, nested))
           } else {
-            let emptyScalar = YAMLScalar(text: "", style: .plain)
-            let emptyNode = YAMLNode.scalar(emptyScalar, tag: nil, anchor: nil)
+            let emptyNode = YAMLNode.emptyPlainScalar
             pairs.append((decoratedKeyNode, emptyNode))
           }
         } else {
-          let emptyScalar = YAMLScalar(text: "", style: .plain)
-          let emptyNode = YAMLNode.scalar(emptyScalar, tag: nil, anchor: nil)
+          let emptyNode = YAMLNode.emptyPlainScalar
           pairs.append((decoratedKeyNode, emptyNode))
         }
       } else {
@@ -1539,14 +1170,12 @@ struct YAMLParser {
               let decoratedNode = try attach(nested, tag: valueDecorators.tag, anchor: valueDecorators.anchor)
               pairs.append((decoratedKeyNode, decoratedNode))
             } else {
-              let emptyScalar = YAMLScalar(text: "", style: .plain)
-              let emptyNode = YAMLNode.scalar(emptyScalar, tag: nil, anchor: nil)
+              let emptyNode = YAMLNode.emptyPlainScalar
               let decoratedNode = try attach(emptyNode, tag: valueDecorators.tag, anchor: valueDecorators.anchor)
               pairs.append((decoratedKeyNode, decoratedNode))
             }
           } else {
-            let emptyScalar = YAMLScalar(text: "", style: .plain)
-            let emptyNode = YAMLNode.scalar(emptyScalar, tag: nil, anchor: nil)
+            let emptyNode = YAMLNode.emptyPlainScalar
             let decoratedNode = try attach(emptyNode, tag: valueDecorators.tag, anchor: valueDecorators.anchor)
             pairs.append((decoratedKeyNode, decoratedNode))
           }
@@ -1564,45 +1193,17 @@ struct YAMLParser {
           if isSequenceIndicator(remainder) {
             throw syntaxError("Sequence value must start on a new line")
           }
-          var inlineText = valueParser.remaining
-          var lineStartColumns = [entryBaseColumn]
-          var extraLines = 0
-          if inlineText.first == "[" || inlineText.first == "{" {
-            let flow = try collectFlowText(
-              startIndex: entryLineIndex,
-              firstContent: inlineText,
-              firstColumn: entryBaseColumn,
-              minimumIndent: leadingSpaceCount(lines[entryLineIndex].raw) + 1
-            )
-            inlineText = flow.text
-            extraLines = max(extraLines, flow.linesConsumed - 1)
-            lineStartColumns = flow.lineStartColumns
-          }
-          if inlineText.first == "\"" {
-            let expanded = try expandDoubleQuotedInlineText(
-              inlineText,
-              startIndex: entryLineIndex,
-              parentIndent: expectedIndent + 1,
-              firstColumn: entryBaseColumn
-            )
-            inlineText = expanded.text
-            extraLines = expanded.extraLines
-            lineStartColumns = expanded.lineStartColumns
-          } else if inlineText.first == "'" {
-            let expanded = try expandSingleQuotedInlineText(
-              inlineText,
-              startIndex: entryLineIndex,
-              parentIndent: expectedIndent + 1,
-              firstColumn: entryBaseColumn
-            )
-            inlineText = expanded.text
-            extraLines = expanded.extraLines
-            lineStartColumns = expanded.lineStartColumns
-          }
+          let expanded = try expandInlineText(
+            valueParser.remaining,
+            startIndex: entryLineIndex,
+            parentIndent: expectedIndent + 1,
+            firstColumn: entryBaseColumn,
+            minimumFlowIndent: leadingSpaceCount(lines[entryLineIndex].raw) + 1
+          )
           var inlineParser = InlineParser(
-            text: inlineText,
+            text: expanded.text,
             baseLine: entryLine.number,
-            lineStartColumns: lineStartColumns
+            lineStartColumns: expanded.lineStartColumns
           )
           var valueNode = try parseInlineNode(parser: &inlineParser, baseIndent: expectedIndent + 1)
           valueNode = try attach(valueNode, tag: valueDecorators.tag, anchor: valueDecorators.anchor)
@@ -1611,8 +1212,8 @@ struct YAMLParser {
           if folded.linesConsumed > 0 {
             index += folded.linesConsumed
           }
-          if extraLines > 0 {
-            index += extraLines
+          if expanded.extraLines > 0 {
+            index += expanded.extraLines
           }
           inlineParser.skipWhitespaceAndComments()
           if inlineParser.peek != nil {
@@ -1732,158 +1333,10 @@ struct YAMLParser {
 
       keyNode = try attach(keyNode, tag: decorated.decorators.tag, anchor: decorated.decorators.anchor)
 
-      var valueNode: YAMLNode
-      if let valueIndex = nextNonEmptyLineIndex(from: index),
-        lines[valueIndex].indent == expectedIndent
-      {
-        let valueLine = lines[valueIndex]
-        let valueDecorated = try parseDecorators(
-          from: valueLine.contentStrippingComment(),
-          lineIndex: valueIndex,
-          baseColumn: valueLine.indent + 1
-        )
-        var valueContent = valueDecorated.remainder.yamlTrimmed()
-        if valueContent.hasPrefix(":") {
-          let tabSeparated = hasTabAfterIndicator(valueContent, indicator: ":")
-          valueContent.removeFirst()
-          let remainder = valueContent.yamlTrimmed()
-          if tabSeparated {
-            if isSequenceIndicator(remainder) || isExplicitMappingIndicator(remainder)
-              || splitMappingEntry(remainder) != nil
-            {
-              throw indentationError()
-            }
-          }
-          index = valueIndex + 1
-          if remainder.isEmpty {
-            if let nextIndex = nextNonEmptyLineIndex(from: index) {
-              let nextLine = lines[nextIndex]
-              if nextLine.indent > expectedIndent {
-                skipEmptyLines()
-                let node = try parseNode(expectedIndent: expectedIndent + 1)
-                valueNode = try attach(
-                  node,
-                  tag: valueDecorated.decorators.tag,
-                  anchor: valueDecorated.decorators.anchor
-                )
-              } else if nextLine.indent == expectedIndent,
-                isSequenceIndicator(nextLine.trimmedContent)
-              {
-                skipEmptyLines()
-                let nested = try parseBlockSequence(
-                  decorators: Decorators(tag: nil, anchor: nil),
-                  expectedIndent: expectedIndent,
-                  firstRemainder: lines[index].contentStrippingComment()
-                )
-                valueNode = try attach(
-                  nested,
-                  tag: valueDecorated.decorators.tag,
-                  anchor: valueDecorated.decorators.anchor
-                )
-              } else {
-                let emptyScalar = YAMLScalar(text: "", style: .plain)
-                let emptyNode = YAMLNode.scalar(emptyScalar, tag: nil, anchor: nil)
-                valueNode = try attach(
-                  emptyNode,
-                  tag: valueDecorated.decorators.tag,
-                  anchor: valueDecorated.decorators.anchor
-                )
-              }
-            } else {
-              let emptyScalar = YAMLScalar(text: "", style: .plain)
-              let emptyNode = YAMLNode.scalar(emptyScalar, tag: nil, anchor: nil)
-              valueNode = try attach(
-                emptyNode,
-                tag: valueDecorated.decorators.tag,
-                anchor: valueDecorated.decorators.anchor
-              )
-            }
-          } else if remainder.hasPrefix("|") || remainder.hasPrefix(">") {
-            let savedIndex = index
-            index = valueIndex
-            let node = try parseBlockScalar(
-              content: remainder,
-              decorators: valueDecorated.decorators,
-              baseIndent: expectedIndent
-            )
-            valueNode = node
-            index = max(index, savedIndex)
-          } else if isSequenceIndicator(remainder) {
-            let nested = try parseBlockSequence(
-              decorators: Decorators(tag: nil, anchor: nil),
-              expectedIndent: expectedIndent + 2,
-              firstRemainder: remainder,
-              consumeFirstLine: false
-            )
-            valueNode = try attach(nested, tag: valueDecorated.decorators.tag, anchor: valueDecorated.decorators.anchor)
-          } else {
-            var inlineText = remainder
-            var lineStartColumns = [valueDecorated.remainderColumn]
-            var extraLines = 0
-            if inlineText.first == "[" || inlineText.first == "{" {
-              let flow = try collectFlowText(
-                startIndex: valueIndex,
-                firstContent: inlineText,
-                firstColumn: valueDecorated.remainderColumn,
-                minimumIndent: leadingSpaceCount(lines[valueIndex].raw) + 1
-              )
-              inlineText = flow.text
-              extraLines = max(extraLines, flow.linesConsumed - 1)
-              lineStartColumns = flow.lineStartColumns
-            }
-            if inlineText.first == "\"" {
-              let expanded = try expandDoubleQuotedInlineText(
-                inlineText,
-                startIndex: valueIndex,
-                parentIndent: expectedIndent + 1,
-                firstColumn: valueDecorated.remainderColumn
-              )
-              inlineText = expanded.text
-              extraLines = expanded.extraLines
-              lineStartColumns = expanded.lineStartColumns
-            } else if inlineText.first == "'" {
-              let expanded = try expandSingleQuotedInlineText(
-                inlineText,
-                startIndex: valueIndex,
-                parentIndent: expectedIndent + 1,
-                firstColumn: valueDecorated.remainderColumn
-              )
-              inlineText = expanded.text
-              extraLines = expanded.extraLines
-              lineStartColumns = expanded.lineStartColumns
-            }
-            var inlineParser = InlineParser(
-              text: inlineText,
-              baseLine: valueLine.number,
-              lineStartColumns: lineStartColumns
-            )
-            valueNode = try parseInlineNode(parser: &inlineParser, baseIndent: expectedIndent + 1)
-            valueNode = try attach(
-              valueNode,
-              tag: valueDecorated.decorators.tag,
-              anchor: valueDecorated.decorators.anchor
-            )
-            let folded = try foldPlainScalarIfNeeded(valueNode, startIndex: valueIndex, contextIndent: expectedIndent)
-            valueNode = folded.node
-            if folded.linesConsumed > 0 {
-              index += folded.linesConsumed
-            }
-            if extraLines > 0 {
-              index += extraLines
-            }
-            inlineParser.skipWhitespaceAndComments()
-            if inlineParser.peek != nil {
-              throw inlineParser.syntaxError("Unexpected trailing content")
-            }
-          }
-        } else {
-          let emptyScalar = YAMLScalar(text: "", style: .plain)
-          valueNode = YAMLNode.scalar(emptyScalar, tag: nil, anchor: nil)
-        }
-      } else {
-        let emptyScalar = YAMLScalar(text: "", style: .plain)
-        valueNode = YAMLNode.scalar(emptyScalar, tag: nil, anchor: nil)
-      }
+      let valueNode = try resolveBlockMappingValue(
+        expectedIndent: expectedIndent,
+        allowNestedMapping: false
+      )
 
       pairs.append((keyNode, valueNode))
       initialRemainder = nil
@@ -2063,8 +1516,7 @@ struct YAMLParser {
 
     parser.skipWhitespaceAndComments()
     guard let current = parser.peek else {
-      let emptyScalar = YAMLScalar(text: "", style: .plain)
-      let node = YAMLNode.scalar(emptyScalar, tag: nil, anchor: nil)
+      let node = YAMLNode.emptyPlainScalar
       return try attach(node, tag: decorators.tag, anchor: decorators.anchor)
     }
 
@@ -2128,8 +1580,7 @@ struct YAMLParser {
             guard keyParser.peek == ":" || keyParser.peek == "," || keyParser.peek == "]" else {
               throw syntaxError("Invalid explicit flow mapping key")
             }
-            let emptyScalar = YAMLScalar(text: "", style: .plain)
-            keyNode = .scalar(emptyScalar, tag: nil, anchor: nil)
+            keyNode = .emptyPlainScalar
           }
           keyParser.skipWhitespaceAndComments()
           let hadColon = keyParser.consumeIf(":")
@@ -2139,11 +1590,9 @@ struct YAMLParser {
             guard keyParser.peek == nil || keyParser.peek == "," || keyParser.peek == "]" else {
               throw syntaxError("Explicit flow mapping entry missing ':'")
             }
-            let emptyScalar = YAMLScalar(text: "", style: .plain)
-            valueNode = .scalar(emptyScalar, tag: nil, anchor: nil)
+            valueNode = .emptyPlainScalar
           } else if keyParser.peek == nil || keyParser.peek == "," || keyParser.peek == "]" {
-            let emptyScalar = YAMLScalar(text: "", style: .plain)
-            valueNode = .scalar(emptyScalar, tag: nil, anchor: nil)
+            valueNode = .emptyPlainScalar
           } else {
             let valueStart = keyParser.index
             var valueParser = keyParser
@@ -2181,8 +1630,7 @@ struct YAMLParser {
         guard entryParser.peek == ":" else {
           throw syntaxError("Invalid flow sequence entry")
         }
-        let emptyScalar = YAMLScalar(text: "", style: .plain)
-        keyNode = .scalar(emptyScalar, tag: nil, anchor: nil)
+        keyNode = .emptyPlainScalar
       }
       let keySlice = entryParser.text[entryStart..<entryParser.index]
       let keyHasLineBreak = keySlice.contains(where: { $0.isNewline })
@@ -2268,8 +1716,7 @@ struct YAMLParser {
             guard keyParser.peek == ":" || keyParser.peek == "," || keyParser.peek == "}" else {
               throw syntaxError("Invalid explicit flow mapping key")
             }
-            let emptyScalar = YAMLScalar(text: "", style: .plain)
-            key = .scalar(emptyScalar, tag: nil, anchor: nil)
+            key = .emptyPlainScalar
           }
           keyParser.skipWhitespaceAndComments()
           let hadColon = keyParser.consumeIf(":")
@@ -2279,11 +1726,9 @@ struct YAMLParser {
             guard keyParser.peek == nil || keyParser.peek == "," || keyParser.peek == "}" else {
               throw syntaxError("Explicit flow mapping entry missing ':'")
             }
-            let emptyScalar = YAMLScalar(text: "", style: .plain)
-            valueNode = .scalar(emptyScalar, tag: nil, anchor: nil)
+            valueNode = .emptyPlainScalar
           } else if keyParser.peek == nil || keyParser.peek == "," || keyParser.peek == "}" {
-            let emptyScalar = YAMLScalar(text: "", style: .plain)
-            valueNode = .scalar(emptyScalar, tag: nil, anchor: nil)
+            valueNode = .emptyPlainScalar
           } else {
             let valueStart = keyParser.index
             var valueParser = keyParser
@@ -2317,16 +1762,14 @@ struct YAMLParser {
         guard parser.peek == ":" else {
           throw syntaxError("Invalid flow mapping key")
         }
-        let emptyScalar = YAMLScalar(text: "", style: .plain)
-        key = .scalar(emptyScalar, tag: nil, anchor: nil)
+        key = .emptyPlainScalar
       }
       parser.skipWhitespaceAndComments()
       if parser.consumeIf(":") {
         parser.skipWhitespaceAndComments()
 
         if parser.peek == "," || parser.peek == "}" || parser.peek == nil {
-          let emptyScalar = YAMLScalar(text: "", style: .plain)
-          pairs.append((key, .scalar(emptyScalar, tag: nil, anchor: nil)))
+          pairs.append((key, .emptyPlainScalar))
         } else {
           let valueStart = parser.index
           var valueParser = parser
@@ -2338,8 +1781,7 @@ struct YAMLParser {
           pairs.append((key, value))
         }
       } else {
-        let emptyScalar = YAMLScalar(text: "", style: .plain)
-        pairs.append((key, .scalar(emptyScalar, tag: nil, anchor: nil)))
+        pairs.append((key, .emptyPlainScalar))
       }
 
       parser.skipWhitespaceAndComments()
@@ -2811,7 +2253,7 @@ struct YAMLParser {
     return first == UInt8(ascii: "[") || first == UInt8(ascii: "{")
   }
 
-  fileprivate struct Decorators {
+  struct Decorators {
     let tag: String?
     let anchor: String?
   }
@@ -3323,6 +2765,37 @@ struct YAMLParser {
     throw syntaxError("Unterminated \(quoteDescription) scalar", lineIndex: cursor)
   }
 
+  /// Expands multi-line flow collections and quoted strings that span across lines.
+  /// Handles `[`/`{` flow collections, `"` double-quoted, and `'` single-quoted scalars.
+  private func expandInlineText(
+    _ text: String,
+    startIndex: Int,
+    parentIndent: Int,
+    firstColumn: Int,
+    minimumFlowIndent: Int
+  ) throws -> (text: String, extraLines: Int, lineStartColumns: [Int]) {
+    if text.first == "[" || text.first == "{" {
+      let flow = try collectFlowText(
+        startIndex: startIndex,
+        firstContent: text,
+        firstColumn: firstColumn,
+        minimumIndent: minimumFlowIndent
+      )
+      return (flow.text, flow.linesConsumed - 1, flow.lineStartColumns)
+    }
+    if text.first == "\"" {
+      return try expandDoubleQuotedInlineText(
+        text, startIndex: startIndex, parentIndent: parentIndent, firstColumn: firstColumn
+      )
+    }
+    if text.first == "'" {
+      return try expandSingleQuotedInlineText(
+        text, startIndex: startIndex, parentIndent: parentIndent, firstColumn: firstColumn
+      )
+    }
+    return (text, 0, [firstColumn])
+  }
+
   private func expandDoubleQuotedInlineText(
     _ text: String,
     startIndex: Int,
@@ -3340,6 +2813,141 @@ struct YAMLParser {
       firstColumn: firstColumn
     )
     return (collected.text, collected.linesConsumed - 1, collected.lineStartColumns)
+  }
+
+  /// Resolves the value after `:` in a block mapping entry, handling empty values,
+  /// block scalars, nested sequences/mappings, inline scalars, and flow collections.
+  private mutating func resolveBlockMappingValue(
+    expectedIndent: Int,
+    allowNestedMapping: Bool
+  ) throws -> YAMLNode {
+    guard let valueIndex = nextNonEmptyLineIndex(from: index),
+      lines[valueIndex].indent == expectedIndent
+    else {
+      return .emptyPlainScalar
+    }
+
+    let valueLine = lines[valueIndex]
+    let valueDecorated = try parseDecorators(
+      from: valueLine.contentStrippingComment(),
+      lineIndex: valueIndex,
+      baseColumn: valueLine.indent + 1
+    )
+    var valueContent = valueDecorated.remainder.yamlTrimmed()
+    guard valueContent.hasPrefix(":") else {
+      return .emptyPlainScalar
+    }
+
+    let tabSeparated = hasTabAfterIndicator(valueContent, indicator: ":")
+    valueContent.removeFirst()
+    let remainder = valueContent.yamlTrimmed()
+    if tabSeparated {
+      if isSequenceIndicator(remainder) || isExplicitMappingIndicator(remainder)
+        || splitMappingEntry(remainder) != nil
+      {
+        throw indentationError()
+      }
+    }
+
+    index = valueIndex + 1
+
+    if remainder.isEmpty {
+      return try resolveEmptyValueRemainder(
+        expectedIndent: expectedIndent,
+        decorators: valueDecorated.decorators
+      )
+    }
+
+    if remainder.hasPrefix("|") || remainder.hasPrefix(">") {
+      let savedIndex = index
+      index = valueIndex
+      let node = try parseBlockScalar(
+        content: remainder,
+        decorators: valueDecorated.decorators,
+        baseIndent: expectedIndent
+      )
+      index = max(index, savedIndex)
+      return node
+    }
+
+    if isSequenceIndicator(remainder) {
+      let nested = try parseBlockSequence(
+        decorators: Decorators(tag: nil, anchor: nil),
+        expectedIndent: expectedIndent + 2,
+        firstRemainder: remainder,
+        consumeFirstLine: false
+      )
+      return try attach(nested, tag: valueDecorated.decorators.tag, anchor: valueDecorated.decorators.anchor)
+    }
+
+    if allowNestedMapping,
+      splitMappingEntry(remainder) != nil || isExplicitMappingIndicator(remainder)
+    {
+      let nested = try parseBlockMapping(
+        decorators: Decorators(tag: nil, anchor: nil),
+        expectedIndent: expectedIndent + 2,
+        firstRemainder: remainder,
+        consumeFirstLine: false
+      )
+      return try attach(nested, tag: valueDecorated.decorators.tag, anchor: valueDecorated.decorators.anchor)
+    }
+
+    let expanded = try expandInlineText(
+      remainder,
+      startIndex: valueIndex,
+      parentIndent: expectedIndent + 1,
+      firstColumn: valueDecorated.remainderColumn,
+      minimumFlowIndent: leadingSpaceCount(lines[valueIndex].raw) + 1
+    )
+    var inlineParser = InlineParser(
+      text: expanded.text,
+      baseLine: valueLine.number,
+      lineStartColumns: expanded.lineStartColumns
+    )
+    var valueNode = try parseInlineNode(parser: &inlineParser, baseIndent: expectedIndent + 1)
+    valueNode = try attach(
+      valueNode,
+      tag: valueDecorated.decorators.tag,
+      anchor: valueDecorated.decorators.anchor
+    )
+    let folded = try foldPlainScalarIfNeeded(valueNode, startIndex: valueIndex, contextIndent: expectedIndent)
+    valueNode = folded.node
+    if folded.linesConsumed > 0 {
+      index += folded.linesConsumed
+    }
+    if expanded.extraLines > 0 {
+      index += expanded.extraLines
+    }
+    inlineParser.skipWhitespaceAndComments()
+    if inlineParser.peek != nil {
+      throw inlineParser.syntaxError("Unexpected trailing content")
+    }
+    return valueNode
+  }
+
+  private mutating func resolveEmptyValueRemainder(
+    expectedIndent: Int,
+    decorators: Decorators
+  ) throws -> YAMLNode {
+    guard let nextIndex = nextNonEmptyLineIndex(from: index) else {
+      return try attach(.emptyPlainScalar, tag: decorators.tag, anchor: decorators.anchor)
+    }
+    let nextLine = lines[nextIndex]
+    if nextLine.indent > expectedIndent {
+      skipEmptyLines()
+      let node = try parseNode(expectedIndent: expectedIndent + 1)
+      return try attach(node, tag: decorators.tag, anchor: decorators.anchor)
+    }
+    if nextLine.indent == expectedIndent, isSequenceIndicator(nextLine.trimmedContent) {
+      skipEmptyLines()
+      let nested = try parseBlockSequence(
+        decorators: Decorators(tag: nil, anchor: nil),
+        expectedIndent: expectedIndent,
+        firstRemainder: lines[index].contentStrippingComment()
+      )
+      return try attach(nested, tag: decorators.tag, anchor: decorators.anchor)
+    }
+    return try attach(.emptyPlainScalar, tag: decorators.tag, anchor: decorators.anchor)
   }
 
   private func expandSingleQuotedInlineText(
@@ -3362,490 +2970,3 @@ struct YAMLParser {
   }
 }
 
-// MARK: - Inline Parser
-
-private struct InlineParser {
-
-  private(set) var text: String
-  fileprivate var index: String.Index
-  private let baseLine: Int
-  private let lineStartColumns: [Int]
-
-  init(text: String) {
-    self.text = text
-    self.index = text.startIndex
-    self.baseLine = 1
-    self.lineStartColumns = [1]
-  }
-
-  init(text: String, baseLine: Int, lineStartColumns: [Int]) {
-    self.text = text
-    self.index = text.startIndex
-    self.baseLine = baseLine
-    self.lineStartColumns = lineStartColumns.isEmpty ? [1] : lineStartColumns
-  }
-
-  func location(at position: String.Index? = nil) -> YAML.ParseError.Location {
-    let target = position ?? index
-    var lineOffset = 0
-    var columnOffset = 0
-    var cursor = text.startIndex
-    while cursor < target {
-      let char = text[cursor]
-      if char.isNewline {
-        lineOffset += 1
-        columnOffset = 0
-      } else {
-        columnOffset += 1
-      }
-      text.formIndex(after: &cursor)
-    }
-    let startColumn =
-      lineStartColumns.indices.contains(lineOffset)
-      ? lineStartColumns[lineOffset]
-      : (lineStartColumns.first ?? 1)
-    return .init(line: baseLine + lineOffset, column: startColumn + columnOffset)
-  }
-
-  func syntaxError(_ message: String, at position: String.Index? = nil) -> YAML.ParseError {
-    .invalidSyntax(message, location: location(at: position))
-  }
-
-  var peek: Character? {
-    guard index < text.endIndex else { return nil }
-    return text[index]
-  }
-
-  var remaining: String {
-    String(text[index...])
-  }
-
-  mutating func skipWhitespaceAndComments() {
-    while index < text.endIndex {
-      let char = text[index]
-      if char == "#" {
-        if index == text.startIndex {
-          // comment to end of line
-          index = text.endIndex
-          break
-        }
-        let prevIndex = text.index(before: index)
-        if text[prevIndex].isWhitespace {
-          // comment to end of line
-          index = text.endIndex
-          break
-        }
-        break
-      } else if char.isWhitespace {
-        text.formIndex(after: &index)
-        continue
-      } else {
-        break
-      }
-    }
-  }
-
-  mutating func parseDecorators(flowContext: Bool = false) throws -> YAMLParser.Decorators {
-    skipWhitespaceAndComments()
-    var tag: String?
-    var anchor: String?
-
-    while let current = peek {
-      if current == "!" {
-        if tag != nil {
-          throw syntaxError("Multiple tags on node")
-        }
-        tag = try parseTag(flowContext: flowContext)
-      } else if current == "&" {
-        if anchor != nil {
-          throw syntaxError("Multiple anchors on node")
-        }
-        anchor = parseAnchor()
-      } else {
-        break
-      }
-      skipWhitespaceAndComments()
-    }
-
-    return YAMLParser.Decorators(tag: tag, anchor: anchor)
-  }
-
-  mutating func parseTag(flowContext: Bool) throws -> String {
-    consume(expected: "!")
-    var buffer = "!"
-    if peek == "<" {
-      buffer.append("<")
-      text.formIndex(after: &index)
-      var closed = false
-      while let current = peek {
-        buffer.append(current)
-        text.formIndex(after: &index)
-        if current == ">" {
-          closed = true
-          break
-        }
-      }
-      if !closed || buffer.count < 3 {
-        throw syntaxError("Invalid tag")
-      }
-      return buffer
-    }
-
-    while let current = peek {
-      if current.isWhitespace {
-        break
-      }
-      if current == "," || current == "]" || current == "}" {
-        if !flowContext {
-          throw syntaxError("Invalid tag")
-        }
-        break
-      }
-      if current == ":" {
-        let nextIndex = text.index(after: index)
-        if nextIndex < text.endIndex, text[nextIndex].isWhitespace {
-          break
-        }
-      }
-      buffer.append(current)
-      text.formIndex(after: &index)
-    }
-    if buffer.contains("{") || buffer.contains("}") {
-      throw syntaxError("Invalid tag")
-    }
-    return buffer
-  }
-
-  mutating func parseAnchor() -> String {
-    consume(expected: "&")
-    var buffer = ""
-    while let current = peek {
-      if current.isWhitespace {
-        break
-      }
-      buffer.append(current)
-      text.formIndex(after: &index)
-    }
-    return buffer
-  }
-
-  mutating func parseAlias() throws -> String {
-    consume(expected: "*")
-    var buffer = ""
-    while let current = peek {
-      if current.isWhitespace || current == "," || current == "]" || current == "}" {
-        break
-      }
-      buffer.append(current)
-      text.formIndex(after: &index)
-    }
-    if buffer.isEmpty {
-      throw syntaxError("Alias without name")
-    }
-    return buffer
-  }
-
-  mutating func parseDoubleQuoted() throws -> String {
-    consume(expected: "\"")
-    var output = ""
-    var outputCount = 0
-    var escapedTabPosition: Int?
-    while let current = peek {
-      text.formIndex(after: &index)
-      if current == "\"" {
-        return output
-      }
-      if current.isNewline {
-        var breakCount = 0
-        while let next = peek {
-          if next.isNewline {
-            breakCount += 1
-            text.formIndex(after: &index)
-            continue
-          }
-          if next == " " || next == "\t" {
-            text.formIndex(after: &index)
-            continue
-          }
-          break
-        }
-        while let last = output.last, last == " " {
-          output.removeLast()
-          outputCount -= 1
-          if let pos = escapedTabPosition, outputCount < pos {
-            escapedTabPosition = nil
-          }
-        }
-        let lastIsEscapedTab = output.last == "\t" && escapedTabPosition == outputCount
-        if !lastIsEscapedTab {
-          while let last = output.last, last == "\t" {
-            output.removeLast()
-            outputCount -= 1
-            if let pos = escapedTabPosition, outputCount < pos {
-              escapedTabPosition = nil
-            }
-          }
-        }
-        if breakCount == 0 {
-          output.append(" ")
-          outputCount += 1
-        } else {
-          output.append(String(repeating: "\n", count: breakCount))
-          outputCount += breakCount
-        }
-        continue
-      }
-      if current == "\\" {
-        guard let escaped = peek else { throw syntaxError("Invalid escape sequence") }
-        if escaped.isNewline {
-          text.formIndex(after: &index)
-          while let next = peek, next == " " || next == "\t" {
-            text.formIndex(after: &index)
-          }
-          continue
-        }
-        text.formIndex(after: &index)
-        let decoded = try decodeEscape(escaped)
-        output.append(decoded)
-        outputCount += 1
-        if decoded == "\t" {
-          escapedTabPosition = outputCount
-        }
-      } else {
-        output.append(current)
-        outputCount += 1
-      }
-    }
-    throw syntaxError("Unterminated double-quoted scalar")
-  }
-
-  mutating func parseSingleQuoted() throws -> String {
-    consume(expected: "'")
-    var output = ""
-    while let current = peek {
-      text.formIndex(after: &index)
-      if current == "'" {
-        if peek == "'" {
-          // escaped single quote
-          output.append("'")
-          text.formIndex(after: &index)
-          continue
-        }
-        return output
-      }
-      if current.isNewline {
-        while let last = output.last, last == " " {
-          output.removeLast()
-        }
-        var breakCount = 0
-        while let next = peek {
-          if next.isNewline {
-            breakCount += 1
-            text.formIndex(after: &index)
-            continue
-          }
-          if next == " " || next == "\t" {
-            text.formIndex(after: &index)
-            continue
-          }
-          break
-        }
-        if breakCount == 0 {
-          output.append(" ")
-        } else {
-          output.append(String(repeating: "\n", count: breakCount))
-        }
-        continue
-      }
-      output.append(current)
-    }
-    throw syntaxError("Unterminated single-quoted scalar")
-  }
-
-  mutating func parsePlainScalar(stopAtColon: Bool = false, flowContext: Bool = false) -> String {
-    var output = ""
-    while let current = peek {
-      if flowContext && (current == "," || current == "]" || current == "}") {
-        break
-      }
-      if current == "#" {
-        if output.isEmpty || output.last?.isWhitespace == true {
-          break
-        }
-      }
-      if stopAtColon && current == ":" {
-        let nextIndex = text.index(after: index)
-        if nextIndex >= text.endIndex {
-          break
-        }
-        let nextChar = text[nextIndex]
-        if nextChar.isWhitespace || nextChar == "," || nextChar == "]" || nextChar == "}" {
-          break
-        }
-      }
-      if current.isNewline {
-        if flowContext {
-          var lookahead = text.index(after: index)
-          var sawContent = false
-          while lookahead < text.endIndex {
-            let ch = text[lookahead]
-            if ch.isNewline {
-              break
-            }
-            if ch == " " || ch == "\t" {
-              text.formIndex(after: &lookahead)
-              continue
-            }
-            sawContent = true
-            break
-          }
-          if !sawContent {
-            break
-          }
-          if lookahead < text.endIndex, text[lookahead].isNewline {
-            break
-          }
-          text.formIndex(after: &index)
-          while let next = peek, next == " " || next == "\t" {
-            text.formIndex(after: &index)
-          }
-          if !output.isEmpty && output.last?.isWhitespace != true {
-            output.append(" ")
-          }
-          continue
-        }
-        break
-      }
-      output.append(current)
-      text.formIndex(after: &index)
-    }
-    return output.yamlTrimmed()
-  }
-
-  mutating func consumeIf(_ char: Character) -> Bool {
-    guard peek == char else { return false }
-    consume(expected: char)
-    return true
-  }
-
-  mutating func consume(expected: Character) {
-    guard peek == expected else { return }
-    text.formIndex(after: &index)
-  }
-
-  private mutating func decodeEscape(_ char: Character) throws -> Character {
-    switch char {
-    case "\"": return "\""
-    case "\\": return "\\"
-    case "/": return "/"
-    case "b": return "\u{08}"
-    case "f": return "\u{0C}"
-    case "n": return "\n"
-    case "r": return "\r"
-    case "t": return "\t"
-    case " ": return " "
-    case "\t": return "\t"
-    case "0": return "\u{00}"
-    case "a": return "\u{07}"
-    case "v": return "\u{0B}"
-    case "e": return "\u{1B}"
-    case "x":
-      let code = try readHex(count: 2)
-      guard let scalar = UnicodeScalar(code) else { throw syntaxError("Invalid hex escape") }
-      return Character(scalar)
-    case "u":
-      let code = try readHex(count: 4)
-      guard let scalar = UnicodeScalar(code) else { throw syntaxError("Invalid unicode escape") }
-      return Character(scalar)
-    case "U":
-      let code = try readHex(count: 8)
-      guard let scalar = UnicodeScalar(code) else { throw syntaxError("Invalid unicode escape") }
-      return Character(scalar)
-    default:
-      throw syntaxError("Unknown escape sequence")
-    }
-  }
-
-  private mutating func readHex(count: Int) throws -> UInt32 {
-    var value: UInt32 = 0
-    for _ in 0..<count {
-      guard let current = peek else {
-        throw syntaxError("Incomplete escape sequence")
-      }
-      guard let digit = current.hexDigitValue else {
-        throw syntaxError("Invalid hex digit")
-      }
-      value = (value << 4) | UInt32(digit)
-      text.formIndex(after: &index)
-    }
-    return value
-  }
-}
-
-// MARK: - Fast ASCII Whitespace Trimming
-
-extension String {
-  /// Trims leading and trailing ASCII whitespace (space and tab only).
-  /// This is much faster than `trimmingCharacters(in: .whitespaces)` which
-  /// goes through Foundation's CharacterSet and creates a new String even
-  /// when there is nothing to trim.
-  @inline(__always)
-  func yamlTrimmed() -> String {
-    let utf8 = self.utf8
-    guard !utf8.isEmpty else { return self }
-
-    // Find first non-whitespace byte
-    var start = utf8.startIndex
-    while start < utf8.endIndex {
-      let byte = utf8[start]
-      if byte != 0x20 && byte != 0x09 { break }
-      utf8.formIndex(after: &start)
-    }
-
-    // All whitespace or empty
-    if start == utf8.endIndex { return "" }
-
-    // Find last non-whitespace byte
-    var end = utf8.index(before: utf8.endIndex)
-    while end > start {
-      let byte = utf8[end]
-      if byte != 0x20 && byte != 0x09 { break }
-      utf8.formIndex(before: &end)
-    }
-    let afterEnd = utf8.index(after: end)
-
-    // If no trimming needed, return original string (avoids allocation)
-    if start == utf8.startIndex && afterEnd == utf8.endIndex {
-      return self
-    }
-
-    return String(self[start..<afterEnd])
-  }
-}
-
-extension Substring {
-  /// Trims leading and trailing ASCII whitespace (space and tab only).
-  @inline(__always)
-  func yamlTrimmed() -> String {
-    let utf8 = self.utf8
-    guard !utf8.isEmpty else { return "" }
-
-    var start = utf8.startIndex
-    while start < utf8.endIndex {
-      let byte = utf8[start]
-      if byte != 0x20 && byte != 0x09 { break }
-      utf8.formIndex(after: &start)
-    }
-
-    if start == utf8.endIndex { return "" }
-
-    var end = utf8.index(before: utf8.endIndex)
-    while end > start {
-      let byte = utf8[end]
-      if byte != 0x20 && byte != 0x09 { break }
-      utf8.formIndex(before: &end)
-    }
-
-    return String(self[start...end])
-  }
-}
