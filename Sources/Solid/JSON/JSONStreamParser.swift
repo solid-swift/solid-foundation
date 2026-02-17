@@ -653,13 +653,20 @@ private struct JSONStreamingTokenizer {
   }
 
   private mutating func consumeWhitespace() {
-    while let byte = peekByte() {
-      switch byte {
+    var pos = offset
+    let end = buffer.count
+    scan: while pos < end {
+      switch buffer[pos] {
       case 0x09, 0x0A, 0x0D, 0x20:
-        advance()
+        pos += 1
       default:
-        return
+        break scan
       }
+    }
+    offset = pos
+    if offset > 4096 {
+      buffer.removeSubrange(0..<offset)
+      offset = 0
     }
   }
 

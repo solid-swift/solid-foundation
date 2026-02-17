@@ -150,50 +150,87 @@ struct YAMLStringEncoder {
       return true
     }
 
-    // Check boundary characters (O(1))
-    let first = string.first!
-    if first.isWhitespace { return true }
-    if string.last!.isWhitespace { return true }
+    let utf8 = string.utf8
+    let firstByte = utf8[utf8.startIndex]
 
-    // Check disallowed leading indicators (O(1))
-    switch first {
-    case ",", "[", "]", "{", "}", "#", "&", "*", "!", "|", ">", "'", "\"", "%", "@", "`":
+    // Check leading whitespace (space, tab, and other whitespace bytes)
+    if firstByte == 0x20 || firstByte == 0x09 || firstByte == 0x0A || firstByte == 0x0D {
       return true
-    case "-", "?", ":":
-      let nextIndex = string.index(after: string.startIndex)
-      if nextIndex == string.endIndex || string[nextIndex].isWhitespace {
-        return true
-      }
+    }
+    // Check trailing whitespace
+    let lastByte = utf8[utf8.index(before: utf8.endIndex)]
+    if lastByte == 0x20 || lastByte == 0x09 || lastByte == 0x0A || lastByte == 0x0D {
+      return true
+    }
+
+    // Check disallowed leading indicators (all single-byte ASCII)
+    switch firstByte {
+    case 0x2C, 0x5B, 0x5D, 0x7B, 0x7D, 0x23, 0x26, 0x2A, 0x21, 0x7C, 0x3E, 0x27, 0x22, 0x25, 0x40, 0x60:
+      // , [ ] { } # & * ! | > ' " % @ `
+      return true
+    case 0x2D, 0x3F, 0x3A: // - ? :
+      let nextIdx = utf8.index(after: utf8.startIndex)
+      if nextIdx == utf8.endIndex { return true }
+      let next = utf8[nextIdx]
+      if next == 0x20 || next == 0x09 || next == 0x0A || next == 0x0D { return true }
     default:
       break
     }
 
-    // Check document marker prefix (O(1) — examines first 3-4 chars)
-    if string.count >= 3 {
-      if string.hasPrefix("---") || string.hasPrefix("...") {
+    // Check document marker prefix (--- or ...)
+    if utf8.count >= 3 {
+      let i0 = utf8.startIndex
+      let i1 = utf8.index(after: i0)
+      let i2 = utf8.index(after: i1)
+      let b0 = utf8[i0], b1 = utf8[i1], b2 = utf8[i2]
+      if (b0 == 0x2D && b1 == 0x2D && b2 == 0x2D) || // ---
+        (b0 == 0x2E && b1 == 0x2E && b2 == 0x2E)
+      { // ...
         let strict = !allowDocumentMarkerPrefix
-        let end = string.index(string.startIndex, offsetBy: 3)
-        if strict || end == string.endIndex || string[end].isWhitespace {
+        let i3 = utf8.index(after: i2)
+        if strict || i3 == utf8.endIndex ||
+          utf8[i3] == 0x20 || utf8[i3] == 0x09
+        {
           return true
         }
       }
     }
 
-    // Single pass: check for tabs, line breaks, key separator (": "), comment indicator (" #"), non-printable
-    var prevChar: Character = first
-    for scalar in string.unicodeScalars {
-      if scalar == "\t" { return true }
-      if lineBreakScalars.contains(scalar) { return true }
-      if !isPrintable(scalar) { return true }
-    }
-    // Key separator and comment indicator require character-level context
-    var index = string.index(after: string.startIndex)
-    while index < string.endIndex {
-      let ch = string[index]
-      if ch == "#" && prevChar.isWhitespace { return true }
-      if prevChar == ":" && ch.isWhitespace { return true }
-      prevChar = ch
-      index = string.index(after: index)
+    // Single pass over UTF-8 bytes: check for tabs, line breaks, non-printable,
+    // key separator (": "), comment indicator (" #")
+    var prevByte: UInt8 = firstByte
+    var idx = utf8.index(after: utf8.startIndex)
+    while idx < utf8.endIndex {
+      let byte = utf8[idx]
+
+      if byte < 0x80 {
+        // ASCII fast path
+        if byte == 0x09 { return true } // tab
+        if byte == 0x0A || byte == 0x0D { return true } // line break
+        if byte < 0x20 { return true } // non-printable control char
+        if byte == 0x7F { return true } // DEL
+
+        // Context-sensitive: " #" (comment indicator)
+        if byte == 0x23 && (prevByte == 0x20 || prevByte == 0x09) { return true }
+        // Context-sensitive: ": " (key separator)
+        if prevByte == 0x3A && (byte == 0x20 || byte == 0x09) { return true }
+
+        prevByte = byte
+        idx = utf8.index(after: idx)
+      } else {
+        // Non-ASCII: decode scalar via shared String.Index
+        let scalar = string.unicodeScalars[idx]
+
+        // Non-ASCII line breaks: NEL (U+0085), LS (U+2028), PS (U+2029)
+        if scalar.value == 0x85 || scalar.value == 0x2028 || scalar.value == 0x2029 {
+          return true
+        }
+        if !isPrintable(scalar) { return true }
+
+        let nextScalarIdx = string.unicodeScalars.index(after: idx)
+        prevByte = utf8[utf8.index(before: nextScalarIdx)]
+        idx = nextScalarIdx
+      }
     }
 
     if !allowImplicitTyping, resolvesToNonString(string) {
@@ -212,19 +249,42 @@ struct YAMLStringEncoder {
   }
 
   private static func containsLineBreak(_ string: String) -> Bool {
-    for scalar in string.unicodeScalars where lineBreakScalars.contains(scalar) {
-      return true
+    let utf8 = string.utf8
+    // Fast ASCII check for \n and \r (covers vast majority of cases)
+    for byte in utf8 {
+      if byte == 0x0A || byte == 0x0D { return true }
+    }
+    // Non-ASCII line breaks: NEL U+0085 (C2 85), LS U+2028 (E2 80 A8), PS U+2029 (E2 80 A9)
+    // Only check if their lead bytes are present
+    if utf8.contains(where: { $0 == 0xC2 || $0 == 0xE2 }) {
+      for scalar in string.unicodeScalars {
+        if scalar.value == 0x85 || scalar.value == 0x2028 || scalar.value == 0x2029 {
+          return true
+        }
+      }
     }
     return false
   }
 
   private static func containsBlockUnsafeScalar(_ string: String) -> Bool {
-    for scalar in string.unicodeScalars {
-      if lineBreakScalars.contains(scalar) && scalar != "\n" {
-        return true
-      }
-      if !isPrintable(scalar) {
-        return true
+    let utf8 = string.utf8
+    var idx = utf8.startIndex
+    while idx < utf8.endIndex {
+      let byte = utf8[idx]
+      if byte < 0x80 {
+        // ASCII: non-\n line break (\r = 0x0D) or non-printable control chars
+        if byte == 0x0D { return true }
+        if byte < 0x20 && byte != 0x09 && byte != 0x0A { return true }
+        if byte == 0x7F { return true }
+        idx = utf8.index(after: idx)
+      } else {
+        let scalar = string.unicodeScalars[idx]
+        // Non-\n line breaks: NEL (U+0085), LS (U+2028), PS (U+2029)
+        if scalar.value == 0x85 || scalar.value == 0x2028 || scalar.value == 0x2029 {
+          return true
+        }
+        if !isPrintable(scalar) { return true }
+        idx = string.unicodeScalars.index(after: idx)
       }
     }
     return false
@@ -239,14 +299,26 @@ struct YAMLStringEncoder {
   }
 
   private static func containsNonPrintable(_ string: String) -> Bool {
-    for scalar in string.unicodeScalars where !isPrintable(scalar) {
-      return true
+    let utf8 = string.utf8
+    var idx = utf8.startIndex
+    while idx < utf8.endIndex {
+      let byte = utf8[idx]
+      if byte < 0x80 {
+        // ASCII printability: 0x09, 0x0A, 0x0D, 0x20-0x7E are printable
+        if byte < 0x20 && byte != 0x09 && byte != 0x0A && byte != 0x0D { return true }
+        if byte == 0x7F { return true }
+        idx = utf8.index(after: idx)
+      } else {
+        let scalar = string.unicodeScalars[idx]
+        if !isPrintable(scalar) { return true }
+        idx = string.unicodeScalars.index(after: idx)
+      }
     }
     return false
   }
 
   private static func containsNonAscii(_ string: String) -> Bool {
-    for scalar in string.unicodeScalars where scalar.value > 0x7E {
+    for byte in string.utf8 where byte > 0x7E {
       return true
     }
     return false

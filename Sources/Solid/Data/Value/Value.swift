@@ -502,11 +502,14 @@ extension Value {
       }
       return object[value]
     }
-    set {
+    _modify {
       guard case .object(var object) = self else {
+        var none: Value?
+        yield &none
         return
       }
-      object[value] = newValue
+      self = .null
+      yield &object[value]
       self = .object(object)
     }
   }

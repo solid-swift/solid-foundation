@@ -123,14 +123,38 @@ struct JSONTokenReader {
   }
 
   mutating func consumeWhitespace() {
-    while let char = try? source.peekASCII() {
-      switch char {
+    let buf = source.buffer
+    var pos = source.offset
+    let end = buf.endIndex
+
+    guard pos < end else { return }
+
+    // Scan forward to first non-whitespace byte
+    scan: while pos < end {
+      switch buf[pos] {
       case 0x09, 0x0A, 0x0D, 0x20:
-        try? source.skip(count: 1)
+        pos += 1
       default:
-        return
+        break scan
       }
     }
+
+    guard pos > source.offset else { return }
+
+    // Update line tracking for skipped range.
+    // Matches skip(count:1) semantics: after incrementing offset,
+    // track the byte at the new offset (one past the skipped byte).
+    let trackEnd = min(pos, end - 1)
+    for idx in (source.offset + 1)...trackEnd {
+      let byte = buf[idx]
+      if byte == 0x0A || byte == 0x0D {
+        source.location.line += 1
+        source.location.column = 1
+      } else {
+        source.location.column += 1
+      }
+    }
+    source.offset = pos
   }
 
   mutating func consumeStructure(_ ascii: UInt8) throws -> Bool {

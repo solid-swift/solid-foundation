@@ -64,11 +64,12 @@ extension Value {
       }
       return object[.string(keyword.rawValue)]
     }
-    set {
+    _modify {
       guard case .object(var object) = self else {
         fatalError("Value is not an object")
       }
-      object[.string(keyword.rawValue)] = newValue
+      self = .null
+      yield &object[.string(keyword.rawValue)]
       self = .object(object)
     }
   }
