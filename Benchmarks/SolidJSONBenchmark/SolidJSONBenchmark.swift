@@ -93,7 +93,7 @@ let benchmarks: @Sendable () -> Void = {
 
   let deeplyNested: Value = makeDeeplyNested()
 
-  let taggedValue: Value = .tagged(tag: .string("custom"), value: .string("data"))
+  let taggedValue: Value = .tagged(tags: [.string("custom")], value: .string("data"))
 
   let numbersVaried: Value = makeNumbersVaried()
 

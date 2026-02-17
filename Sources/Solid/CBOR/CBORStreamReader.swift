@@ -220,29 +220,26 @@ public struct CBORStreamReader: FormatStreamReader {
   }
 
   private mutating func didFinishValue() throws {
-    guard var frame = frames.popLast() else {
+    guard !frames.isEmpty else {
       return
     }
+    let idx = frames.count - 1
 
-    switch frame {
+    switch frames[idx] {
     case .array(let remaining):
       if let remaining {
-        let updated = remaining - 1
-        frame = .array(remaining: updated)
+        frames[idx] = .array(remaining: remaining - 1)
       }
-      frames.append(frame)
 
     case .map(let remaining, let expectingKey):
       if expectingKey {
         throw CBOR.Error.invalidBreak
       }
       if let remaining {
-        let updated = remaining - 1
-        frame = .map(remaining: updated, expectingKey: true)
+        frames[idx] = .map(remaining: remaining - 1, expectingKey: true)
       } else {
-        frame = .map(remaining: nil, expectingKey: true)
+        frames[idx] = .map(remaining: nil, expectingKey: true)
       }
-      frames.append(frame)
     }
   }
 
@@ -422,7 +419,7 @@ public struct CBORStreamReader: FormatStreamReader {
         return try decodeBigNumber(base: Self.bigFloatRadix)
       default:
         let item = try decodeRequiredItem()
-        return .tagged(tag: .number(tag), value: item)
+        return .tagged(tags: [.number(tag)], value: item)
       }
 
     case 0xE0...0xF3:
@@ -537,22 +534,26 @@ public struct CBORStreamReader: FormatStreamReader {
   }
 
   private mutating func readIndefiniteString() throws -> String {
-    return try decodeItemsUntilBreak()
-      .map { item -> String in
-        guard case .string(let string) = item else { throw CBOR.Error.invalidIndefiniteElement }
-        return string
-      }
-      .joined(separator: "")
+    var result = ""
+    while true {
+      let initByte = try readByte()
+      if initByte == 0xFF { break }
+      guard (0x60...0x7B).contains(initByte) else { throw CBOR.Error.invalidIndefiniteElement }
+      result += try readFiniteString(initByte: initByte)
+    }
+    return result
   }
 
   private mutating func readIndefiniteByteString() throws -> Data {
-    let datas = try decodeItemsUntilBreak()
-      .map { item -> Data in
-        guard case .bytes(let bytes) = item else { throw CBOR.Error.invalidIndefiniteElement }
-        return bytes
-      }
-      .joined()
-    return Data(datas)
+    var result = Data()
+    while true {
+      let initByte = try readByte()
+      if initByte == 0xFF { break }
+      guard (0x40...0x5B).contains(initByte) else { throw CBOR.Error.invalidIndefiniteElement }
+      let numBytes = try readLength(initByte, base: 0x40)
+      result.append(try readBytes(count: numBytes))
+    }
+    return result
   }
 
   // MARK: - Byte Reading

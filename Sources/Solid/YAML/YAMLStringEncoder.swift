@@ -149,115 +149,55 @@ struct YAMLStringEncoder {
     if string.isEmpty {
       return true
     }
-    if string.first?.isWhitespace == true || string.last?.isWhitespace == true {
-      return true
-    }
-    if string.contains("\t") {
-      return true
-    }
-    if containsLineBreak(string) {
-      return true
-    }
-    if hasDocumentMarkerPrefix(string, strict: !allowDocumentMarkerPrefix) {
-      return true
-    }
-    if hasDisallowedLeadingIndicator(string) {
-      return true
-    }
-    if containsAmbiguousIndicator(string) {
-      return true
-    }
-    if !allowImplicitTyping, resolvesToNonString(string) {
-      return true
-    }
-    if containsNonPrintable(string) {
-      return true
-    }
-    return false
-  }
 
-  private static func containsAmbiguousIndicator(_ string: String) -> Bool {
-    if hasLeadingIndicator(string) {
-      return true
-    }
-    if containsKeySeparator(string) {
-      return true
-    }
-    if containsCommentIndicator(string) {
-      return true
-    }
-    return false
-  }
+    // Check boundary characters (O(1))
+    let first = string.first!
+    if first.isWhitespace { return true }
+    if string.last!.isWhitespace { return true }
 
-  private static func hasLeadingIndicator(_ string: String) -> Bool {
-    guard let first = string.first else { return false }
-    if first == "-" || first == "?" || first == ":" {
-      let nextIndex = string.index(after: string.startIndex)
-      if nextIndex == string.endIndex {
-        return true
-      }
-      return string[nextIndex].isWhitespace
-    }
-    return false
-  }
-
-  private static func hasDocumentMarkerPrefix(_ string: String, strict: Bool) -> Bool {
-    if string.hasPrefix("---") {
-      return strict || hasMarkerTerminator(string, prefixLength: 3)
-    }
-    if string.hasPrefix("...") {
-      return strict || hasMarkerTerminator(string, prefixLength: 3)
-    }
-    return false
-  }
-
-  private static func hasMarkerTerminator(_ string: String, prefixLength: Int) -> Bool {
-    let end = string.index(string.startIndex, offsetBy: prefixLength)
-    if end == string.endIndex {
-      return true
-    }
-    return string[end].isWhitespace
-  }
-
-  private static func hasDisallowedLeadingIndicator(_ string: String) -> Bool {
-    guard let first = string.first else { return false }
+    // Check disallowed leading indicators (O(1))
     switch first {
-    case "-", "?", ":":
-      return hasLeadingIndicator(string)
     case ",", "[", "]", "{", "}", "#", "&", "*", "!", "|", ">", "'", "\"", "%", "@", "`":
       return true
+    case "-", "?", ":":
+      let nextIndex = string.index(after: string.startIndex)
+      if nextIndex == string.endIndex || string[nextIndex].isWhitespace {
+        return true
+      }
     default:
-      return false
+      break
     }
-  }
 
-  private static func containsKeySeparator(_ string: String) -> Bool {
-    var index = string.startIndex
-    while index < string.endIndex {
-      if string[index] == ":" {
-        let next = string.index(after: index)
-        if next < string.endIndex, string[next].isWhitespace {
+    // Check document marker prefix (O(1) — examines first 3-4 chars)
+    if string.count >= 3 {
+      if string.hasPrefix("---") || string.hasPrefix("...") {
+        let strict = !allowDocumentMarkerPrefix
+        let end = string.index(string.startIndex, offsetBy: 3)
+        if strict || end == string.endIndex || string[end].isWhitespace {
           return true
         }
       }
+    }
+
+    // Single pass: check for tabs, line breaks, key separator (": "), comment indicator (" #"), non-printable
+    var prevChar: Character = first
+    for scalar in string.unicodeScalars {
+      if scalar == "\t" { return true }
+      if lineBreakScalars.contains(scalar) { return true }
+      if !isPrintable(scalar) { return true }
+    }
+    // Key separator and comment indicator require character-level context
+    var index = string.index(after: string.startIndex)
+    while index < string.endIndex {
+      let ch = string[index]
+      if ch == "#" && prevChar.isWhitespace { return true }
+      if prevChar == ":" && ch.isWhitespace { return true }
+      prevChar = ch
       index = string.index(after: index)
     }
-    return false
-  }
 
-  private static func containsCommentIndicator(_ string: String) -> Bool {
-    var index = string.startIndex
-    while index < string.endIndex {
-      if string[index] == "#" {
-        if index == string.startIndex {
-          return true
-        }
-        let prev = string.index(before: index)
-        if string[prev].isWhitespace {
-          return true
-        }
-      }
-      index = string.index(after: index)
+    if !allowImplicitTyping, resolvesToNonString(string) {
+      return true
     }
     return false
   }

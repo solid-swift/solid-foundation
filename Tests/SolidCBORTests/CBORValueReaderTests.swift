@@ -355,19 +355,19 @@ private let taggedCases: [CBORValueReaderTests.DecodeCase] = [
   .init(
     id: "tag-0",
     bytes: [0xC0, 0x79, 0x00, 3, 0x41, 0x42, 0x43],
-    expected: .tagged(tag: .number(0), value: .string("ABC")),
+    expected: .tagged(tags: [.number(0)], value: .string("ABC")),
     options: .init()
   ),
   .init(
     id: "tag-255",
     bytes: [0xD8, 255, 0x79, 0x00, 3, 0x41, 0x42, 0x43],
-    expected: .tagged(tag: .number(255), value: .string("ABC")),
+    expected: .tagged(tags: [.number(255)], value: .string("ABC")),
     options: .init()
   ),
   .init(
     id: "tag-uint64-max",
     bytes: [0xDB, 255, 255, 255, 255, 255, 255, 255, 255, 0x79, 0x00, 3, 0x41, 0x42, 0x43],
-    expected: .tagged(tag: .number(UInt64.max), value: .string("ABC")),
+    expected: .tagged(tags: [.number(UInt64.max)], value: .string("ABC")),
     options: .init()
   ),
 ]

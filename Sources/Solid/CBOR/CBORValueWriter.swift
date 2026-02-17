@@ -71,8 +71,10 @@ private struct CBORValueEventEncoder {
 
   func encode(_ value: Value, into events: inout [ValueEvent]) throws {
     switch value {
-    case .tagged(let tag, let inner):
-      events.append(.tag(tag))
+    case .tagged(let tags, let inner):
+      for tag in tags {
+        events.append(.tag(tag))
+      }
       try encode(inner, into: &events)
 
     case .array(let array):
@@ -140,49 +142,48 @@ private struct CBORValueEventEncoder {
   }
 
   private func encodedUnsigned(_ value: UInt64) -> Data {
-    var data = Data()
-    if value < 24 {
-      data.append(UInt8(value))
-    } else if value <= UInt8.max {
-      data.append(0x18)
-      data.append(UInt8(value))
-    } else if value <= UInt16.max {
-      data.append(0x19)
-      var int = UInt16(value).bigEndian
-      withUnsafeBytes(of: &int) { data.append(contentsOf: $0) }
-    } else if value <= UInt32.max {
-      data.append(0x1A)
-      var int = UInt32(value).bigEndian
-      withUnsafeBytes(of: &int) { data.append(contentsOf: $0) }
-    } else {
-      data.append(0x1B)
-      var int = UInt64(value).bigEndian
-      withUnsafeBytes(of: &int) { data.append(contentsOf: $0) }
-    }
-    return data
+    return encodeIntHeader(majorOffset: 0x00, value: value)
   }
 
   private func encodedNegative(_ magnitude: UInt64) -> Data {
-    var data = Data()
-    if magnitude < 24 {
-      data.append(0x20 | UInt8(magnitude))
-    } else if magnitude <= UInt8.max {
-      data.append(0x38)
-      data.append(UInt8(magnitude))
-    } else if magnitude <= UInt16.max {
-      data.append(0x39)
-      var int = UInt16(magnitude).bigEndian
-      withUnsafeBytes(of: &int) { data.append(contentsOf: $0) }
-    } else if magnitude <= UInt32.max {
-      data.append(0x3A)
-      var int = UInt32(magnitude).bigEndian
-      withUnsafeBytes(of: &int) { data.append(contentsOf: $0) }
+    return encodeIntHeader(majorOffset: 0x20, value: magnitude)
+  }
+
+  /// Encode a CBOR integer header using a stack-allocated tuple buffer (max 9 bytes).
+  private func encodeIntHeader(majorOffset: UInt8, value: UInt64) -> Data {
+    // Use a tuple for stack-allocated inline buffer (max 9 bytes for uint64)
+    var buf: (UInt8, UInt8, UInt8, UInt8, UInt8, UInt8, UInt8, UInt8, UInt8) = (0, 0, 0, 0, 0, 0, 0, 0, 0)
+    let count: Int
+    if value < 24 {
+      buf.0 = majorOffset | UInt8(value)
+      count = 1
+    } else if value <= UInt8.max {
+      buf.0 = majorOffset | 0x18
+      buf.1 = UInt8(value)
+      count = 2
+    } else if value <= UInt16.max {
+      buf.0 = majorOffset | 0x19
+      let be = UInt16(value).bigEndian
+      buf.1 = UInt8(be & 0xFF)
+      buf.2 = UInt8(be >> 8)
+      count = 3
+    } else if value <= UInt32.max {
+      buf.0 = majorOffset | 0x1A
+      let be = UInt32(value).bigEndian
+      withUnsafeBytes(of: be) { src in
+        buf.1 = src[0]; buf.2 = src[1]; buf.3 = src[2]; buf.4 = src[3]
+      }
+      count = 5
     } else {
-      data.append(0x3B)
-      var int = UInt64(magnitude).bigEndian
-      withUnsafeBytes(of: &int) { data.append(contentsOf: $0) }
+      buf.0 = majorOffset | 0x1B
+      let be = value.bigEndian
+      withUnsafeBytes(of: be) { src in
+        buf.1 = src[0]; buf.2 = src[1]; buf.3 = src[2]; buf.4 = src[3]
+        buf.5 = src[4]; buf.6 = src[5]; buf.7 = src[6]; buf.8 = src[7]
+      }
+      count = 9
     }
-    return data
+    return withUnsafeBytes(of: &buf) { Data($0.prefix(count)) }
   }
 
   private func encodedByteString(_ bytes: Data) -> Data {

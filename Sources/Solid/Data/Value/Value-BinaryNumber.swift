@@ -34,7 +34,7 @@ extension Value {
 
 extension Value.BinaryNumber: Sendable {}
 
-extension Value.BinaryNumber: Value.Number {
+extension Value.BinaryNumber {
 
   public var decimal: BigDecimal {
     switch self {

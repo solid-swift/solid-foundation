@@ -158,13 +158,6 @@ struct JSONTokenReader {
     return true
   }
 
-  mutating func takeHexDigit() throws -> UInt8? {
-    guard let taken = try source.takeASCII(), isHexChr(taken) else {
-      return nil
-    }
-    return taken
-  }
-
   // MARK: - String Parsing
 
   mutating func parseString() throws -> String {
@@ -288,25 +281,25 @@ struct JSONTokenReader {
     return String(UTF16.decode(UTF16.EncodedScalar([codeUnit, trailCodeUnit])))
   }
 
-  func isHexChr(_ byte: UInt8) -> Bool {
-    return (byte >= 0x30 && byte <= 0x39)
-      || (byte >= 0x41 && byte <= 0x46)
-      || (byte >= 0x61 && byte <= 0x66)
+  @inline(__always)
+  private static func hexDigitValue(_ byte: UInt8) -> UInt16? {
+    switch byte {
+    case 0x30...0x39: return UInt16(byte &- 0x30)         // '0'-'9'
+    case 0x41...0x46: return UInt16(byte &- 0x41 &+ 10)   // 'A'-'F'
+    case 0x61...0x66: return UInt16(byte &- 0x61 &+ 10)   // 'a'-'f'
+    default: return nil
+    }
   }
 
   mutating func parseCodeUnit() throws -> UTF16.CodeUnit? {
-    var digits: [UInt8] = []
-    digits.reserveCapacity(4)
+    var value: UInt16 = 0
     for _ in 0..<4 {
-      guard let digit = try takeHexDigit() else {
+      guard let byte = try source.takeASCII(), let digit = Self.hexDigitValue(byte) else {
         return nil
       }
-      digits.append(digit)
+      value = (value << 4) | digit
     }
-    guard let value = Int(String(digits.map { Character(UnicodeScalar($0)) }), radix: 16) else {
-      return nil
-    }
-    return UTF16.CodeUnit(value)
+    return value
   }
 
   // MARK: - Number parsing
@@ -322,11 +315,19 @@ struct JSONTokenReader {
   private static let allDigits = (zero...nine)
   private static let oneToNine = (one...nine)
 
-  private static let numberCodePoints: [UInt8] = {
-    var numberCodePoints = Array(zero...nine)
-    numberCodePoints.append(contentsOf: [decimalSeparator, minus, plus, lowerExponent, upperExponent])
-    return numberCodePoints
-  }()
+  @inline(__always)
+  private static func isNumberCodePoint(_ byte: UInt8) -> Bool {
+    switch byte {
+    case 0x30...0x39,  // '0'-'9'
+         0x2E,         // '.'
+         0x2D,         // '-'
+         0x2B,         // '+'
+         0x65, 0x45:   // 'e', 'E'
+      return true
+    default:
+      return false
+    }
+  }
 
 
   mutating func parseNumber() throws -> JSONToken.Scalar.Number {
@@ -346,7 +347,7 @@ struct JSONTokenReader {
     func checkJSONNumber() throws -> Bool {
       // Return true if the next character is any one of the valid JSON number characters
       func nextASCII() throws -> Bool {
-        guard let char = try source.peekASCII(), Self.numberCodePoints.contains(char) else { return false }
+        guard let char = try source.peekASCII(), Self.isNumberCodePoint(char) else { return false }
         try source.skip(count: 1)
         ascii = char
         bytes.append(ascii)
@@ -570,6 +571,7 @@ struct JSONTokenReader {
 
     func readObject() throws -> C.ValueType {
       var object: [(String, C.ValueType)] = []
+      var keyIndices: [String: Int] = [:]
       if try readToken(ifMatches: .endObject) {
         return try converter.convertObject(object)
       }
@@ -585,9 +587,10 @@ struct JSONTokenReader {
         try readToken(matching: [.pairSeparator])
 
         let value = try readValue(converter: converter)
-        if let index = object.firstIndex(where: { $0.0 == key }) {
-          object[index] = (key, value)
+        if let existingIndex = keyIndices[key] {
+          object[existingIndex] = (key, value)
         } else {
+          keyIndices[key] = object.count
           object.append((key, value))
         }
 

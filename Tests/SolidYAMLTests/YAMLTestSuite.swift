@@ -1103,7 +1103,7 @@ struct YAMLTestSuite {
       case .scalar(let scalar, let tag, _):
         var value = resolveScalar(scalar, tag: tag)
         if includeTag, let tag {
-          value = .tagged(tag: .string(tag), value: value)
+          value = .tagged(tags: [.string(tag)], value: value)
         }
         if let anchor = nodeAnchor(node) {
           anchors[anchor] = value
@@ -1114,7 +1114,7 @@ struct YAMLTestSuite {
         let values = try items.map { try nodeToValue($0, includeTag: true) }
         var value: Value = .array(values)
         if includeTag, let tag {
-          value = .tagged(tag: .string(tag), value: value)
+          value = .tagged(tags: [.string(tag)], value: value)
         }
         if let anchor = nodeAnchor(node) {
           anchors[anchor] = value
@@ -1130,7 +1130,7 @@ struct YAMLTestSuite {
         }
         var value: Value = .object(object)
         if includeTag, let tag {
-          value = .tagged(tag: .string(tag), value: value)
+          value = .tagged(tags: [.string(tag)], value: value)
         }
         if let anchor = nodeAnchor(node) {
           anchors[anchor] = value
@@ -1154,14 +1154,14 @@ struct YAMLTestSuite {
       case .scalar(let scalar, let tag, let anchor):
         var value = resolveScalar(scalar, tag: tag)
         if includeTag, let tag {
-          value = .tagged(tag: .string(tag), value: value)
+          value = .tagged(tags: [.string(tag)], value: value)
         }
         let baseValue = value
         if let anchor {
           anchors[anchor] = baseValue
         }
         if includeAnchor, let anchor {
-          value = .tagged(tag: .string("\(YAMLStreamWriter.anchorTagPrefix)\(anchor)"), value: baseValue)
+          value = .tagged(tags: [.string("\(YAMLStreamWriter.anchorTagPrefix)\(anchor)")], value: baseValue)
         }
         return value
 
@@ -1169,14 +1169,14 @@ struct YAMLTestSuite {
         let values = try items.map { try nodeToValueWithAnchors($0, includeTag: true, includeAnchor: true) }
         var value: Value = .array(values)
         if includeTag, let tag {
-          value = .tagged(tag: .string(tag), value: value)
+          value = .tagged(tags: [.string(tag)], value: value)
         }
         let baseValue = value
         if let anchor {
           anchors[anchor] = baseValue
         }
         if includeAnchor, let anchor {
-          value = .tagged(tag: .string("\(YAMLStreamWriter.anchorTagPrefix)\(anchor)"), value: baseValue)
+          value = .tagged(tags: [.string("\(YAMLStreamWriter.anchorTagPrefix)\(anchor)")], value: baseValue)
         }
         return value
 
@@ -1189,14 +1189,14 @@ struct YAMLTestSuite {
         }
         var value: Value = .object(object)
         if includeTag, let tag {
-          value = .tagged(tag: .string(tag), value: value)
+          value = .tagged(tags: [.string(tag)], value: value)
         }
         let baseValue = value
         if let anchor {
           anchors[anchor] = baseValue
         }
         if includeAnchor, let anchor {
-          value = .tagged(tag: .string("\(YAMLStreamWriter.anchorTagPrefix)\(anchor)"), value: baseValue)
+          value = .tagged(tags: [.string("\(YAMLStreamWriter.anchorTagPrefix)\(anchor)")], value: baseValue)
         }
         return value
       }
@@ -1258,8 +1258,10 @@ struct YAMLTestSuite {
         }
       }
       return true
-    case (.tagged(let leftTag, let leftValue), .tagged(let rightTag, let rightValue)):
-      return equivalent(leftTag, rightTag) && equivalent(leftValue, rightValue)
+    case (.tagged(let leftTags, let leftValue), .tagged(let rightTags, let rightValue)):
+      guard leftTags.count == rightTags.count else { return false }
+      for (l, r) in zip(leftTags, rightTags) where !equivalent(l, r) { return false }
+      return equivalent(leftValue, rightValue)
     default:
       return false
     }

@@ -471,7 +471,7 @@ private let deterministicMapCases: [CBORValueWriterTests.EncodeCase] = [
 private let taggedCases: [CBORValueWriterTests.EncodeCase] = [
   .init(
     id: "tag-positive-bignum",
-    value: .tagged(tag: .number(CBORStructure.Tags.positiveBignum), value: .bytes(Data([
+    value: .tagged(tags: [.number(CBORStructure.Tags.positiveBignum)], value: .bytes(Data([
       0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
     ]))),
     expected: [0xC2, 0x49, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
@@ -479,7 +479,7 @@ private let taggedCases: [CBORValueWriterTests.EncodeCase] = [
   ),
   .init(
     id: "tag-uint64-max",
-    value: .tagged(tag: .number(UInt64.max), value: .bytes(Data([
+    value: .tagged(tags: [.number(UInt64.max)], value: .bytes(Data([
       0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
     ]))),
     expected: [0xDB, 255, 255, 255, 255, 255, 255, 255, 255, 0x49, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],

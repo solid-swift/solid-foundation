@@ -186,50 +186,8 @@ public struct JSONPushParser {
     case .string(let value):
       return .string(value)
     case .number(let number):
-      return try Self.convertNumber(number)
+      return number.toValue()
     }
-  }
-
-  /// Convert a JSON number token to a Value, using a fast integer path
-  /// to avoid BigDecimal construction for simple integers.
-  private static func convertNumber(_ number: JSONToken.Scalar.Number) throws -> Value {
-    let text = number.value
-    if number.isInteger {
-      let utf8 = text.utf8
-      var idx = utf8.startIndex
-      let isNeg = utf8[idx] == UInt8(ascii: "-")
-      if isNeg { utf8.formIndex(after: &idx) }
-
-      var magnitude: UInt64 = 0
-      var overflow = false
-      while idx < utf8.endIndex {
-        let digit = utf8[idx] &- UInt8(ascii: "0")
-        let (m1, o1) = magnitude.multipliedReportingOverflow(by: 10)
-        let (m2, o2) = m1.addingReportingOverflow(UInt64(digit))
-        if o1 || o2 { overflow = true; break }
-        magnitude = m2
-        utf8.formIndex(after: &idx)
-      }
-
-      if !overflow {
-        if isNeg {
-          if magnitude <= UInt64(Int64.max) + 1 {
-            return .number(Value.BinaryNumber.int64(Int64(bitPattern: 0 &- magnitude)))
-          }
-        } else {
-          if magnitude <= UInt64(Int64.max) {
-            return .number(Value.BinaryNumber.int64(Int64(magnitude)))
-          } else {
-            return .number(Value.BinaryNumber.uint64(magnitude))
-          }
-        }
-      }
-    }
-
-    guard let textNumber = Value.TextNumber(text: text) else {
-      throw Error.invalidNumber
-    }
-    return .number(textNumber)
   }
 
   private mutating func startValue() throws {

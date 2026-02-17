@@ -46,7 +46,7 @@ extension Value {
     case .string: .string
     case .array: .array
     case .object: .object
-    case .tagged(tag: _, value: let value):
+    case .tagged(tags: _, value: let value):
       value.type
     }
   }

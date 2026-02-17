@@ -143,11 +143,10 @@ public struct ValueEventDecoder {
   }
 
   private func applyTags(_ value: Value, tags: [Value]) -> Value {
-    var tagged = value
-    for tag in tags.reversed() {
-      tagged = .tagged(tag: tag, value: tagged)
+    if tags.isEmpty {
+      return value
     }
-    return tagged
+    return .tagged(tags: tags, value: value)
   }
 
   private mutating func appendValue(_ value: Value) throws {

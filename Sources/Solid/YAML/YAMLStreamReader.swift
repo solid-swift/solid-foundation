@@ -228,7 +228,7 @@ private struct YAMLNodeEventIterator {
     case .scalar(let scalar, let tag, _):
       var value = resolver.resolve(scalar, explicitTag: tag, wrapTag: false)
       if includeTags, let tag {
-        value = .tagged(tag: .string(tag), value: value)
+        value = .tagged(tags: [.string(tag)], value: value)
       }
       if let anchor = nodeAnchor(node) {
         valueAnchors[anchor] = value
@@ -239,7 +239,7 @@ private struct YAMLNodeEventIterator {
       let values = try items.map { try buildValue(from: $0, includeTags: true) }
       var value: Value = .array(values)
       if includeTags, let tag {
-        value = .tagged(tag: .string(tag), value: value)
+        value = .tagged(tags: [.string(tag)], value: value)
       }
       if let anchor = nodeAnchor(node) {
         valueAnchors[anchor] = value
@@ -255,7 +255,7 @@ private struct YAMLNodeEventIterator {
       }
       var value: Value = .object(object)
       if includeTags, let tag {
-        value = .tagged(tag: .string(tag), value: value)
+        value = .tagged(tags: [.string(tag)], value: value)
       }
       if let anchor = nodeAnchor(node) {
         valueAnchors[anchor] = value

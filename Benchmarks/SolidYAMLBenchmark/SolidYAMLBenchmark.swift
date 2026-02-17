@@ -49,7 +49,7 @@ let benchmarks: @Sendable () -> Void = {
     return value
   }()
 
-  let taggedValue: Value = .tagged(tag: .string("custom"), value: .string("data"))
+  let taggedValue: Value = .tagged(tags: [.string("custom")], value: .string("data"))
 
   // Pre-built YAML string with anchors & aliases (cannot be represented as Value directly)
   let anchoredYaml = Data("""

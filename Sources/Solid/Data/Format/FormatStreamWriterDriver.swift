@@ -15,6 +15,7 @@ public final class FormatStreamWriterDriver<Encoder: FormatStreamEncoder>: Forma
   private let sink: any Sink
   private let bufferSize: Int
   private var buffer: [UInt8]
+  private var outputData = Data()
   private var finished = false
 
   public init(
@@ -33,7 +34,6 @@ public final class FormatStreamWriterDriver<Encoder: FormatStreamEncoder>: Forma
   public func write(_ event: ValueEvent) async throws {
     guard !finished else { throw IOError.streamClosed }
 
-    var outputData = Data()
     var done = false
     while !done {
       var status: FormatStreamEncodeStatus = .producedOutput
@@ -67,7 +67,6 @@ public final class FormatStreamWriterDriver<Encoder: FormatStreamEncoder>: Forma
   public func finish() async throws {
     guard !finished else { throw IOError.streamClosed }
 
-    var outputData = Data()
     var done = false
     while !done {
       var status: FormatStreamEncodeStatus = .producedOutput

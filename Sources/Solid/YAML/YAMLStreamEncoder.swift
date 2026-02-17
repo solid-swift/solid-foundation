@@ -52,6 +52,7 @@ struct YAMLEventWriter: FormatEventWriter {
   }
 
   private let options: Options
+  private let indentString: String
 
   private var buffer = Data()
   private var containers: [ContainerState] = []
@@ -63,6 +64,7 @@ struct YAMLEventWriter: FormatEventWriter {
 
   init(options: Options = .default) {
     self.options = options
+    self.indentString = String(repeating: " ", count: options.indent)
   }
 
   public var format: Format { YAML.format }
@@ -820,8 +822,8 @@ struct YAMLEventWriter: FormatEventWriter {
         return "\(keyText): \(valText)"
       }
       return "{\(contents.joined(separator: ", "))}"
-    case .tagged(let tag, let inner):
-      if let anchor = anchorName(from: tag) {
+    case .tagged(let tags, let inner):
+      if let tag = tags.first, let anchor = anchorName(from: tag) {
         return serializeAnchoredValue(
           anchor,
           value: inner,
@@ -830,7 +832,7 @@ struct YAMLEventWriter: FormatEventWriter {
           scalarStyle: scalarStyle
         )
       }
-      let tagText = formatTag(tag)
+      let tagText = tags.map { formatTag($0) }.joined(separator: " ")
       let innerText: String
       if case .string(let string) = inner {
         innerText = serializeString(
@@ -919,6 +921,7 @@ struct YAMLEventWriter: FormatEventWriter {
     switch value {
     case .tagged(_, let inner):
       return canInlineImplicitKey(inner)
+
     case .array(let array):
       return array.isEmpty
     case .object(let object):
@@ -1023,8 +1026,8 @@ struct YAMLEventWriter: FormatEventWriter {
 
   private func renderBlockValueLines(_ value: Value, scalarStyle: ValueScalarStyle? = nil) -> [String] {
     switch value {
-    case .tagged(let tag, let inner):
-      if let anchor = anchorName(from: tag) {
+    case .tagged(let tags, let inner):
+      if let tag = tags.first, let anchor = anchorName(from: tag) {
         let innerLines = renderBlockValueLines(inner, scalarStyle: scalarStyle)
         guard !innerLines.isEmpty else {
           return ["&\(anchor)"]
@@ -1037,16 +1040,17 @@ struct YAMLEventWriter: FormatEventWriter {
         }
         return lines
       }
+      let tagText = tags.map { formatTag($0) }.joined(separator: " ")
       let innerLines = renderBlockValueLines(inner, scalarStyle: scalarStyle)
       if innerLines.isEmpty {
-        return [formatTag(tag)]
+        return [tagText]
       }
       if innerLines.count == 1 {
         let first = innerLines[0]
-        return first.isEmpty ? [formatTag(tag)] : ["\(formatTag(tag)) \(first)"]
+        return first.isEmpty ? [tagText] : ["\(tagText) \(first)"]
       }
-      let padding = String(repeating: " ", count: options.indent)
-      return [formatTag(tag)] + innerLines.map { "\(padding)\($0)" }
+      let padding = indentString
+      return [tagText] + innerLines.map { "\(padding)\($0)" }
 
     case .string(let string):
       let rendered = serializeString(string, indent: 0, allowBlock: true, style: scalarStyle)
@@ -1068,7 +1072,7 @@ struct YAMLEventWriter: FormatEventWriter {
           lines.append("- \(first)")
         }
         if itemLines.count > 1 {
-          let padding = String(repeating: " ", count: options.indent)
+          let padding = indentString
           for line in itemLines.dropFirst() {
             lines.append("\(padding)\(line)")
           }
@@ -1080,7 +1084,7 @@ struct YAMLEventWriter: FormatEventWriter {
       guard !object.isEmpty else { return ["{}"] }
       var lines: [String] = []
       for (key, val) in object {
-        let padding = String(repeating: " ", count: options.indent)
+        let padding = indentString
         if requiresExplicitKey(key, scalarStyle: nil), !canInlineImplicitKey(key) {
           let keyLines = renderBlockValueLines(key)
           if keyLines.isEmpty {
@@ -1166,7 +1170,7 @@ struct YAMLEventWriter: FormatEventWriter {
       if !bodyLines.isEmpty {
         let isBlockScalar = firstLine.hasPrefix("|") || firstLine.hasPrefix(">")
         let lineIndent = indent + options.indent
-        let blockIndent = String(repeating: " ", count: options.indent)
+        let blockIndent = indentString
         for line in bodyLines {
           try appendString("\n")
           var renderedLine = line

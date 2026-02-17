@@ -16,14 +16,30 @@ public struct ValueEventEncoder: Sendable {
 
   public func encode(_ value: Value) -> [ValueEvent] {
     var events: [ValueEvent] = []
+    events.reserveCapacity(estimateEventCount(value))
     encode(value, into: &events)
     return events
   }
 
+  private func estimateEventCount(_ value: Value) -> Int {
+    switch value {
+    case .array(let array):
+      return 2 + array.count  // beginArray + items + endArray
+    case .object(let object):
+      return 2 + object.count * 2  // beginObject + (key + value) pairs + endObject
+    case .tagged(let tags, _):
+      return tags.count + 1  // tag events + inner value
+    default:
+      return 1
+    }
+  }
+
   public func encode(_ value: Value, into events: inout [ValueEvent]) {
     switch value {
-    case .tagged(let tag, let inner):
-      events.append(.tag(tag))
+    case .tagged(let tags, let inner):
+      for tag in tags {
+        events.append(.tag(tag))
+      }
       encode(inner, into: &events)
     case .array(let array):
       events.append(.beginArray(count: includeContainerSizes ? array.count : nil))

@@ -146,13 +146,17 @@ struct JSONEventWriter: FormatEventWriter {
   }
 
   private mutating func setObjectExpectingValue() throws {
-    guard case .object(let hasPairs, let expectingKey) = containers.popLast() else {
+    guard !containers.isEmpty else {
+      throw Error.invalidEventSequence("Key outside object")
+    }
+    let idx = containers.count - 1
+    guard case .object(let hasPairs, let expectingKey) = containers[idx] else {
       throw Error.invalidEventSequence("Key outside object")
     }
     guard expectingKey else {
       throw Error.invalidEventSequence("Unexpected key")
     }
-    containers.append(.object(hasPairs: hasPairs, expectingKey: false))
+    containers[idx] = .object(hasPairs: hasPairs, expectingKey: false)
   }
 
   private mutating func finishValue() throws {
@@ -160,17 +164,15 @@ struct JSONEventWriter: FormatEventWriter {
       rootState = .complete
       return
     }
-    guard let container = containers.popLast() else {
-      return
-    }
-    switch container {
-    case .array(let hasElements):
-      containers.append(.array(hasElements: hasElements))
+    let idx = containers.count - 1
+    switch containers[idx] {
+    case .array:
+      break  // no state change needed
     case .object(_, let expectingKey):
       guard !expectingKey else {
         throw Error.invalidEventSequence("Unexpected value")
       }
-      containers.append(.object(hasPairs: true, expectingKey: true))
+      containers[idx] = .object(hasPairs: true, expectingKey: true)
     }
   }
 
@@ -182,13 +184,13 @@ struct JSONEventWriter: FormatEventWriter {
       return
     }
 
-    let current = containers.removeLast()
-    switch current {
+    let idx = containers.count - 1
+    switch containers[idx] {
     case .array(let hasElements):
       if hasElements {
         appendByte(JSONStructure.elementSeparator)
       }
-      containers.append(.array(hasElements: true))
+      containers[idx] = .array(hasElements: true)
 
     case .object(let hasPairs, let expectingKey):
       if isKey {
@@ -198,12 +200,12 @@ struct JSONEventWriter: FormatEventWriter {
         if hasPairs {
           appendByte(JSONStructure.elementSeparator)
         }
-        containers.append(.object(hasPairs: hasPairs, expectingKey: true))
+        containers[idx] = .object(hasPairs: hasPairs, expectingKey: true)
       } else {
         guard !expectingKey else {
           throw Error.invalidEventSequence("Unexpected value")
         }
-        containers.append(.object(hasPairs: hasPairs, expectingKey: false))
+        containers[idx] = .object(hasPairs: hasPairs, expectingKey: false)
       }
     }
   }
@@ -290,52 +292,120 @@ struct JSONEventWriter: FormatEventWriter {
         index += 1
       }
       appendByte(JSONStructure.endObject)
-    case .tagged(let tag, let value):
+    case .tagged(let tags, let value):
       switch options.tagShape {
       case .unwrapped:
         try writeValue(value)
       case .array:
-        try writeValue(.array([tag, value]))
+        for tag in tags {
+          appendByte(JSONStructure.beginArray)
+          try writeValue(tag)
+          appendByte(JSONStructure.elementSeparator)
+        }
+        try writeValue(value)
+        for _ in tags {
+          appendByte(JSONStructure.endArray)
+        }
       case .object(let tagKey, let valueKey):
-        var object = Value.Object()
-        object[.string(tagKey)] = tag
-        object[.string(valueKey)] = value
-        try writeValue(.object(object))
+        for tag in tags {
+          appendByte(JSONStructure.beginObject)
+          try writeValue(.string(tagKey))
+          appendByte(JSONStructure.pairSeparator)
+          try writeValue(tag)
+          appendByte(JSONStructure.elementSeparator)
+          try writeValue(.string(valueKey))
+          appendByte(JSONStructure.pairSeparator)
+        }
+        try writeValue(value)
+        for _ in tags {
+          appendByte(JSONStructure.endObject)
+        }
       case .wrapped:
-        var object = Value.Object()
-        object[tag] = value
-        try writeValue(.object(object))
+        for tag in tags {
+          appendByte(JSONStructure.beginObject)
+          try writeValue(tag)
+          appendByte(JSONStructure.pairSeparator)
+        }
+        try writeValue(value)
+        for _ in tags {
+          appendByte(JSONStructure.endObject)
+        }
       }
     }
   }
 
+  // Pre-computed UTF-8 byte sequences for \u0000 through \u001F control characters.
+  // Named escapes (\b, \t, \n, \f, \r) are handled separately; these are the generic \u00XX forms.
+  private static let controlCharEscapes: [[UInt8]] = {
+    (0...0x1F).map { byte in
+      let hi = byte >> 4        // 0 or 1
+      let lo = byte & 0x0F
+      let hexChars: [UInt8] = [
+        0x30, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37,  // '0'-'7'
+        0x38, 0x39, 0x61, 0x62, 0x63, 0x64, 0x65, 0x66,  // '8'-'9','a'-'f'
+      ]
+      // \u00XY
+      return [0x5C, 0x75, 0x30, 0x30, hexChars[hi], hexChars[lo]]
+    }
+  }()
+
   private mutating func writeString(_ value: String) {
     appendByte(JSONStructure.quotationMark)
-    for scalar in value.unicodeScalars {
-      switch scalar {
-      case "\"":
-        appendString("\\\"")
-      case "\\" where options.escapeSlashes:
-        appendString("\\\\")
-      case "/" where options.escapeSlashes:
-        appendString("\\/")
-      case "\u{8}":
-        appendString("\\b")
-      case "\u{c}":
-        appendString("\\f")
-      case "\n":
-        appendString("\\n")
-      case "\r":
-        appendString("\\r")
-      case "\t":
-        appendString("\\t")
-      case "\u{0}"..."\u{f}":
-        appendString("\\u000\(String(scalar.value, radix: 16))")
-      case "\u{10}"..."\u{1f}":
-        appendString("\\u00\(String(scalar.value, radix: 16))")
-      default:
-        appendString(String(scalar))
+    let escapeSlashes = options.escapeSlashes
+    var utf8 = value.utf8
+    var safeStart = utf8.startIndex
+    var i = utf8.startIndex
+    while i < utf8.endIndex {
+      let byte = utf8[i]
+      // Multi-byte UTF-8 sequences (byte >= 0x80) are always safe — include in the run
+      if byte >= 0x80 {
+        i = utf8.index(after: i)
+        continue
       }
+      // Check for characters that need escaping
+      let escape: ContiguousArray<UInt8>?
+      switch byte {
+      case 0x22: // "
+        escape = [0x5C, 0x22]  // \"
+      case 0x5C: // backslash
+        escape = [0x5C, 0x5C]  // \\
+      case 0x2F where escapeSlashes: // /
+        escape = [0x5C, 0x2F]  // \/
+      case 0x08: // \b
+        escape = [0x5C, 0x62]
+      case 0x0C: // \f
+        escape = [0x5C, 0x66]
+      case 0x0A: // \n
+        escape = [0x5C, 0x6E]
+      case 0x0D: // \r
+        escape = [0x5C, 0x72]
+      case 0x09: // \t
+        escape = [0x5C, 0x74]
+      case 0x00...0x1F: // other control characters
+        // Flush safe run before escape
+        if safeStart < i {
+          buffer.append(contentsOf: utf8[safeStart..<i])
+        }
+        buffer.append(contentsOf: Self.controlCharEscapes[Int(byte)])
+        i = utf8.index(after: i)
+        safeStart = i
+        continue
+      default:
+        // Safe ASCII byte (0x20-0x7E excluding " and \)
+        i = utf8.index(after: i)
+        continue
+      }
+      // Flush safe run, then write escape sequence
+      if safeStart < i {
+        buffer.append(contentsOf: utf8[safeStart..<i])
+      }
+      buffer.append(contentsOf: escape!)
+      i = utf8.index(after: i)
+      safeStart = i
+    }
+    // Flush remaining safe run
+    if safeStart < utf8.endIndex {
+      buffer.append(contentsOf: utf8[safeStart..<utf8.endIndex])
     }
     appendByte(JSONStructure.quotationMark)
   }

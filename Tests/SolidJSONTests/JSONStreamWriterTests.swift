@@ -34,7 +34,7 @@ struct JSONStreamWriterTests {
 
   @Test("Write tagged value with array shape")
   func writeTaggedValueArrayShape() async throws {
-    let value: Value = .tagged(tag: "tag", value: ["value": 1])
+    let value: Value = .tagged(tags: ["tag"], value: ["value": 1])
     let options = JSONStreamWriter.Options(tagShape: .array)
 
     let output = try await writeStreamed(value: value, options: options)
@@ -57,8 +57,10 @@ private func writeStreamed(value: Value, options: JSONStreamWriter.Options = .de
 
 private func emitEvents(from value: Value, into events: inout [ValueEvent]) {
   switch value {
-  case .tagged(let tag, let value):
-    events.append(.tag(tag))
+  case .tagged(let tags, let value):
+    for tag in tags {
+      events.append(.tag(tag))
+    }
     emitEvents(from: value, into: &events)
   case .array(let array):
     events.append(.beginArray(count: nil))

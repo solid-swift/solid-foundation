@@ -464,7 +464,7 @@ struct CBOREncoder: FormatEventWriter {
 
     case .number(let number):
       switch number {
-      case let binary as Value.BinaryNumber:
+      case .binary(let binary):
         switch binary {
         case .int8(let int8):
           if int8 >= 0 {
@@ -520,13 +520,11 @@ struct CBOREncoder: FormatEventWriter {
           writeDouble(float64)
 
         case .decimal(let decimal):
-          try writeTagged(tag: 4, value: [.number(decimal.exponent), .number(decimal.mantissa)])
+          try writeTagged(tag: 4, value: [.number(.binary(.int64(Int64(decimal.exponent)))), .number(.binary(.int(decimal.mantissa)))])
 
-        @unknown default:
-          fatalError("Unknown BinaryNumber case")
         }
 
-      case let text as Value.TextNumber:
+      case .text(let text):
         if text.isNaN {
           writeFloat(Float32.nan)
         } else if text.isInfinity {
@@ -558,9 +556,6 @@ struct CBOREncoder: FormatEventWriter {
         } else {
           try writeDecimalFraction(text.decimal)
         }
-
-      default:
-        fatalError("Unknown Number type")
       }
 
     case .bytes(let data):
@@ -575,11 +570,14 @@ struct CBOREncoder: FormatEventWriter {
     case .object(let dict):
       try writeMap(dict)
 
-    case .tagged(tag: let tag, value: let value):
-      guard case .number(let tagNumber) = tag, let tagInt: UInt64 = tagNumber.int() else {
-        throw CBOR.Error.invalidTagType
+    case .tagged(tags: let tags, value: let value):
+      for tag in tags {
+        guard case .number(let tagNumber) = tag, let tagInt: UInt64 = tagNumber.int() else {
+          throw CBOR.Error.invalidTagType
+        }
+        writeTagHeader(tagInt)
       }
-      try writeTagged(tag: tagInt, value: value)
+      try writeValue(value)
     }
   }
 
@@ -764,7 +762,7 @@ struct CBOREncoder: FormatEventWriter {
   private mutating func writeDecimalFraction(_ value: BigDecimal) throws {
     let exponent = value.exponent
     let mantissa = value.mantissa
-    try writeTagged(tag: CBORStructure.Tags.decimalFractionTag, value: [.number(exponent), .number(mantissa)])
+    try writeTagged(tag: CBORStructure.Tags.decimalFractionTag, value: [.number(.binary(.int64(Int64(exponent)))), .number(.binary(.int(mantissa)))])
   }
 
   // MARK: - Indefinite length items

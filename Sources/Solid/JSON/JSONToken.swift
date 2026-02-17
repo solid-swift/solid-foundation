@@ -105,3 +105,52 @@ enum JSONToken: Equatable {
   }
 
 }
+
+extension JSONToken.Scalar.Number {
+
+  /// Convert a JSON number token to a Value, using a fast integer path
+  /// to avoid BigDecimal construction for simple integers.
+  func toValue() -> Value {
+    let text = value
+    // Fast path: simple integers bypass BigDecimal entirely by parsing directly to Int64/UInt64
+    if isInteger {
+      let utf8 = text.utf8
+      var idx = utf8.startIndex
+      let isNeg = utf8[idx] == UInt8(ascii: "-")
+      if isNeg { utf8.formIndex(after: &idx) }
+
+      // Parse as UInt64 to avoid overflow on large positive values
+      var magnitude: UInt64 = 0
+      var overflow = false
+      while idx < utf8.endIndex {
+        let digit = utf8[idx] &- UInt8(ascii: "0")
+        let (m1, o1) = magnitude.multipliedReportingOverflow(by: 10)
+        let (m2, o2) = m1.addingReportingOverflow(UInt64(digit))
+        if o1 || o2 { overflow = true; break }
+        magnitude = m2
+        utf8.formIndex(after: &idx)
+      }
+
+      if !overflow {
+        if isNeg {
+          if magnitude <= UInt64(Int64.max) + 1 {
+            return .number(.binary(.int64(Int64(bitPattern: 0 &- magnitude))))
+          }
+        } else {
+          if magnitude <= UInt64(Int64.max) {
+            return .number(.binary(.int64(Int64(magnitude))))
+          } else {
+            return .number(.binary(.uint64(magnitude)))
+          }
+        }
+      }
+    }
+
+    // Fallback: use TextNumber which constructs BigDecimal
+    guard let textNumber = Value.TextNumber(text: text) else {
+      return .number(text)
+    }
+    return .number(.text(textNumber))
+  }
+
+}

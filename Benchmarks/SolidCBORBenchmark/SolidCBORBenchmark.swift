@@ -35,7 +35,7 @@ let benchmarks: @Sendable () -> Void = {
     }
   )
 
-  let taggedValue: Value = .tagged(tag: .number(1), value: .string("tagged"))
+  let taggedValue: Value = .tagged(tags: [.number(1)], value: .string("tagged"))
 
   let deterministicMap: Value = .object([
     .string("b"): .number(1),

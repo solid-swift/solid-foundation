@@ -58,7 +58,7 @@ struct YAMLScalarResolver {
     }
 
     if wrapTag, let tag = explicitTag {
-      return .tagged(tag: .string(tag), value: resolved)
+      return .tagged(tags: [.string(tag)], value: resolved)
     }
 
     return resolved
@@ -85,7 +85,7 @@ struct YAMLScalarResolver {
       }
       return .string(scalar.text)
     default:
-      return .tagged(tag: .string(tag), value: resolveImplicit(scalar))
+      return .tagged(tags: [.string(tag)], value: resolveImplicit(scalar))
     }
   }
 
@@ -150,22 +150,29 @@ struct YAMLScalarResolver {
         }
         if allDigits {
           if let textNumber = Value.TextNumber(text: text) {
-            return .number(textNumber)
+            return .number(.text(textNumber))
           }
         }
       }
     }
 
     if allowSpecial {
-      let lowered = text.lowercased()
-      if lowered == ".nan" {
-        return .number(Value.TextNumber(decimal: .nan))
+      if text.caseInsensitiveCompare(".nan") == .orderedSame
+        || text.caseInsensitiveCompare(".NaN") == .orderedSame
+      {
+        return .number(.text(Value.TextNumber(decimal: .nan)))
       }
-      if lowered == ".inf" || lowered == "+.inf" || lowered == "+inf" || lowered == "inf" {
-        return .number(Value.TextNumber(decimal: .infinity))
+      if text.caseInsensitiveCompare(".inf") == .orderedSame
+        || text.caseInsensitiveCompare("+.inf") == .orderedSame
+        || text.caseInsensitiveCompare("+inf") == .orderedSame
+        || text.caseInsensitiveCompare("inf") == .orderedSame
+      {
+        return .number(.text(Value.TextNumber(decimal: .infinity)))
       }
-      if lowered == "-.inf" || lowered == "-inf" {
-        return .number(Value.TextNumber(decimal: -.infinity))
+      if text.caseInsensitiveCompare("-.inf") == .orderedSame
+        || text.caseInsensitiveCompare("-inf") == .orderedSame
+      {
+        return .number(.text(Value.TextNumber(decimal: -.infinity)))
       }
     }
 
@@ -188,17 +195,23 @@ struct YAMLScalarResolver {
       return ("", trimmed)
     }()
 
-    let loweredDigits = digits.lowercased()
-    if loweredDigits.hasPrefix("0x") || loweredDigits.hasPrefix("0o") || loweredDigits.hasPrefix("0b") {
+    // Case-insensitive radix prefix check without allocating a lowercased copy
+    let hasRadixPrefix = digits.count >= 2 && digits.first == "0" && {
+      let second = digits[digits.index(after: digits.startIndex)]
+      return second == "x" || second == "X" || second == "o" || second == "O" || second == "b" || second == "B"
+    }()
+    if hasRadixPrefix {
+      let second = digits[digits.index(after: digits.startIndex)]
       let radix: Int
       let bodyStart: String.Index
-      if loweredDigits.hasPrefix("0x") {
+      switch second {
+      case "x", "X":
         radix = 16
         bodyStart = digits.index(digits.startIndex, offsetBy: 2)
-      } else if loweredDigits.hasPrefix("0o") {
+      case "o", "O":
         radix = 8
         bodyStart = digits.index(digits.startIndex, offsetBy: 2)
-      } else {
+      default:  // "b", "B"
         radix = 2
         bodyStart = digits.index(digits.startIndex, offsetBy: 2)
       }
@@ -207,11 +220,11 @@ struct YAMLScalarResolver {
         return nil
       }
       let decimal = BigDecimal(value)
-      return .number(Value.TextNumber(decimal: decimal))
+      return .number(.text(Value.TextNumber(decimal: decimal)))
     }
 
     if let textNumber = Value.TextNumber(text: trimmed) {
-      return .number(textNumber)
+      return .number(.text(textNumber))
     }
 
     return nil
@@ -263,7 +276,7 @@ extension YAMLNode {
       let array = try items.map { try $0.toValue(resolver: resolver, anchors: &anchors, wrapTag: wrapTag) }
       var value: Value = .array(array)
       if wrapTag, let tag {
-        value = .tagged(tag: .string(tag), value: value)
+        value = .tagged(tags: [.string(tag)], value: value)
       }
       if let anchor {
         anchors[anchor] = value
@@ -280,7 +293,7 @@ extension YAMLNode {
       }
       var value: Value = .object(object)
       if wrapTag, let tag {
-        value = .tagged(tag: .string(tag), value: value)
+        value = .tagged(tags: [.string(tag)], value: value)
       }
       if let anchor {
         anchors[anchor] = value

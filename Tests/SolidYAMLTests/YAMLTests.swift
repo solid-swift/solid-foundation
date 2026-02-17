@@ -252,8 +252,10 @@ struct YAMLTests {
 
 private func emitEvents(from value: Value, into events: inout [ValueEvent]) {
   switch value {
-  case .tagged(let tag, let value):
-    events.append(.tag(tag))
+  case .tagged(let tags, let value):
+    for tag in tags {
+      events.append(.tag(tag))
+    }
     emitEvents(from: value, into: &events)
   case .array(let array):
     events.append(.beginArray(count: nil))

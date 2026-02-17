@@ -51,7 +51,7 @@ struct CBORStreamTests {
     ),
     .init(
       id: "tagged",
-      value: .tagged(tag: .number(1), value: .string("tagged"))
+      value: .tagged(tags: [.number(1)], value: .string("tagged"))
     ),
   ]
 
