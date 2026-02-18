@@ -37,7 +37,7 @@ extension Value {
 
 extension Value.TextNumber: Sendable {}
 
-extension Value.TextNumber: Value.Number {
+extension Value.TextNumber {
 
   public var integer: BigInt? {
     return decimal.integer()

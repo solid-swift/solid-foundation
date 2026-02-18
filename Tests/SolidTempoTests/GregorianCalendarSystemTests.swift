@@ -40,6 +40,7 @@ struct GregorianCalendarSystemTests {
     #expect(dayOfYear != oldAlgorithmResult, "New algorithm should differ from old buggy algorithm")
 
     // Additional test cases to ensure correctness across months
+    // swift-format-ignore
     let testCases: [(year: Int, month: Int, day: Int, expected: Int)] = [
       (2024, 1, 1, 1),      // First day of year
       (2024, 1, 31, 31),    // Last day of January

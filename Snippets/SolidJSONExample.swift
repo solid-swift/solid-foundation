@@ -9,7 +9,7 @@ func jsonExample() throws {
   let json = """
   {"name": "Bob", "scores": [95, 87, 92]}
   """
-  let reader = JSONValueReader(string: json)
+  var reader = JSONValueReader(string: json)
   let value = try reader.read()
 
   // Write Value to JSON

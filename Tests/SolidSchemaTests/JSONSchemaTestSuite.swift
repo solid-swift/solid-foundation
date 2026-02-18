@@ -13,7 +13,7 @@ import Foundation
 import Testing
 
 
-@Suite("JSON Schema Test")
+@Suite("JSON Schema Test Suite")
 public struct JSONSchemaTestSuite {
 
   @Test(
@@ -607,8 +607,8 @@ public struct JSONSchemaTestSuite {
       let relName = String(fullName.path().dropFirst(rootDirectory.path.count + 1))
       self.name = relName
       let jsonData = try Data(contentsOf: file)
-      self.testCases = try JSONValueReader(data: jsonData)
-        .read()
+      var jsonReader = JSONValueReader(data: jsonData)
+      self.testCases = try jsonReader.read()
         .decode(as: \.array)
         .map(TestCase.init)
     }

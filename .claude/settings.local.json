@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(swift test:*)",
+      "Bash(BENCHMARK_ENABLE=1 swift build:*)",
+      "Bash(swift package benchmark:*)"
+    ]
+  }
+}

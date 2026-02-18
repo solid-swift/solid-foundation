@@ -34,7 +34,7 @@ extension Value {
 
 extension Value.BinaryNumber: Sendable {}
 
-extension Value.BinaryNumber: Value.Number {
+extension Value.BinaryNumber {
 
   public var decimal: BigDecimal {
     switch self {
@@ -205,38 +205,23 @@ extension Value.BinaryNumber: Value.Number {
 
 extension Value.BinaryNumber: CustomStringConvertible {
 
-  private static let numLocale = Locale(identifier: "C")
-  private static let int8Style = IntegerFormatStyle<Int8>.number.locale(Self.numLocale)
-  private static let int16Style = IntegerFormatStyle<Int16>.number.locale(Self.numLocale)
-  private static let int32Style = IntegerFormatStyle<Int32>.number.locale(Self.numLocale)
-  private static let int64Style = IntegerFormatStyle<Int64>.number.locale(Self.numLocale)
-  private static let intStyle = IntegerFormatStyle<BigInt>.number.locale(Self.numLocale)
-  private static let uint8Style = IntegerFormatStyle<UInt8>.number.locale(Self.numLocale)
-  private static let uint16Style = IntegerFormatStyle<UInt16>.number.locale(Self.numLocale)
-  private static let uint32Style = IntegerFormatStyle<UInt32>.number.locale(Self.numLocale)
-  private static let uint64Style = IntegerFormatStyle<UInt64>.number.locale(Self.numLocale)
-  private static let uintStyle = IntegerFormatStyle<BigUInt>.number.locale(Self.numLocale)
-  private static let float16Style = FloatingPointFormatStyle<Float16>.number.locale(Self.numLocale)
-  private static let float32Style = FloatingPointFormatStyle<Float32>.number.locale(Self.numLocale)
-  private static let float64Style = FloatingPointFormatStyle<Float64>.number.locale(Self.numLocale)
-
   public var description: String {
     return switch self {
-    case .int8(let value): value.formatted(Self.int8Style)
-    case .int16(let value): value.formatted(Self.int16Style)
-    case .int32(let value): value.formatted(Self.int32Style)
-    case .int64(let value): value.formatted(Self.int64Style)
-    case .int128(let value): value.formatted()
-    case .uint8(let value): value.formatted(Self.uint8Style)
-    case .uint16(let value): value.formatted(Self.uint16Style)
-    case .uint32(let value): value.formatted(Self.uint32Style)
-    case .uint64(let value): value.formatted(Self.uint64Style)
-    case .uint128(let value): value.formatted()
-    case .int(let value): value.formatted(Self.intStyle)
-    case .uint(let value): value.formatted(Self.uintStyle)
-    case .float16(let value): value.formatted(Self.float16Style)
-    case .float32(let value): value.formatted(Self.float32Style)
-    case .float64(let value): value.formatted(Self.float64Style)
+    case .int8(let value): String(value)
+    case .int16(let value): String(value)
+    case .int32(let value): String(value)
+    case .int64(let value): String(value)
+    case .int128(let value): String(value)
+    case .uint8(let value): String(value)
+    case .uint16(let value): String(value)
+    case .uint32(let value): String(value)
+    case .uint64(let value): String(value)
+    case .uint128(let value): String(value)
+    case .int(let value): String(value)
+    case .uint(let value): String(value)
+    case .float16(let value): String(value)
+    case .float32(let value): String(value)
+    case .float64(let value): String(value)
     case .decimal(let value): value.description
     }
   }

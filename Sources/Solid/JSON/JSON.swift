@@ -14,7 +14,7 @@ public enum JSON {
   /// + Note: These are informational only, all errors are
   /// fatal and represent corrupted data; no recovery is
   /// possible
-  public enum Error: Swift.Error {
+  public enum Error: FormatError {
     /// End of data stream unexpectedly encounteredd during deserialization
     case unexpectedEndOfStream
     /// An invalid UTF-8 `string` sequence was encountered during deserialization
@@ -38,5 +38,12 @@ public enum JSON {
   }
 
   public static let format = Format.instance
+
+}
+
+
+extension JSON.Error {
+
+  public var format: JSON.Format { .instance }
 
 }

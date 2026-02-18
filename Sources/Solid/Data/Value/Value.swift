@@ -49,7 +49,7 @@ public indirect enum Value {
   /// - Note: Tagged value are "invisible" to convenience accessors like ``Value/object``,
   /// ``Value/array``, and ``Value/string``.
   ///
-  case tagged(tag: Value, value: Value)
+  case tagged(tags: [Value], value: Value)
 
 }
 
@@ -67,14 +67,7 @@ extension Value: Hashable {
     case .bool(let value):
       hasher.combine(value)
     case .number(let value):
-      switch value {
-      case let num as Value.TextNumber:
-        hasher.combine(num)
-      case let num as Value.BinaryNumber:
-        hasher.combine(num)
-      default:
-        fatalError("Unknown Number type")
-      }
+      hasher.combine(value)
     case .string(let value):
       hasher.combine(value)
     case .bytes(let value):
@@ -83,8 +76,8 @@ extension Value: Hashable {
       hasher.combine(value)
     case .object(let value):
       hasher.combine(value)
-    case .tagged(let tag, let value):
-      hasher.combine(tag)
+    case .tagged(let tags, let value):
+      hasher.combine(tags)
       hasher.combine(value)
     }
   }
@@ -100,6 +93,10 @@ extension Value: Equatable {
     case (.bool(let l), .bool(let r)):
       return l == r
     case (.number(let l), .number(let r)):
+      // Fast path: same-type binary numbers compare directly without BigDecimal construction
+      if case .binary(let lb) = l, case .binary(let rb) = r, lb == rb {
+        return true
+      }
       return l.decimal == r.decimal
     case (.string(let l), .string(let r)):
       return l == r
@@ -109,6 +106,8 @@ extension Value: Equatable {
       return l == r
     case (.object(let l), .object(let r)):
       return l == r
+    case (.tagged(let lTags, let lv), .tagged(let rTags, let rv)):
+      return lTags == rTags && lv == rv
     default:
       return false
     }
@@ -133,8 +132,9 @@ extension Value: CustomStringConvertible {
       return "{\(value.map { "\($0.description): \($1.description)" }.joined(separator: ", "))}"
     case .bytes(let value):
       return value.base64EncodedString()
-    case .tagged(let tag, let value):
-      return "<\(tag.description)> (\(value.description))"
+    case .tagged(let tags, let value):
+      let tagStr = tags.map(\.description).joined(separator: ", ")
+      return "<\(tagStr)> (\(value.description))"
     }
   }
 
@@ -292,13 +292,13 @@ extension Value: ExpressibleByBooleanLiteral {
 
 extension Value: ExpressibleByIntegerLiteral {
   public init(integerLiteral value: Int64) {
-    self = .number(Value.BinaryNumber.int64(value))
+    self = .number(.binary(.int64(value)))
   }
 }
 
 extension Value: ExpressibleByFloatLiteral {
   public init(floatLiteral value: Float64) {
-    self = .number(Value.BinaryNumber.float64(value))
+    self = .number(.binary(.float64(value)))
   }
 }
 
@@ -335,7 +335,7 @@ extension Value {
   /// - Parameter value: The integer value
   /// - Returns: A number value representing the integer
   public static func number(_ value: Int) -> Value {
-    return .number(Value.BinaryNumber.int64(Int64(value)))
+    return .number(.binary(.int64(Int64(value))))
   }
 
   /// Creates a number value from an unsigned integer.
@@ -343,7 +343,7 @@ extension Value {
   /// - Parameter value: The unsigned integer value
   /// - Returns: A number value representing the unsigned integer
   public static func number(_ value: UInt) -> Value {
-    return .number(Value.BinaryNumber.uint64(UInt64(value)))
+    return .number(.binary(.uint64(UInt64(value))))
   }
 
   /// Creates a number value from an 8-bit integer.
@@ -351,7 +351,7 @@ extension Value {
   /// - Parameter value: The 8-bit integer value
   /// - Returns: A number value representing the 8-bit integer
   public static func number(_ value: Int8) -> Value {
-    return .number(Value.BinaryNumber.int8(value))
+    return .number(.binary(.int8(value)))
   }
 
   /// Creates a number value from a 16-bit integer.
@@ -359,7 +359,7 @@ extension Value {
   /// - Parameter value: The 16-bit integer value
   /// - Returns: A number value representing the 16-bit integer
   public static func number(_ value: Int16) -> Value {
-    return .number(Value.BinaryNumber.int16(value))
+    return .number(.binary(.int16(value)))
   }
 
   /// Creates a number value from a 32-bit integer.
@@ -367,7 +367,7 @@ extension Value {
   /// - Parameter value: The 32-bit integer value
   /// - Returns: A number value representing the 32-bit integer
   public static func number(_ value: Int32) -> Value {
-    return .number(Value.BinaryNumber.int32(value))
+    return .number(.binary(.int32(value)))
   }
 
   /// Creates a number value from a 64-bit integer.
@@ -375,7 +375,7 @@ extension Value {
   /// - Parameter value: The 64-bit integer value
   /// - Returns: A number value representing the 64-bit integer
   public static func number(_ value: Int64) -> Value {
-    return .number(Value.BinaryNumber.int64(value))
+    return .number(.binary(.int64(value)))
   }
 
   /// Creates a number value from a 128-bit integer.
@@ -383,7 +383,7 @@ extension Value {
   /// - Parameter value: The 128-bit integer value
   /// - Returns: A number value representing the 128-bit integer
   public static func number(_ value: Int128) -> Value {
-    return .number(Value.BinaryNumber.int128(value))
+    return .number(.binary(.int128(value)))
   }
 
   /// Creates a number value from an 8-bit unsigned integer.
@@ -391,7 +391,7 @@ extension Value {
   /// - Parameter value: The 8-bit unsigned integer value
   /// - Returns: A number value representing the 8-bit unsigned integer
   public static func number(_ value: UInt8) -> Value {
-    return .number(Value.BinaryNumber.uint8(value))
+    return .number(.binary(.uint8(value)))
   }
 
   /// Creates a number value from a 16-bit unsigned integer.
@@ -399,7 +399,7 @@ extension Value {
   /// - Parameter value: The 16-bit unsigned integer value
   /// - Returns: A number value representing the 16-bit unsigned integer
   public static func number(_ value: UInt16) -> Value {
-    return .number(Value.BinaryNumber.uint16(value))
+    return .number(.binary(.uint16(value)))
   }
 
   /// Creates a number value from a 32-bit unsigned integer.
@@ -407,7 +407,7 @@ extension Value {
   /// - Parameter value: The 32-bit unsigned integer value
   /// - Returns: A number value representing the 32-bit unsigned integer
   public static func number(_ value: UInt32) -> Value {
-    return .number(Value.BinaryNumber.uint32(value))
+    return .number(.binary(.uint32(value)))
   }
 
   /// Creates a number value from a 64-bit unsigned integer.
@@ -415,7 +415,7 @@ extension Value {
   /// - Parameter value: The 64-bit unsigned integer value
   /// - Returns: A number value representing the 64-bit unsigned integer
   public static func number(_ value: UInt64) -> Value {
-    return .number(Value.BinaryNumber.uint64(value))
+    return .number(.binary(.uint64(value)))
   }
 
   /// Creates a number value from a 128-bit unsigned integer.
@@ -423,7 +423,7 @@ extension Value {
   /// - Parameter value: The 128-bit unsigned integer value
   /// - Returns: A number value representing the 128-bit unsigned integer
   public static func number(_ value: UInt128) -> Value {
-    return .number(Value.BinaryNumber.uint128(value))
+    return .number(.binary(.uint128(value)))
   }
 
   /// Creates a number value from a 16-bit floating-point number.
@@ -431,7 +431,7 @@ extension Value {
   /// - Parameter value: The 16-bit floating-point value
   /// - Returns: A number value representing the 16-bit floating-point number
   public static func number(_ value: Float16) -> Value {
-    return .number(Value.BinaryNumber.float16(value))
+    return .number(.binary(.float16(value)))
   }
 
   /// Creates a number value from a 32-bit floating-point number.
@@ -439,7 +439,7 @@ extension Value {
   /// - Parameter value: The 32-bit floating-point value
   /// - Returns: A number value representing the 32-bit floating-point number
   public static func number(_ value: Float32) -> Value {
-    return .number(Value.BinaryNumber.float32(value))
+    return .number(.binary(.float32(value)))
   }
 
   /// Creates a number value from a 64-bit floating-point number.
@@ -447,7 +447,7 @@ extension Value {
   /// - Parameter value: The 64-bit floating-point value
   /// - Returns: A number value representing the 64-bit floating-point number
   public static func number(_ value: Float64) -> Value {
-    return .number(Value.BinaryNumber.float64(value))
+    return .number(.binary(.float64(value)))
   }
 
   /// Creates a number value from a big integer.
@@ -455,7 +455,7 @@ extension Value {
   /// - Parameter value: The big integer value
   /// - Returns: A number value representing the big integer
   public static func number(_ value: BigInt) -> Value {
-    return .number(Value.BinaryNumber.int(value))
+    return .number(.binary(.int(value)))
   }
 
   /// Creates a number value from a big unsigned integer.
@@ -463,7 +463,7 @@ extension Value {
   /// - Parameter value: The big unsigned integer value
   /// - Returns: A number value representing the big unsigned integer
   public static func number(_ value: BigUInt) -> Value {
-    return .number(Value.BinaryNumber.uint(value))
+    return .number(.binary(.uint(value)))
   }
 
   /// Creates a number value from a big decimal.
@@ -471,7 +471,7 @@ extension Value {
   /// - Parameter value: The big decimal value
   /// - Returns: A number value representing the big decimal
   public static func number(_ value: BigDecimal) -> Value {
-    return .number(Value.TextNumber(decimal: value))
+    return .number(.text(TextNumber(decimal: value)))
   }
 
   /// Creates a number value from a string representation of a number.
@@ -484,7 +484,7 @@ extension Value {
       fatalError("Invalid numeric string: \(value)")
     }
     assert(!decimal.isNaN, "Invalid numeric string: \(value)")
-    return .number(Value.TextNumber(text: value, decimal: decimal))
+    return .number(.text(TextNumber(text: value, decimal: decimal)))
   }
 
 }
@@ -502,11 +502,14 @@ extension Value {
       }
       return object[value]
     }
-    set {
+    _modify {
       guard case .object(var object) = self else {
+        var none: Value?
+        yield &none
         return
       }
-      object[value] = newValue
+      self = .null
+      yield &object[value]
       self = .object(object)
     }
   }

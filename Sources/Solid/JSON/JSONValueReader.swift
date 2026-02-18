@@ -10,7 +10,7 @@ import Foundation
 
 public struct JSONValueReader: FormatReader {
 
-  let tokenReader: JSONTokenReader
+  var tokenReader: JSONTokenReader
 
   public init(data: Data) {
     self.tokenReader = JSONTokenReader(data: data)
@@ -22,11 +22,11 @@ public struct JSONValueReader: FormatReader {
 
   public var format: Format { JSON.format }
 
-  public func read() throws -> Value {
+  public mutating func read() throws -> Value {
     return try tokenReader.readValue(converter: ValueConverter.instance)
   }
 
-  public func validateValue() throws {
+  public mutating func validateValue() throws {
     try tokenReader.readValue(converter: NullConverter.instance)
   }
 
@@ -39,7 +39,7 @@ public struct JSONValueReader: FormatReader {
     func convertScalar(_ value: JSONToken.Scalar) throws -> Value {
       switch value {
       case .string(let string): .string(string)
-      case .number(let number): .number(number.value)
+      case .number(let number): number.toValue()
       case .bool(let bool): .bool(bool)
       case .null: .null
       }
@@ -49,8 +49,12 @@ public struct JSONValueReader: FormatReader {
       return .array(value)
     }
 
-    func convertObject(_ value: [String: Value]) throws -> Value {
-      return .object(Value.Object(uniqueKeysWithValues: value.map { (.string($0.key), $0.value) }))
+    func convertObject(_ value: [(String, Value)]) throws -> Value {
+      var object = Value.Object()
+      for (key, val) in value {
+        object[.string(key)] = val
+      }
+      return .object(object)
     }
 
     func convertNull() -> Value {
@@ -72,7 +76,7 @@ public struct JSONValueReader: FormatReader {
       return
     }
 
-    func convertObject(_ value: [String: Void]) throws -> Void {
+    func convertObject(_ value: [(String, Void)]) throws -> Void {
       return
     }
 

@@ -13,3 +13,5 @@ DerivedData/
 .readme-examples
 *.xcscheme
 .idea
+/.cache
+*.trace

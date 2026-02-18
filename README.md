@@ -213,7 +213,7 @@ import Foundation
   let json = """
   {"name": "Bob", "scores": [95, 87, 92]}
   """
-  let reader = JSONValueReader(string: json)
+  var reader = JSONValueReader(string: json)
   let value = try reader.read()
 
   // Write Value to JSON
@@ -232,10 +232,10 @@ import SolidData
 
   // Encode to CBOR
   let value: Value = ["temperature": 23.5, "humidity": 65]
-  let output = try CBORWriter.write(value)
+  let output = try CBORValueWriter.write(value)
 
   // Decode from CBOR
-  let reader = CBORReader(data: output)
+  var reader = CBORValueReader(data: output)
   let decoded = try reader.read()
 ```
 

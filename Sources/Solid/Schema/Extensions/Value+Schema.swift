@@ -20,7 +20,7 @@ extension Value {
     case .string: [.string]
     case .array: [.array]
     case .object: [.object]
-    case .tagged(tag: _, value: let value):
+    case .tagged(tags: _, value: let value):
       value.schemaTypes
     }
   }
@@ -50,7 +50,7 @@ extension Value {
         }
       }
       return true
-    case (.tagged(tag: _, value: let lhs), .tagged(tag: _, value: let rhs)):
+    case (.tagged(tags: _, value: let lhs), .tagged(tags: _, value: let rhs)):
       return schemaEqual(lhs, rhs)
     default:
       return false
@@ -64,11 +64,12 @@ extension Value {
       }
       return object[.string(keyword.rawValue)]
     }
-    set {
+    _modify {
       guard case .object(var object) = self else {
         fatalError("Value is not an object")
       }
-      object[.string(keyword.rawValue)] = newValue
+      self = .null
+      yield &object[.string(keyword.rawValue)]
       self = .object(object)
     }
   }
