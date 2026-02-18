@@ -213,7 +213,7 @@ import Foundation
   let json = """
   {"name": "Bob", "scores": [95, 87, 92]}
   """
-  let reader = JSONValueReader(string: json)
+  var reader = JSONValueReader(string: json)
   let value = try reader.read()
 
   // Write Value to JSON
@@ -235,7 +235,7 @@ import SolidData
   let output = try CBORValueWriter.write(value)
 
   // Decode from CBOR
-  let reader = CBORValueReader(data: output)
+  var reader = CBORValueReader(data: output)
   let decoded = try reader.read()
 ```
 
@@ -371,41 +371,6 @@ import SolidID
 **Standout Features:**
 
 UUID v7 generates time-ordered UUIDs that sort chronologically, making them ideal for database primary keys where you want both uniqueness and temporal ordering. For simpler use cases, `CounterID` provides lightweight sequential identifiers without the overhead of full UUIDs.
-
-## Development
-
-### Building
-
-```bash
-swift build
-```
-
-### Running Tests
-
-```bash
-swift test
-```
-
-### Linting
-
-Code style is enforced by [swift-format](https://github.com/swiftlang/swift-format) via the [SwiftFormatPlugins](https://github.com/StarLard/SwiftFormatPlugins) build plugin. To keep development builds fast, linting is **off by default** and gated behind an environment variable:
-
-```bash
-ENABLE_LINT=1 swift build   # Build with lint checks
-```
-
-CI runs with linting enabled. If you're about to open a PR, run a lint-enabled build first to catch formatting issues early.
-
-### Benchmarks
-
-Benchmarks use [package-benchmark](https://github.com/ordo-one/package-benchmark) and are also gated behind an environment variable to avoid pulling in heavy dependencies during normal development:
-
-```bash
-BENCHMARK_ENABLE=1 swift package benchmark                        # Run all benchmarks
-BENCHMARK_ENABLE=1 swift package benchmark --target SolidJSONBenchmark   # Run a specific suite
-```
-
-Available benchmark targets: `SolidCBORBenchmark`, `SolidJSONBenchmark`, `SolidYAMLBenchmark`, `SolidNumericBenchmark`.
 
 ## Contributing
 

@@ -17,6 +17,13 @@ import Testing
   import Darwin
 #endif
 
+// autoreleasepool is not available on Linux
+#if !canImport(ObjectiveC)
+  func autoreleasepool<T>(_ body: () throws -> T) rethrows -> T {
+    try body()
+  }
+#endif
+
 
 @Suite("YAML Test Suite")
 struct YAMLTestSuite {
@@ -334,12 +341,15 @@ struct YAMLTestSuite {
 
   private static func currentMaxResidentBytes() -> UInt64? {
     var usage = rusage()
-    guard getrusage(RUSAGE_SELF, &usage) == 0 else {
-      return nil
-    }
     #if os(Linux)
+      guard getrusage(Int32(RUSAGE_SELF.rawValue), &usage) == 0 else {
+        return nil
+      }
       return UInt64(usage.ru_maxrss) * 1024
     #else
+      guard getrusage(RUSAGE_SELF, &usage) == 0 else {
+        return nil
+      }
       return UInt64(usage.ru_maxrss)
     #endif
   }
