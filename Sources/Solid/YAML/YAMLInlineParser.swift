@@ -5,7 +5,7 @@
 //  Created by Kevin Wooten on 5/12/25.
 //
 
-import Foundation
+import SolidData
 
 // MARK: - Inline Parser
 

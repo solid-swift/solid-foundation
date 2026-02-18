@@ -32,7 +32,6 @@ let package = Package(
     .package(url: "https://github.com/apple/swift-log.git", .upToNextMajor(from: "1.8.0")),
     .package(url: "https://github.com/apple/swift-argument-parser.git", from: "1.7.0"),
     .package(url: "https://github.com/StarLard/SwiftFormatPlugins.git", from: "1.1.1"),
-    .package(url: "https://github.com/ordo-one/package-benchmark", .upToNextMajor(from: "1.29.7")),
     .package(url: "https://github.com/swiftlang/swift-markdown.git", from: "0.7.3"),
     .package(url: "https://github.com/tsolomko/SWCompression.git", from: "4.8.0"),
   ],
@@ -63,9 +62,8 @@ let package = Package(
         .product(name: "Logging", package: "swift-log", condition: .when(platforms: [.linux])),
       ],
       path: "Sources/Solid/Core",
-      plugins: [
-        .plugin(name: "Lint", package: "swiftformatplugins")
-      ]
+      swiftSettings: debugSwiftSettings,
+      plugins: lintPlugins
     ),
     .target(
       name: "SolidNumeric",
@@ -74,9 +72,7 @@ let package = Package(
         .product(name: "Collections", package: "swift-collections"),
       ],
       path: "Sources/Solid/Numeric",
-      plugins: [
-        .plugin(name: "Lint", package: "swiftformatplugins")
-      ]
+      plugins: lintPlugins
     ),
     .target(
       name: "SolidNet",
@@ -84,9 +80,7 @@ let package = Package(
         "SolidCore"
       ],
       path: "Sources/Solid/Net",
-      plugins: [
-        .plugin(name: "Lint", package: "swiftformatplugins")
-      ]
+      plugins: lintPlugins
     ),
     .target(
       name: "SolidURI",
@@ -95,9 +89,7 @@ let package = Package(
         "SolidNet",
       ],
       path: "Sources/Solid/URI",
-      plugins: [
-        .plugin(name: "Lint", package: "swiftformatplugins")
-      ]
+      plugins: lintPlugins
     ),
     .target(
       name: "SolidID",
@@ -107,9 +99,7 @@ let package = Package(
         "SolidNet",
       ],
       path: "Sources/Solid/ID",
-      plugins: [
-        .plugin(name: "Lint", package: "swiftformatplugins")
-      ]
+      plugins: lintPlugins
     ),
     .target(
       name: "SolidTempo",
@@ -118,9 +108,8 @@ let package = Package(
         .product(name: "Collections", package: "swift-collections"),
       ],
       path: "Sources/Solid/Tempo",
-      plugins: [
-        .plugin(name: "Lint", package: "swiftformatplugins")
-      ]
+      swiftSettings: debugSwiftSettings,
+      plugins: lintPlugins
     ),
     .target(
       name: "SolidIO",
@@ -129,9 +118,7 @@ let package = Package(
         "SwiftCompression",
       ],
       path: "Sources/Solid/IO",
-      plugins: [
-        .plugin(name: "Lint", package: "swiftformatplugins")
-      ]
+      plugins: lintPlugins
     ),
     .target(
       name: "SolidData",
@@ -142,9 +129,7 @@ let package = Package(
         "SolidURI",
       ],
       path: "Sources/Solid/Data",
-      plugins: [
-        .plugin(name: "Lint", package: "swiftformatplugins")
-      ]
+      plugins: lintPlugins
     ),
     .target(
       name: "SolidSchema",
@@ -159,38 +144,32 @@ let package = Package(
         .product(name: "Collections", package: "swift-collections"),
       ],
       path: "Sources/Solid/Schema",
+      swiftSettings: debugSwiftSettings,
+      plugins: lintPlugins
     ),
     .target(
       name: "SolidJSON",
       dependencies: ["SolidData", "SolidIO"],
       path: "Sources/Solid/JSON",
-      plugins: [
-        .plugin(name: "Lint", package: "swiftformatplugins")
-      ]
+      plugins: lintPlugins
     ),
     .target(
       name: "SolidYAML",
       dependencies: ["SolidData", "SolidIO"],
       path: "Sources/Solid/YAML",
-      plugins: [
-        .plugin(name: "Lint", package: "swiftformatplugins")
-      ]
+      plugins: lintPlugins
     ),
     .target(
       name: "SolidCBOR",
       dependencies: ["SolidData", "SolidIO"],
       path: "Sources/Solid/CBOR",
-      plugins: [
-        .plugin(name: "Lint", package: "swiftformatplugins")
-      ]
+      plugins: lintPlugins
     ),
     .target(
       name: "SolidTesting",
       dependencies: ["Solid"],
       path: "Tests/SolidTesting",
-      plugins: [
-        .plugin(name: "Lint", package: "swiftformatplugins")
-      ]
+      plugins: lintPlugins
     ),
     .testTarget(
       name: "SolidCoreTests",
@@ -198,9 +177,7 @@ let package = Package(
         "SolidCore",
         "SolidTesting",
       ],
-      plugins: [
-        .plugin(name: "Lint", package: "swiftformatplugins")
-      ]
+      plugins: lintPlugins
     ),
     .testTarget(
       name: "SolidDataTests",
@@ -208,9 +185,7 @@ let package = Package(
         "SolidData",
         "SolidTesting",
       ],
-      plugins: [
-        .plugin(name: "Lint", package: "swiftformatplugins")
-      ]
+      plugins: lintPlugins
     ),
     .testTarget(
       name: "SolidIDTests",
@@ -218,9 +193,7 @@ let package = Package(
         "SolidID",
         "SolidTesting",
       ],
-      plugins: [
-        .plugin(name: "Lint", package: "swiftformatplugins")
-      ]
+      plugins: lintPlugins
     ),
     .testTarget(
       name: "SolidIOTests",
@@ -228,18 +201,14 @@ let package = Package(
         "SolidIO",
         "SolidTesting",
       ],
-      plugins: [
-        .plugin(name: "Lint", package: "swiftformatplugins")
-      ]
+      plugins: lintPlugins
     ),
     .testTarget(
       name: "SolidNetTests",
       dependencies: [
         "SolidNet"
       ],
-      plugins: [
-        .plugin(name: "Lint", package: "swiftformatplugins")
-      ]
+      plugins: lintPlugins
     ),
     .testTarget(
       name: "SolidNumericTests",
@@ -250,9 +219,7 @@ let package = Package(
       resources: [
         .copy("Resources")
       ],
-      plugins: [
-        .plugin(name: "Lint", package: "swiftformatplugins")
-      ]
+      plugins: lintPlugins
     ),
     .testTarget(
       name: "SolidSchemaTests",
@@ -263,9 +230,7 @@ let package = Package(
       resources: [
         .copy("Resources")
       ],
-      plugins: [
-        .plugin(name: "Lint", package: "swiftformatplugins")
-      ]
+      plugins: lintPlugins
     ),
     .testTarget(
       name: "SolidJSONTests",
@@ -275,9 +240,7 @@ let package = Package(
         "SolidIO",
         "SolidTesting",
       ],
-      plugins: [
-        .plugin(name: "Lint", package: "swiftformatplugins")
-      ]
+      plugins: lintPlugins
     ),
     .testTarget(
       name: "SolidYAMLTests",
@@ -289,9 +252,7 @@ let package = Package(
       resources: [
         .copy("Fixtures/yaml-test-suite")
       ],
-      plugins: [
-        .plugin(name: "Lint", package: "swiftformatplugins")
-      ]
+      plugins: lintPlugins
     ),
     .testTarget(
       name: "SolidCBORTests",
@@ -301,9 +262,7 @@ let package = Package(
         "SolidIO",
         "SolidTesting",
       ],
-      plugins: [
-        .plugin(name: "Lint", package: "swiftformatplugins")
-      ]
+      plugins: lintPlugins
     ),
     .testTarget(
       name: "SolidTempoTests",
@@ -314,9 +273,7 @@ let package = Package(
       resources: [
         .copy("Resources")
       ],
-      plugins: [
-        .plugin(name: "Lint", package: "swiftformatplugins")
-      ]
+      plugins: lintPlugins
     ),
     .testTarget(
       name: "SolidURITests",
@@ -324,9 +281,7 @@ let package = Package(
         "SolidURI",
         "SolidTesting",
       ],
-      plugins: [
-        .plugin(name: "Lint", package: "swiftformatplugins")
-      ]
+      plugins: lintPlugins
     ),
 
     // - MARK: Shims
@@ -368,15 +323,42 @@ let package = Package(
   swiftLanguageModes: [.v6],
 )
 
+// Build Debugging
+let debugSwiftSettings: [SwiftSetting] = [
+  .unsafeFlags(
+    [
+      "-Xfrontend", "-warn-long-function-bodies=200",
+      "-Xfrontend", "-warn-long-expression-type-checking=200",
+    ],
+    .when(configuration: .debug)
+  )
+]
+
+// Linting
+let lintEnableEnv = ProcessInfo.processInfo.environment["ENABLE_LINT"]?.lowercased()
+let lintEnabled =
+  if let lintEnableEnv, lintEnableEnv == "1" || lintEnableEnv == "true" || lintEnableEnv == "t" {
+    true
+  } else {
+    false
+  }
+let lintPlugins: [Target.PluginUsage] =
+  lintEnabled
+  ? [.plugin(name: "Lint", package: "swiftformatplugins")]
+  : []
+
 // Benchmarking
 let benchmarkEnableEnv = ProcessInfo.processInfo.environment["BENCHMARK_ENABLE"]?.lowercased()
-let benchmarkEnbled =
+let benchmarkEnabled =
   if let benchmarkEnableEnv, benchmarkEnableEnv == "1" || benchmarkEnableEnv == "true" || benchmarkEnableEnv == "t" {
     true
   } else {
     false
   }
-if benchmarkEnbled {
+if benchmarkEnabled {
+  package.dependencies += [
+    .package(url: "https://github.com/ordo-one/package-benchmark", .upToNextMajor(from: "1.29.7")),
+  ]
   package.products += [
     .executable(
       name: "SolidBench",
