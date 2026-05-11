@@ -9,7 +9,7 @@ import Foundation
 import SolidData
 import SolidIO
 
-/// Async YAML stream writer that consumes ``ValueEvent`` values.
+/// Async YAML stream writer that consumes ``EmitEvent`` values.
 public final class YAMLStreamWriter: FormatStreamWriter {
 
   static let anchorTagPrefix = YAMLEventWriter.anchorTagPrefix
@@ -47,7 +47,7 @@ public final class YAMLStreamWriter: FormatStreamWriter {
 
   public var format: Format { adapter.format }
 
-  public func write(_ event: ValueEvent) async throws {
+  public func write(_ event: EmitEvent) async throws {
     try await adapter.write(event)
   }
 

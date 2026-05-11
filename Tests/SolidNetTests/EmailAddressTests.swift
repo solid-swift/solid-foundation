@@ -103,7 +103,7 @@ final class EmailAddressTests {
         + "b".padding(toLength: 63, withPad: "b", startingAt: 0) + "."
         + "c".padding(toLength: 63, withPad: "c", startingAt: 0) + "."
         + "d".padding(toLength: 59, withPad: "d", startingAt: 0) + ".com",
-    ]
+    ] as [String]
   )
   func validMailboxParsing(address: String) {
     #expect(EmailAddress.parse(string: address) != nil, "Should parse valid address: \(address)")
@@ -150,7 +150,7 @@ final class EmailAddressTests {
       // Invalid escape sequences
       "\"user\\\"@example.com",
       "\"user\\\\\"@example.com",
-    ]
+    ] as [String]
   )
   func invalidMailboxParsing(address: String) {
     #expect(EmailAddress.parse(string: address) == nil, "Should reject invalid address: \(address)")

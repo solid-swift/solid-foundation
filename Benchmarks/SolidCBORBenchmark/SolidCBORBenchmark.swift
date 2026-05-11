@@ -192,7 +192,7 @@ let benchmarks: @Sendable () -> Void = {
     for _ in benchmark.scaledIterations {
       let sink = DataSink()
       let writer = CBORStreamWriter(sink: sink)
-      let events = ValueEventEncoder().encode(smallMap)
+      let events = EmitEventEncoder().encode(smallMap)
       for event in events {
         try? await writer.write(event)
       }
@@ -206,7 +206,7 @@ let benchmarks: @Sendable () -> Void = {
     for _ in benchmark.scaledIterations {
       let sink = DataSink()
       let writer = CBORStreamWriter(sink: sink, options: .init(deterministicMode: .buffered()))
-      let events = ValueEventEncoder().encode(deterministicMap)
+      let events = EmitEventEncoder().encode(deterministicMap)
       for event in events {
         try? await writer.write(event)
       }
@@ -220,7 +220,7 @@ let benchmarks: @Sendable () -> Void = {
     for _ in benchmark.scaledIterations {
       let sink = DataSink()
       let writer = CBORStreamWriter(sink: sink, options: .init(deterministicMode: .assumeSortedKeys))
-      let events = ValueEventEncoder().encode(sortedMap)
+      let events = EmitEventEncoder().encode(sortedMap)
       for event in events {
         try? await writer.write(event)
       }
@@ -238,7 +238,7 @@ let benchmarks: @Sendable () -> Void = {
       let source = DataSource(data: smallMapData)
       let reader = CBORStreamReader()
       let driver = FormatStreamReaderDriver(reader: reader, source: source, bufferSize: 64)
-      var decoder = ValueEventDecoder()
+      var decoder = ParseEventDecoder(resolver: CBORScalarResolver())
       while let event = try? await driver.next() {
         try? decoder.append(event)
       }
@@ -254,7 +254,7 @@ let benchmarks: @Sendable () -> Void = {
       let source = ChunkedSource(data: smallMapData, chunkSizes: [1, 2, 3, 1, 4])
       let reader = CBORStreamReader()
       let driver = FormatStreamReaderDriver(reader: reader, source: source, bufferSize: 64)
-      var decoder = ValueEventDecoder()
+      var decoder = ParseEventDecoder(resolver: CBORScalarResolver())
       while let event = try? await driver.next() {
         try? decoder.append(event)
       }

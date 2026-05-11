@@ -8,80 +8,37 @@
 import SolidData
 import Foundation
 
-public struct JSONValueReader: FormatReader {
+/// Synchronous JSON reader that loads into ``Value``.
+public struct JSONValueReader: ~Copyable, FormatReader {
 
-  var tokenReader: JSONTokenReader
+  private var reader: FormatValueReader<JSONStreamReader>
 
   public init(data: Data) {
-    self.tokenReader = JSONTokenReader(data: data)
+    self.reader = FormatValueReader(
+      reader: JSONStreamReader(reader: JSONEventReader()),
+      data: data,
+      format: JSON.format,
+      scalarResolver: JSONScalarResolver(),
+      unexpectedEndError: { JSON.Error.unexpectedEndOfStream },
+      requiresEndOfStream: true,
+      trailingDataError: {
+        JSON.Error.invalidStructure("Extra data after root value")
+      }
+    )
   }
 
   public init(string: String) {
-    self.tokenReader = JSONTokenReader(string: string)
+    self.init(data: Data(string.utf8))
   }
 
-  public var format: Format { JSON.format }
+  public var format: Format { reader.format }
 
   public mutating func read() throws -> Value {
-    return try tokenReader.readValue(converter: ValueConverter.instance)
+    try reader.read()
   }
 
+  /// Validate that the data contains well-formed JSON without building a ``Value``.
   public mutating func validateValue() throws {
-    try tokenReader.readValue(converter: NullConverter.instance)
-  }
-
-  enum ValueConverter: JSONTokenConverter {
-
-    case instance
-
-    typealias ValueType = SolidData.Value
-
-    func convertScalar(_ value: JSONToken.Scalar) throws -> Value {
-      switch value {
-      case .string(let string): .string(string)
-      case .number(let number): number.toValue()
-      case .bool(let bool): .bool(bool)
-      case .null: .null
-      }
-    }
-
-    func convertArray(_ value: [Value]) throws -> Value {
-      return .array(value)
-    }
-
-    func convertObject(_ value: [(String, Value)]) throws -> Value {
-      var object = Value.Object()
-      for (key, val) in value {
-        object[.string(key)] = val
-      }
-      return .object(object)
-    }
-
-    func convertNull() -> Value {
-      return .null
-    }
-  }
-
-  enum NullConverter: JSONTokenConverter {
-
-    case instance
-
-    typealias ValueType = Void
-
-    func convertScalar(_ value: JSONToken.Scalar) throws -> Void {
-      return
-    }
-
-    func convertArray(_ value: [Void]) throws -> Void {
-      return
-    }
-
-    func convertObject(_ value: [(String, Void)]) throws -> Void {
-      return
-    }
-
-    func convertNull() -> Void {
-      return
-    }
+    _ = try reader.read()
   }
 }

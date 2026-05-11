@@ -147,6 +147,22 @@ struct YAMLTests {
     #expect(value == testCase.value, "\(testCase.id): parsed value mismatch")
   }
 
+  @Test("Value reader rejects additional document")
+  func valueReaderRejectsAdditionalDocument() throws {
+    var yamlReader = YAMLValueReader(
+      string: """
+      ---
+      foo: 1
+      ---
+      bar: 2
+      """
+    )
+
+    #expect(throws: Error.self) {
+      _ = try yamlReader.read()
+    }
+  }
+
   @Test("Emit value", arguments: cases)
   func emitValue(_ testCase: TestCase) throws {
     let writer = YAMLValueWriter(options: .default)
@@ -161,7 +177,7 @@ struct YAMLTests {
     let source = Data(testCase.yaml.utf8).source()
     let reader = YAMLStreamReader()
     let driver = FormatStreamReaderDriver(reader: reader, source: source)
-    var decoder = ValueEventDecoder()
+    var decoder = ParseEventDecoder(resolver: YAMLScalarResolver())
 
     while let event = try await driver.next() {
       try decoder.append(event)
@@ -175,7 +191,7 @@ struct YAMLTests {
   func emitStream(_ testCase: TestCase) async throws {
     let sink = DataSink()
     let writer = YAMLStreamWriter(sink: sink)
-    var events: [ValueEvent] = []
+    var events: [EmitEvent] = []
     emitEvents(from: testCase.value, into: &events)
     for event in events {
       try await writer.write(event)
@@ -228,6 +244,23 @@ struct YAMLTests {
     #expect(documents == testCase.documents, "\(testCase.id): streamed emit mismatch")
   }
 
+  @Test("Document stream writer rejects overlapping writes", .timeLimit(.minutes(1)))
+  func documentStreamWriterRejectsOverlappingWrites() async throws {
+    let sink = BlockingYAMLDocumentSink()
+    let writer = YAMLDocumentStreamWriter(sink: sink, options: .default)
+
+    async let firstWrite: Void = writer.write(.init(value: ["first": 1]))
+    await sink.waitUntilWriteStarted()
+
+    await #expect(throws: FormatStreamDriverError.operationInProgress) {
+      try await writer.write(.init(value: ["second": 2]))
+    }
+
+    await sink.releaseWrites()
+    try await firstWrite
+    try await writer.finish()
+  }
+
   @Test("Error locations", arguments: errorCases)
   func errorLocations(_ testCase: ErrorCase) throws {
     let error =
@@ -250,7 +283,7 @@ struct YAMLTests {
 
 }
 
-private func emitEvents(from value: Value, into events: inout [ValueEvent]) {
+private func emitEvents(from value: Value, into events: inout [EmitEvent]) {
   switch value {
   case .tagged(let tags, let value):
     for tag in tags {
@@ -266,11 +299,64 @@ private func emitEvents(from value: Value, into events: inout [ValueEvent]) {
   case .object(let object):
     events.append(.beginObject(count: nil))
     for (key, val) in object {
-      events.append(.key(key))
+      events.append(.scalar(key))
       emitEvents(from: val, into: &events)
     }
     events.append(.endObject)
   default:
     events.append(.scalar(value))
+  }
+}
+
+private actor BlockingYAMLDocumentSink: Sink {
+
+  private var storage = Data()
+  private var writeStarted = false
+  private var writeReleased = false
+  private var writeStartedContinuations: [CheckedContinuation<Void, Never>] = []
+  private var writeReleaseContinuations: [CheckedContinuation<Void, Never>] = []
+
+  var bytesWritten: Int {
+    get async throws { storage.count }
+  }
+
+  func write(data: Data) async throws {
+    writeStarted = true
+    resumeWriteStartedContinuations()
+
+    if !writeReleased {
+      await withCheckedContinuation { continuation in
+        writeReleaseContinuations.append(continuation)
+      }
+    }
+
+    storage.append(data)
+  }
+
+  func waitUntilWriteStarted() async {
+    guard !writeStarted else { return }
+
+    await withCheckedContinuation { continuation in
+      writeStartedContinuations.append(continuation)
+    }
+  }
+
+  func releaseWrites() {
+    writeReleased = true
+    let continuations = writeReleaseContinuations
+    writeReleaseContinuations.removeAll()
+    for continuation in continuations {
+      continuation.resume()
+    }
+  }
+
+  func close() async throws {}
+
+  private func resumeWriteStartedContinuations() {
+    let continuations = writeStartedContinuations
+    writeStartedContinuations.removeAll()
+    for continuation in continuations {
+      continuation.resume()
+    }
   }
 }

@@ -15,24 +15,39 @@ import Foundation
 public struct FormatValueWriter<Encoder: FormatStreamEncoder>: FormatWriter {
 
   private let makeEncoder: @Sendable () -> Encoder
-  private let encodeValue: @Sendable (Value) throws -> [ValueEvent]
+  private let emitValue: (Value, (EmitEvent) throws -> Void) throws -> Void
   private let formatValue: Format
 
   public init(
     format: Format,
     makeEncoder: @escaping @Sendable () -> Encoder,
-    encodeValue: @escaping @Sendable (Value) throws -> [ValueEvent]
+    encodeValue: @escaping @Sendable (Value) throws -> [EmitEvent]
   ) {
     self.formatValue = format
     self.makeEncoder = makeEncoder
-    self.encodeValue = encodeValue
+    self.emitValue = { value, emit in
+      for event in try encodeValue(value) {
+        try emit(event)
+      }
+    }
+  }
+
+  public init(
+    format: Format,
+    makeEncoder: @escaping @Sendable () -> Encoder,
+    emitValue: @escaping (Value, (EmitEvent) throws -> Void) throws -> Void
+  ) {
+    self.formatValue = format
+    self.makeEncoder = makeEncoder
+    self.emitValue = emitValue
   }
 
   public var format: Format { formatValue }
 
   public func write(_ value: Value) throws -> Data {
-    let events = try encodeValue(value)
     var buffer = FormatStreamEncoderBuffer(encoder: makeEncoder())
-    return try buffer.encode(events: events)
+    return try buffer.encode { emit in
+      try emitValue(value, emit)
+    }
   }
 }

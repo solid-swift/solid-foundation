@@ -123,6 +123,16 @@ struct CBORValueReaderTests {
     let value = try decode(Array(data), options: .init())
     #expect(value == expectedMap)
   }
+
+  @Test("Value reader rejects trailing root item")
+  func valueReaderRejectsTrailingRootItem() {
+    let data = Data([0x01, 0x02])
+
+    #expect(throws: CBOR.Error.self) {
+      var reader = CBORValueReader(data: data)
+      _ = try reader.read()
+    }
+  }
 }
 
 private let numberCases: [CBORValueReaderTests.DecodeCase] = {
@@ -270,6 +280,12 @@ private let utf8StringCases: [CBORValueReaderTests.DecodeCase] = [
     expected: .string("ABCABC"),
     options: .init()
   ),
+  .init(
+    id: "string-indefinite-many-small-chunks",
+    bytes: [0x7F, 0x61, 0x41, 0x61, 0x42, 0x61, 0x43, 0x61, 0x44, 0x61, 0x45, 0x61, 0x46, 0xFF],
+    expected: .string("ABCDEF"),
+    options: .init()
+  ),
 ]
 
 private let arrayCases: [CBORValueReaderTests.DecodeCase] = [
@@ -283,7 +299,7 @@ private let arrayCases: [CBORValueReaderTests.DecodeCase] = [
   .init(id: "array-len8-empty", bytes: [0x98, 0], expected: .array([]), options: .init()),
   .init(
     id: "array-len8-3",
-    bytes: [0x98, 3, 0x18, 2, 0x18, 2, 0x79, 0x00, 3, 0x41, 0x42, 0x43, 0xFF],
+    bytes: [0x98, 3, 0x18, 2, 0x18, 2, 0x79, 0x00, 3, 0x41, 0x42, 0x43],
     expected: .array([2, 2, "ABC"]),
     options: .init()
   ),
@@ -423,6 +439,16 @@ private let errorCases: [CBORValueReaderTests.DecodeErrorCase] = [
   .init(
     id: "invalid-negative-bignum-tag",
     bytes: [0xDB, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 3, 0xA0],
+    options: .init()
+  ),
+  .init(
+    id: "invalid-indefinite-string-utf8-across-chunks",
+    bytes: [0x7F, 0x61, 0xC3, 0x61, 0x28, 0xFF],
+    options: .init()
+  ),
+  .init(
+    id: "trailing-break-after-definite-array",
+    bytes: [0x98, 3, 0x18, 2, 0x18, 2, 0x79, 0x00, 3, 0x41, 0x42, 0x43, 0xFF],
     options: .init()
   ),
 ]

@@ -33,10 +33,16 @@ struct CBOREncoder: FormatEventWriter {
   struct Options: Sendable {
     var deterministic: Bool
     var deterministicMode: DeterministicMode
+    var deterministicBufferedValueEvents: Bool
 
-    init(deterministic: Bool = false, deterministicMode: DeterministicMode = .none) {
+    init(
+      deterministic: Bool = false,
+      deterministicMode: DeterministicMode = .none,
+      deterministicBufferedValueEvents: Bool = false
+    ) {
       self.deterministic = deterministic
       self.deterministicMode = deterministicMode
+      self.deterministicBufferedValueEvents = deterministicBufferedValueEvents
     }
   }
 
@@ -45,16 +51,11 @@ struct CBOREncoder: FormatEventWriter {
     case complete
   }
 
-  private enum ContainerState {
-    case array(remaining: Int?)
-    case object(remaining: Int?, expectingKey: Bool)
-  }
-
   private let options: Options
 
   var buffer = Data()
   private var rootState: RootState = .expectingValue
-  private var containers: [ContainerState] = []
+  private var containers = ContainerStack()
   private var pendingTags: [UInt64] = []
   private var mapBuffer: MapBuffer?
 
@@ -70,9 +71,15 @@ struct CBOREncoder: FormatEventWriter {
     return encoder.buffer
   }
 
+  static func encodeEmitEvents(_ events: [EmitEvent], options: Options) throws -> Data {
+    let streamEncoder = CBORStreamEncoder(writer: CBOREncoder(options: options))
+    var encoderBuffer = FormatStreamEncoderBuffer(encoder: streamEncoder)
+    return try encoderBuffer.encode(events: events)
+  }
+
   // MARK: - FormatEventWriter
 
-  mutating func writeEvent(_ event: ValueEvent, into output: inout Data) throws {
+  mutating func writeEvent(_ event: EmitEvent, into output: inout Data) throws {
     swap(&buffer, &output)
     defer { swap(&buffer, &output) }
     try writeEventImpl(event)
@@ -89,10 +96,9 @@ struct CBOREncoder: FormatEventWriter {
 
   // MARK: - Event Encoding
 
-  private mutating func writeEventImpl(_ event: ValueEvent) throws {
-    if var mapBuf = mapBuffer {
+  private mutating func writeEventImpl(_ event: EmitEvent) throws {
+    if var mapBuf = takeMapBuffer() {
       if let completion = try mapBuf.handle(event) {
-        mapBuffer = nil
         try emitBufferedMap(completion)
       } else {
         mapBuffer = mapBuf
@@ -136,34 +142,35 @@ struct CBOREncoder: FormatEventWriter {
     case .alias:
       throw Error.invalidEventSequence("Aliases are not supported")
 
-    case .key(let key):
-      try prepareForValue(isKey: true)
-      writePendingTags()
-      try writeValue(key)
-      try setObjectExpectingValue()
-
     case .scalar(let value):
-      try prepareForValue(isKey: false)
-      writePendingTags()
-      try writeValue(value)
-      try finishValue()
+      if containers.isExpectingObjectKey {
+        try prepareForValue(isKey: true)
+        writePendingTags()
+        try writeValue(value)
+        try setObjectExpectingValue()
+      } else {
+        try prepareForValue(isKey: false)
+        writePendingTags()
+        try writeValue(value)
+        try finishValue()
+      }
 
     case .beginArray(let count):
       try prepareForValue(isKey: false)
       writePendingTags()
       if let count {
         writeLength(count, majorType: 0b100)
-        containers.append(.array(remaining: count))
+        containers.pushArray(count: count)
       } else {
         writeIndefiniteStart(for: .array)
-        containers.append(.array(remaining: nil))
+        containers.pushArray(count: nil)
       }
 
     case .endArray:
       guard pendingTags.isEmpty else {
         throw Error.invalidEventSequence("Tag without value")
       }
-      guard case .array(let remaining) = containers.popLast() else {
+      guard case .array(let remaining) = try containers.pop() else {
         throw Error.invalidEventSequence("Unexpected endArray")
       }
       if let remaining, remaining != 0 {
@@ -179,17 +186,17 @@ struct CBOREncoder: FormatEventWriter {
       writePendingTags()
       if let count {
         writeLength(count, majorType: 0b101)
-        containers.append(.object(remaining: count, expectingKey: true))
+        containers.pushObject(count: count)
       } else {
         writeIndefiniteStart(for: .map)
-        containers.append(.object(remaining: nil, expectingKey: true))
+        containers.pushObject(count: nil)
       }
 
     case .endObject:
       guard pendingTags.isEmpty else {
         throw Error.invalidEventSequence("Tag without value")
       }
-      guard case .object(let remaining, let expectingKey) = containers.popLast() else {
+      guard case .object(let remaining, let expectingKey) = try containers.pop() else {
         throw Error.invalidEventSequence("Unexpected endObject")
       }
       guard expectingKey else {
@@ -205,6 +212,12 @@ struct CBOREncoder: FormatEventWriter {
     }
   }
 
+  private mutating func takeMapBuffer() -> MapBuffer? {
+    let buffer = mapBuffer
+    mapBuffer = nil
+    return buffer
+  }
+
   private mutating func prepareForValue(isKey: Bool) throws {
     if containers.isEmpty {
       guard rootState == .expectingValue else {
@@ -212,7 +225,10 @@ struct CBOREncoder: FormatEventWriter {
       }
       return
     }
-    switch containers[containers.count - 1] {
+    guard let current = containers.current else {
+      return
+    }
+    switch current {
     case .array(let remaining):
       if let remaining, remaining == 0 {
         throw Error.invalidEventSequence("Too many array values")
@@ -238,13 +254,13 @@ struct CBOREncoder: FormatEventWriter {
   }
 
   private mutating func setObjectExpectingValue() throws {
-    guard case .object(let remaining, let expectingKey) = containers.popLast() else {
+    guard case .object(_, let expectingKey) = containers.current else {
       throw Error.invalidEventSequence("Key outside map")
     }
     guard expectingKey else {
       throw Error.invalidEventSequence("Unexpected key")
     }
-    containers.append(.object(remaining: remaining, expectingKey: false))
+    containers.didFinishScalarValue()
   }
 
   private mutating func finishValue() throws {
@@ -252,34 +268,10 @@ struct CBOREncoder: FormatEventWriter {
       rootState = .complete
       return
     }
-    guard let container = containers.popLast() else {
-      return
-    }
-    switch container {
-    case .array(let remaining):
-      if let remaining {
-        let newRemaining = remaining - 1
-        guard newRemaining >= 0 else {
-          throw Error.invalidEventSequence("Too many array values")
-        }
-        containers.append(.array(remaining: newRemaining))
-      } else {
-        containers.append(.array(remaining: nil))
-      }
-    case .object(let remaining, let expectingKey):
-      guard !expectingKey else {
+    if case .object(_, let expectingKey) = containers.current, expectingKey {
         throw Error.invalidEventSequence("Missing value for key")
-      }
-      if let remaining {
-        let newRemaining = remaining - 1
-        guard newRemaining >= 0 else {
-          throw Error.invalidEventSequence("Too many object values")
-        }
-        containers.append(.object(remaining: newRemaining, expectingKey: true))
-      } else {
-        containers.append(.object(remaining: nil, expectingKey: true))
-      }
     }
+    containers.didFinishScalarValue()
   }
 
   private mutating func writePendingTags() {
@@ -291,7 +283,18 @@ struct CBOREncoder: FormatEventWriter {
 
   private mutating func emitBufferedMap(_ completion: MapBufferCompletion) throws {
     let encodedPairs = try completion.pairs.map { pair -> (keyBytes: Data, valueBytes: Data, order: Int) in
-      let valueBytes = try encodeValueEvents(pair.valueEvents)
+      let valueOptions = options.deterministicBufferedValueEvents
+        ? options
+        // Re-encode ordinary buffered values with map buffering enabled only
+        // to support complex keys; maxBytes: 0 preserves original pair order.
+        : Options(
+            deterministic: false,
+            deterministicMode: .buffered(maxPairs: Int.max, maxBytes: 0)
+          )
+      let valueBytes = try Self.encodeEmitEvents(
+        pair.valueEvents,
+        options: valueOptions
+      )
       return (keyBytes: pair.keyBytes, valueBytes: valueBytes, order: pair.order)
     }
 
@@ -317,8 +320,8 @@ struct CBOREncoder: FormatEventWriter {
       orderedPairs = encodedPairs.sorted { $0.order < $1.order }
     } else {
       orderedPairs = encodedPairs.sorted {
-        if $0.keyBytes.count != $1.keyBytes.count {
-          return $0.keyBytes.count < $1.keyBytes.count
+        if $0.keyBytes == $1.keyBytes {
+          return $0.order < $1.order
         }
         return $0.keyBytes.lexicographicallyPrecedes($1.keyBytes)
       }
@@ -331,14 +334,6 @@ struct CBOREncoder: FormatEventWriter {
       buffer.append(pair.valueBytes)
     }
     try finishValue()
-  }
-
-  private func encodeValueEvents(_ events: [ValueEvent]) throws -> Data {
-    let streamEncoder = CBORStreamEncoder(
-      writer: CBOREncoder(options: Options(deterministic: false, deterministicMode: .none))
-    )
-    var encoderBuffer = FormatStreamEncoderBuffer(encoder: streamEncoder)
-    return try encoderBuffer.encode(events: events)
   }
 
   private func tagValue(_ tag: Value) throws -> UInt64 {
@@ -682,7 +677,7 @@ struct CBOREncoder: FormatEventWriter {
   }
 
   private func deterministicBytes(of value: Value) throws -> Data {
-    return try Self.encodeValue(value, deterministic: true)
+    return try CBORDeterministicKeyEncoder.encode(value)
   }
 
 }

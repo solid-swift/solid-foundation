@@ -21,7 +21,7 @@ public final class YAMLDocumentWriter {
   }
 
   private let options: Options
-  private var output = ""
+  private var output = Data()
   private var wroteDocument = false
 
   public init(options: Options = .default) {
@@ -29,11 +29,10 @@ public final class YAMLDocumentWriter {
   }
 
   public func write(_ document: YAMLValueDocument) throws {
-    if !output.isEmpty, !output.hasSuffix("\n") {
-      output.append("\n")
+    if !output.isEmpty, output.last != 0x0A {
+      output.append(0x0A)
     }
-    let rendered = try render(document: document)
-    output.append(rendered)
+    try append(document: document)
   }
 
   public func writeAll(_ documents: [YAMLValueDocument]) throws {
@@ -43,27 +42,23 @@ public final class YAMLDocumentWriter {
   }
 
   public func data() -> Data {
-    Data(output.utf8)
+    output
   }
 
-  private func render(document: YAMLValueDocument) throws -> String {
+  private func append(document: YAMLValueDocument) throws {
     let needsStart = document.explicitStart || wroteDocument
     let writer = YAMLValueWriter(options: .init(indent: options.indent))
-    let data = try writer.write(document.value)
-    let body = String(decoding: data, as: UTF8.self)
 
-    var chunk = ""
     if needsStart {
-      chunk.append("---\n")
+      output.append(contentsOf: "---\n".utf8)
     }
-    chunk.append(body)
-    if !chunk.hasSuffix("\n") {
-      chunk.append("\n")
+    output.append(try writer.write(document.value))
+    if output.last != 0x0A {
+      output.append(0x0A)
     }
     if document.explicitEnd {
-      chunk.append("...\n")
+      output.append(contentsOf: "...\n".utf8)
     }
     wroteDocument = true
-    return chunk
   }
 }

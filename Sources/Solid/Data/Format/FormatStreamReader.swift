@@ -18,7 +18,7 @@ public enum FormatStreamReadStatus: Sendable, Equatable {
 }
 
 /// Streaming reader for a ``Format``.
-public protocol FormatStreamReader {
+public protocol FormatStreamReader: ~Copyable {
 
   /// The format this reader reads.
   var format: Format { get }
@@ -33,6 +33,6 @@ public protocol FormatStreamReader {
   mutating func read(
     input: Data,
     isFinal: Bool,
-    output: inout OutputSpan<ValueEvent>
+    output: inout OutputSpan<ParseEvent>
   ) throws -> FormatStreamReadStatus
 }

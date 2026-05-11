@@ -39,7 +39,7 @@ public final class FormatStreamWriterAdapter<Encoder: FormatStreamEncoder>: Form
 
   public var format: Format { driver.format }
 
-  public func write(_ event: ValueEvent) async throws {
+  public func write(_ event: EmitEvent) async throws {
     guard !finished else { throw alreadyFinishedError() }
     do {
       try await driver.write(event)

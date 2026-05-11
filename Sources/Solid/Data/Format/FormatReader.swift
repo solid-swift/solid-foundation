@@ -6,7 +6,7 @@
 //
 
 
-public protocol FormatReader {
+public protocol FormatReader: ~Copyable {
 
   /// The format this writer writes.
   var format: Format { get }

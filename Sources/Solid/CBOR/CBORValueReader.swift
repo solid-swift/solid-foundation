@@ -9,7 +9,7 @@ import Foundation
 import SolidData
 
 /// Synchronous CBOR reader that loads into ``Value``.
-public struct CBORValueReader: FormatReader {
+public struct CBORValueReader: ~Copyable, FormatReader {
 
   public struct Options: Sendable {
 
@@ -32,7 +32,12 @@ public struct CBORValueReader: FormatReader {
       reader: CBORStreamReader(options: options),
       data: data,
       format: CBOR.format,
-      unexpectedEndError: { CBOR.Error.unexpectedEndOfStream }
+      scalarResolver: CBORScalarResolver(),
+      unexpectedEndError: { CBOR.Error.unexpectedEndOfStream },
+      requiresEndOfStream: true,
+      trailingDataError: {
+        CBOR.Error.invalidStructure("Extra data after root value")
+      }
     )
   }
 

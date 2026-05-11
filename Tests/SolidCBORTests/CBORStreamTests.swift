@@ -123,11 +123,45 @@ struct CBORStreamTests {
     #expect(parsed == testCase.expected, "\(testCase.id): streamed boundary parse mismatch")
   }
 
+  @Test("Document event reader emits one document per root item")
+  func documentEventReaderEmitsOneDocumentPerRootItem() async throws {
+    var data = Data()
+    data.append(try CBORValueWriter.write(.number(1)))
+    data.append(try CBORValueWriter.write(.array([.string("two")])))
+
+    let source = ChunkedSource(data: data, chunkSizes: [1])
+    let reader = CBORDocumentEventReader()
+    let driver = FormatDocumentStreamReaderDriver(reader: reader, source: source, bufferSize: 2)
+    var decoder = ParseDocumentEventDecoder(resolver: CBORScalarResolver())
+    var documents: [FormatValueDocument] = []
+    var startCount = 0
+    var endCount = 0
+
+    while let event = try await driver.next() {
+      if case .startDocument(let metadata) = event {
+        #expect(!metadata.explicit)
+        startCount += 1
+      }
+      if case .endDocument(let metadata) = event {
+        #expect(!metadata.explicit)
+        endCount += 1
+      }
+      if let document = try decoder.append(event) {
+        documents.append(document)
+      }
+    }
+    try decoder.finish()
+
+    #expect(documents.map(\.value) == [.number(1), .array([.string("two")])])
+    #expect(startCount == 2)
+    #expect(endCount == 2)
+  }
+
   @Test("Emit stream", arguments: cases)
   func emitStream(_ testCase: TestCase) async throws {
     let sink = DataSink()
     let writer = CBORStreamWriter(sink: sink)
-    let events = ValueEventEncoder().encode(testCase.value)
+    let events = EmitEventEncoder().encode(testCase.value)
     for event in events {
       try await writer.write(event)
     }
@@ -142,7 +176,7 @@ struct CBORStreamTests {
   func emitDeterministicStream(_ testCase: DeterministicCase) async throws {
     let sink = DataSink()
     let writer = CBORStreamWriter(sink: sink, options: testCase.options)
-    let events = ValueEventEncoder().encode(testCase.value)
+    let events = EmitEventEncoder().encode(testCase.value)
     for event in events {
       try await writer.write(event)
     }
@@ -155,6 +189,80 @@ struct CBORStreamTests {
     #expect(sink.data == expected, "\(testCase.id): deterministic stream bytes mismatch")
   }
 
+  @Test("Emit deterministic stream with complex key events")
+  func emitDeterministicStreamWithComplexKeyEvents() async throws {
+    let sink = DataSink()
+    let writer = CBORStreamWriter(sink: sink, options: .init(deterministicMode: .buffered()))
+    let complexKey: Value = .array([
+      .object([
+        .string("inner"): .object([
+          .string("b"): .number(1),
+          .string("a"): .number(2),
+        ]),
+      ]),
+    ])
+    let expectedValue: Value = .object([
+      complexKey: .string("complex"),
+      .string("z"): .string("plain"),
+    ])
+    let events: [EmitEvent] = [
+      .beginObject(count: 2),
+      .beginArray(count: 1),
+      .beginObject(count: 1),
+      .scalar(.string("inner")),
+      .beginObject(count: 2),
+      .scalar(.string("b")),
+      .scalar(.number(1)),
+      .scalar(.string("a")),
+      .scalar(.number(2)),
+      .endObject,
+      .endObject,
+      .endArray,
+      .scalar(.string("complex")),
+      .scalar(.string("z")),
+      .scalar(.string("plain")),
+      .endObject,
+    ]
+
+    for event in events {
+      try await writer.write(event)
+    }
+    try await writer.finish()
+
+    let expected = try CBORValueWriter.write(expectedValue, options: .init(deterministic: true))
+    #expect(sink.data == expected)
+  }
+
+  @Test("Emit deterministic stream with complex key in buffered value")
+  func emitDeterministicStreamWithComplexKeyInBufferedValue() async throws {
+    let sink = DataSink()
+    let writer = CBORStreamWriter(sink: sink, options: .init(deterministicMode: .buffered()))
+    let events: [EmitEvent] = [
+      .beginObject(count: 1),
+      .scalar(.string("outer")),
+      .beginObject(count: 1),
+      .beginArray(count: 1),
+      .scalar(.string("key")),
+      .endArray,
+      .scalar(.number(1)),
+      .endObject,
+      .endObject,
+    ]
+
+    for event in events {
+      try await writer.write(event)
+    }
+    try await writer.finish()
+
+    let expectedKeyBytes = try CBORValueWriter.write(.array([.string("key")]), options: .init(deterministic: true))
+    var expected = Data([0xA1, 0x65])
+    expected.append(Data("outer".utf8))
+    expected.append(0xA1)
+    expected.append(expectedKeyBytes)
+    expected.append(0x01)
+    #expect(sink.data == expected)
+  }
+
   @Test("Emit strict deterministic rejects indefinite map")
   func emitStrictDeterministicRejectsIndefiniteMap() async {
     let sink = DataSink()
@@ -162,9 +270,9 @@ struct CBORStreamTests {
       sink: sink,
       options: .init(deterministicMode: .strict(maxPairs: 10, maxBytes: 1024))
     )
-    let events: [ValueEvent] = [
+    let events: [EmitEvent] = [
       .beginObject(count: nil),
-      .key(.string("a")),
+      .scalar(.string("a")),
       .scalar(.number(1)),
       .endObject,
     ]
@@ -185,7 +293,7 @@ struct CBORStreamTests {
       options: .init(deterministicMode: .strict(maxPairs: 10, maxBytes: 1))
     )
     let value = Value.object([.string("b"): .number(1), .string("a"): .number(2)])
-    let events = ValueEventEncoder().encode(value)
+    let events = EmitEventEncoder().encode(value)
 
     await #expect(throws: Swift.Error.self) {
       for event in events {
@@ -194,13 +302,30 @@ struct CBORStreamTests {
       try await writer.finish()
     }
   }
+
+  @Test("Document stream writer rejects overlapping writes", .timeLimit(.minutes(1)))
+  func documentStreamWriterRejectsOverlappingWrites() async throws {
+    let sink = BlockingCBORDocumentSink()
+    let writer = CBORDocumentStreamWriter(sink: sink)
+
+    async let firstWrite: Void = writer.write(.init(value: .object([.string("first"): .number(1)])))
+    await sink.waitUntilWriteStarted()
+
+    await #expect(throws: FormatStreamDriverError.operationInProgress) {
+      try await writer.write(.init(value: .object([.string("second"): .number(2)])))
+    }
+
+    await sink.releaseWrites()
+    try await firstWrite
+    try await writer.finish()
+  }
 }
 
 private func parseStreamed(cbor: Data, chunkSizes: [Int]) async throws -> Value {
   let source = ChunkedSource(data: cbor, chunkSizes: chunkSizes)
   let reader = CBORStreamReader()
   let driver = FormatStreamReaderDriver(reader: reader, source: source, bufferSize: 64)
-  var decoder = ValueEventDecoder()
+  var decoder = ParseEventDecoder(resolver: CBORScalarResolver())
 
   while let event = try await driver.next() {
     try decoder.append(event)
@@ -245,5 +370,58 @@ private final class ChunkedSource: Source, @unchecked Sendable {
 
   func close() async throws {
     closed = true
+  }
+}
+
+private actor BlockingCBORDocumentSink: Sink {
+
+  private var storage = Data()
+  private var writeStarted = false
+  private var writeReleased = false
+  private var writeStartedContinuations: [CheckedContinuation<Void, Never>] = []
+  private var writeReleaseContinuations: [CheckedContinuation<Void, Never>] = []
+
+  var bytesWritten: Int {
+    get async throws { storage.count }
+  }
+
+  func write(data: Data) async throws {
+    writeStarted = true
+    resumeWriteStartedContinuations()
+
+    if !writeReleased {
+      await withCheckedContinuation { continuation in
+        writeReleaseContinuations.append(continuation)
+      }
+    }
+
+    storage.append(data)
+  }
+
+  func waitUntilWriteStarted() async {
+    guard !writeStarted else { return }
+
+    await withCheckedContinuation { continuation in
+      writeStartedContinuations.append(continuation)
+    }
+  }
+
+  func releaseWrites() {
+    writeReleased = true
+    let continuations = writeReleaseContinuations
+    writeReleaseContinuations.removeAll()
+    for continuation in continuations {
+      continuation.resume()
+    }
+  }
+
+  func close() async throws {}
+
+  private func resumeWriteStartedContinuations() {
+    let continuations = writeStartedContinuations
+    writeStartedContinuations.removeAll()
+    for continuation in continuations {
+      continuation.resume()
+    }
   }
 }

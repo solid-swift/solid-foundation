@@ -104,72 +104,72 @@ let benchmarks: @Sendable () -> Void = {
 
   // MARK: - Pre-encoded Data
 
-  let smallMapJson: Data = JSONValueWriter.write(smallMap)
-  let smallArrayJson: Data = JSONValueWriter.write(smallArray)
-  let largeArrayJson: Data = JSONValueWriter.write(largeArray)
-  let largeMapJson: Data = JSONValueWriter.write(largeMap)
-  let largeStringJson: Data = JSONValueWriter.write(.string(largeString))
-  let escapedStringJson: Data = JSONValueWriter.write(escapedString)
-  let unicodeStringJson: Data = JSONValueWriter.write(unicodeString)
-  let deeplyNestedJson: Data = JSONValueWriter.write(deeplyNested)
-  let taggedJson: Data = JSONValueWriter.write(taggedValue, options: .init(tagShape: .array))
-  let numbersVariedJson: Data = JSONValueWriter.write(numbersVaried)
+  let smallMapJson: Data = try! JSONValueWriter.write(smallMap)
+  let smallArrayJson: Data = try! JSONValueWriter.write(smallArray)
+  let largeArrayJson: Data = try! JSONValueWriter.write(largeArray)
+  let largeMapJson: Data = try! JSONValueWriter.write(largeMap)
+  let largeStringJson: Data = try! JSONValueWriter.write(.string(largeString))
+  let escapedStringJson: Data = try! JSONValueWriter.write(escapedString)
+  let unicodeStringJson: Data = try! JSONValueWriter.write(unicodeString)
+  let deeplyNestedJson: Data = try! JSONValueWriter.write(deeplyNested)
+  let taggedJson: Data = try! JSONValueWriter.write(taggedValue, options: .init(tagShape: .array))
+  let numbersVariedJson: Data = try! JSONValueWriter.write(numbersVaried)
 
   // MARK: - Value Encode
 
   Benchmark("JSON Encode Small Map", configuration: config) { benchmark in
     benchmark.startMeasurement()
     for _ in benchmark.scaledIterations {
-      blackHole(JSONValueWriter.write(smallMap))
+      blackHole(try! JSONValueWriter.write(smallMap))
     }
   }
 
   Benchmark("JSON Encode Small Array", configuration: config) { benchmark in
     benchmark.startMeasurement()
     for _ in benchmark.scaledIterations {
-      blackHole(JSONValueWriter.write(smallArray))
+      blackHole(try! JSONValueWriter.write(smallArray))
     }
   }
 
   Benchmark("JSON Encode Large Array", configuration: config) { benchmark in
     benchmark.startMeasurement()
     for _ in benchmark.scaledIterations {
-      blackHole(JSONValueWriter.write(largeArray))
+      blackHole(try! JSONValueWriter.write(largeArray))
     }
   }
 
   Benchmark("JSON Encode Large Map", configuration: config) { benchmark in
     benchmark.startMeasurement()
     for _ in benchmark.scaledIterations {
-      blackHole(JSONValueWriter.write(largeMap))
+      blackHole(try! JSONValueWriter.write(largeMap))
     }
   }
 
   Benchmark("JSON Encode Large String", configuration: config) { benchmark in
     benchmark.startMeasurement()
     for _ in benchmark.scaledIterations {
-      blackHole(JSONValueWriter.write(.string(largeString)))
+      blackHole(try! JSONValueWriter.write(.string(largeString)))
     }
   }
 
   Benchmark("JSON Encode Escaped String", configuration: config) { benchmark in
     benchmark.startMeasurement()
     for _ in benchmark.scaledIterations {
-      blackHole(JSONValueWriter.write(escapedString))
+      blackHole(try! JSONValueWriter.write(escapedString))
     }
   }
 
   Benchmark("JSON Encode Unicode String", configuration: config) { benchmark in
     benchmark.startMeasurement()
     for _ in benchmark.scaledIterations {
-      blackHole(JSONValueWriter.write(unicodeString))
+      blackHole(try! JSONValueWriter.write(unicodeString))
     }
   }
 
   Benchmark("JSON Encode Deeply Nested", configuration: config) { benchmark in
     benchmark.startMeasurement()
     for _ in benchmark.scaledIterations {
-      blackHole(JSONValueWriter.write(deeplyNested))
+      blackHole(try! JSONValueWriter.write(deeplyNested))
     }
   }
 
@@ -254,7 +254,7 @@ let benchmarks: @Sendable () -> Void = {
     for _ in benchmark.scaledIterations {
       let sink = DataSink()
       let writer = JSONStreamWriter(sink: sink)
-      let events = ValueEventEncoder().encode(smallMap)
+      let events = EmitEventEncoder().encode(smallMap)
       for event in events {
         try? await writer.write(event)
       }
@@ -271,7 +271,7 @@ let benchmarks: @Sendable () -> Void = {
       let source = DataSource(data: smallMapJson)
       let reader = JSONStreamReader()
       let driver = FormatStreamReaderDriver(reader: reader, source: source, bufferSize: 64)
-      var decoder = ValueEventDecoder()
+      var decoder = ParseEventDecoder(resolver: JSONScalarResolver())
       while let event = try? await driver.next() {
         try? decoder.append(event)
       }
@@ -285,7 +285,7 @@ let benchmarks: @Sendable () -> Void = {
       let source = ChunkedSource(data: smallMapJson, chunkSizes: [1, 2, 3, 1, 4])
       let reader = JSONStreamReader()
       let driver = FormatStreamReaderDriver(reader: reader, source: source, bufferSize: 64)
-      var decoder = ValueEventDecoder()
+      var decoder = ParseEventDecoder(resolver: JSONScalarResolver())
       while let event = try? await driver.next() {
         try? decoder.append(event)
       }

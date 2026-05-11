@@ -9,7 +9,7 @@ import Foundation
 import SolidData
 import SolidIO
 
-/// Async JSON stream writer that consumes ``ValueEvent`` values.
+/// Async JSON stream writer that consumes ``EmitEvent`` values.
 public final class JSONStreamWriter: FormatStreamWriter {
 
   public typealias TagShape = JSONValueWriter.Options.TagShape
@@ -29,6 +29,9 @@ public final class JSONStreamWriter: FormatStreamWriter {
 
   public enum Error: Swift.Error {
     case invalidEventSequence(String)
+    case invalidObjectKey
+    case invalidTagType
+    case invalidNumber
     case incompleteJSON
     case alreadyFinished
   }
@@ -46,7 +49,7 @@ public final class JSONStreamWriter: FormatStreamWriter {
 
   public var format: Format { adapter.format }
 
-  public func write(_ event: ValueEvent) async throws {
+  public func write(_ event: EmitEvent) async throws {
     try await adapter.write(event)
   }
 

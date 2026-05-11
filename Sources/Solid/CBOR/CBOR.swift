@@ -29,6 +29,8 @@ public enum CBOR {
     /// A sequence with more than `Int32.max` items was encountered during
     /// deserialization
     case sequenceTooLong
+    /// A structural error in the CBOR stream, such as extra root data.
+    case invalidStructure(String)
     /// An invalid UTF-8 `string` sequence was encountered during deserialization
     case invalidUTF8String
     /// Invalid integer size indicator

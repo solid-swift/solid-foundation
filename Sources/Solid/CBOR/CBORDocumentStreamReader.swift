@@ -21,28 +21,24 @@ public final class CBORDocumentStreamReader {
     }
   }
 
-  private let driver: FormatStreamReaderDriver<CBORStreamReader>
-  private var decoder = ValueEventDecoder()
-  private var hasPendingEvents = false
+  private let driver: FormatDocumentStreamReaderDriver<CBORDocumentEventReader>
+  private var decoder = ParseDocumentEventDecoder(resolver: CBORScalarResolver())
 
   public init(source: any Source, bufferSize: Int = BufferedSource.segmentSize, options: Options = .default) {
-    let reader = CBORStreamReader(options: .init(undefined: options.undefined))
-    self.driver = FormatStreamReaderDriver(reader: reader, source: source, bufferSize: bufferSize)
+    let reader = CBORDocumentEventReader(options: .init(undefined: options.undefined))
+    self.driver = FormatDocumentStreamReaderDriver(reader: reader, source: source, bufferSize: bufferSize)
   }
 
   public func next() async throws -> CBORValueDocument? {
     while let event = try await driver.next() {
-      hasPendingEvents = true
-      try decoder.append(event)
-      if decoder.isComplete {
-        let value = try decoder.finish()
-        decoder = ValueEventDecoder()
-        hasPendingEvents = false
-        return CBORValueDocument(value: value)
+      if let document = try decoder.append(event) {
+        return CBORValueDocument(value: document.value)
       }
     }
 
-    if hasPendingEvents {
+    do {
+      try decoder.finish()
+    } catch {
       throw CBOR.Error.unexpectedEndOfStream
     }
 

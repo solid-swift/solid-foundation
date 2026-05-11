@@ -31,7 +31,7 @@ public protocol FormatStreamEncoder {
   /// - Returns: Status indicating progress or completion.
   /// - Throws: Error if the event cannot be encoded.
   mutating func encode(
-    _ event: ValueEvent,
+    _ event: EmitEvent,
     output: inout OutputSpan<UInt8>
   ) throws -> FormatStreamEncodeStatus
 
@@ -52,11 +52,21 @@ public struct FormatStreamEncoderBuffer<Encoder: FormatStreamEncoder> {
     self.bufferSize = bufferSize
   }
 
-  public mutating func encode(events: some Sequence<ValueEvent>) throws -> Data {
+  public mutating func encode(events: some Sequence<EmitEvent>) throws -> Data {
+    try encode { emit in
+      for event in events {
+        try emit(event)
+      }
+    }
+  }
+
+  public mutating func encode(
+    _ produceEvents: (_ emit: (EmitEvent) throws -> Void) throws -> Void
+  ) throws -> Data {
     var data = Data()
     var buffer = [UInt8](repeating: 0, count: bufferSize)
 
-    for event in events {
+    func encodeEvent(_ event: EmitEvent) throws {
       var done = false
       while !done {
         let status = try buffer.withUnsafeMutableBufferPointer { ptr -> FormatStreamEncodeStatus in
@@ -77,6 +87,10 @@ public struct FormatStreamEncoderBuffer<Encoder: FormatStreamEncoder> {
           done = true
         }
       }
+    }
+
+    try produceEvents { event in
+      try encodeEvent(event)
     }
 
     var finishing = false

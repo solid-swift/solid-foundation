@@ -227,7 +227,7 @@ struct ExceriseJSONDecode: ParsableCommand {
   func run() throws {
 
     let largeArray: Value = .array((0..<10_000).map { .number($0) })
-    let largeArrayJson = JSONValueWriter.write(largeArray)
+    let largeArrayJson = try JSONValueWriter.write(largeArray)
 
     // Warm up
     var warmupReader = JSONValueReader(data: largeArrayJson)

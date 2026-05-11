@@ -25,6 +25,10 @@ public class BufferedSource: Source, @unchecked Sendable {
   private var closed = false
 
   private var data = Data()
+  private var readOffset = 0
+  private var availableCount: Int {
+    data.count - readOffset
+  }
 
   /// Initializes instance to read data from `source` using
   /// requested size of `segmentSize`.
@@ -47,7 +51,7 @@ public class BufferedSource: Source, @unchecked Sendable {
   public func require(count requiredSize: Int) async throws -> Bool {
     guard !closed else { throw IOError.streamClosed }
 
-    while data.count < requiredSize {
+    while availableCount < requiredSize {
 
       try Task.checkCancellation()
 
@@ -55,6 +59,10 @@ public class BufferedSource: Source, @unchecked Sendable {
         return false
       }
 
+      if readOffset == data.count {
+        data.removeAll(keepingCapacity: true)
+        readOffset = 0
+      }
       data.append(more)
     }
 
@@ -64,17 +72,26 @@ public class BufferedSource: Source, @unchecked Sendable {
   public func read(max: Int) async throws -> Data? {
     guard !closed else { throw IOError.streamClosed }
 
-    if data.isEmpty {
+    if availableCount == 0 {
 
       guard let data = try await source.read(next: max) else {
         return nil
       }
 
+      if readOffset == self.data.count {
+        self.data.removeAll(keepingCapacity: true)
+        readOffset = 0
+      }
       self.data.append(data)
     }
 
-    let data = data.prefix(max)
-    self.data = self.data.subdata(in: data.count..<self.data.count)
+    let end = min(readOffset + max, self.data.count)
+    let data = self.data[readOffset..<end]
+    readOffset = end
+    if readOffset == self.data.count {
+      self.data.removeAll(keepingCapacity: true)
+      readOffset = 0
+    }
 
     bytesRead += data.count
 

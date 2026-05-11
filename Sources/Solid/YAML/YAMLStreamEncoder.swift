@@ -11,7 +11,7 @@ import SolidData
 /// Typealias preserving the original name for use by ``YAMLStreamWriter`` and ``YAMLValueWriter``.
 typealias YAMLStreamEncoder = BufferedStreamEncoder<YAMLEventWriter>
 
-/// Synchronous YAML event writer that serializes ``ValueEvent`` values into bytes.
+/// Synchronous YAML event writer that serializes ``EmitEvent`` values into bytes.
 struct YAMLEventWriter: FormatEventWriter {
 
   static let anchorTagPrefix = "tag:solid.foundation,2025:anchor:"
@@ -71,7 +71,7 @@ struct YAMLEventWriter: FormatEventWriter {
 
   // MARK: - FormatEventWriter
 
-  mutating func writeEvent(_ event: ValueEvent, into output: inout Data) throws {
+  mutating func writeEvent(_ event: EmitEvent, into output: inout Data) throws {
     swap(&buffer, &output)
     defer { swap(&buffer, &output) }
     try writeEventImpl(event)
@@ -94,7 +94,7 @@ struct YAMLEventWriter: FormatEventWriter {
 
   // MARK: - Event Implementation
 
-  private mutating func writeEventImpl(_ event: ValueEvent) throws {
+  private mutating func writeEventImpl(_ event: EmitEvent) throws {
     switch event {
     case .style(let style):
       guard pendingStyle == nil else {
@@ -114,11 +114,12 @@ struct YAMLEventWriter: FormatEventWriter {
     case .alias(let name):
       try writeAlias(name)
 
-    case .key(let key):
-      try writeKey(key)
-
     case .scalar(let value):
-      try writeScalar(value)
+      if let container = containers.last, container.kind == .object, container.expectingKey {
+        try writeKey(value)
+      } else {
+        try writeScalar(value)
+      }
 
     case .beginArray(_):
       try beginContainer(kind: .array)

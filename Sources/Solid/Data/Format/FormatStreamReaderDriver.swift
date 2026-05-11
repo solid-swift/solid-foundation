@@ -8,37 +8,61 @@
 import Collections
 import Foundation
 import SolidIO
+import Synchronization
 
 /// Async driver that feeds a synchronous ``FormatStreamReader`` from a ``Source``.
-public final class FormatStreamReaderDriver<Reader: FormatStreamReader> {
+public final class FormatStreamReaderDriver<Reader: ~Copyable & FormatStreamReader>: @unchecked Sendable {
 
   private var reader: Reader
   private let source: any Source
   private let bufferSize: Int
   private let outputCapacity: Int
-  private let outputBuffer: UnsafeMutableBufferPointer<ValueEvent>
-  private var queue: Deque<ValueEvent> = []
+  private let outputBuffer: UnsafeMutableBufferPointer<ParseEvent>
+  private let operationInProgress = Mutex(false)
+  private var queue: Deque<ParseEvent> = []
   private var reachedEOF = false
   private var finished = false
+  private var terminalError: (any Error)?
 
   public init(
-    reader: Reader,
+    reader: consuming Reader,
     source: any Source,
     bufferSize: Int = BufferedSource.segmentSize,
     outputCapacity: Int = 64
   ) {
+    precondition(bufferSize > 0, "bufferSize must be greater than zero")
+    precondition(outputCapacity > 0, "outputCapacity must be greater than zero")
+
     self.reader = reader
     self.source = source
     self.bufferSize = bufferSize
     self.outputCapacity = outputCapacity
-    self.outputBuffer = UnsafeMutableBufferPointer<ValueEvent>.allocate(capacity: outputCapacity)
+    self.outputBuffer = UnsafeMutableBufferPointer<ParseEvent>.allocate(capacity: outputCapacity)
   }
 
   deinit {
     outputBuffer.deallocate()
   }
 
-  public func next() async throws -> ValueEvent? {
+  public func next() async throws -> ParseEvent? {
+    try beginOperation()
+    defer { endOperation() }
+
+    if let terminalError {
+      throw terminalError
+    }
+
+    do {
+      return try await nextEvent()
+    } catch {
+      terminalError = error
+      finished = true
+      queue.removeAll()
+      throw error
+    }
+  }
+
+  private func nextEvent() async throws -> ParseEvent? {
     if !queue.isEmpty {
       return queue.removeFirst()
     }
@@ -59,7 +83,7 @@ public final class FormatStreamReaderDriver<Reader: FormatStreamReader> {
         isFinal = true
       }
 
-      var out = OutputSpan<ValueEvent>(buffer: outputBuffer, initializedCount: 0)
+      var out = OutputSpan<ParseEvent>(buffer: outputBuffer, initializedCount: 0)
       let status = try reader.read(input: input, isFinal: isFinal, output: &out)
       let count = out.finalize(for: outputBuffer)
       if status == .endOfStream {
@@ -77,5 +101,18 @@ public final class FormatStreamReaderDriver<Reader: FormatStreamReader> {
     }
 
     return queue.isEmpty ? nil : queue.removeFirst()
+  }
+
+  private func beginOperation() throws {
+    let began = operationInProgress.withLock { operationInProgress in
+      guard !operationInProgress else { return false }
+      operationInProgress = true
+      return true
+    }
+    guard began else { throw FormatStreamDriverError.operationInProgress }
+  }
+
+  private func endOperation() {
+    operationInProgress.withLock { $0 = false }
   }
 }

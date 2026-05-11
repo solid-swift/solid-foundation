@@ -9,7 +9,7 @@ import SolidData
 
 struct YAMLStringEncoder {
 
-  private static let resolver = YAMLScalarResolver()
+  private static let resolver = YAMLTagResolver()
 
   private static let lineBreakScalars: Set<UnicodeScalar> = [
     "\n", "\r", "\u{85}", "\u{2028}", "\u{2029}",
