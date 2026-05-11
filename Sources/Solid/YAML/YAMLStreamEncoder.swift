@@ -176,7 +176,8 @@ struct YAMLEventWriter: FormatEventWriter {
           indent: container.indent,
           allowBlock: false,
           scalarStyle: scalarStyle,
-          allowImplicitTyping: allowImplicitTyping
+          allowImplicitTyping: allowImplicitTyping,
+          quoteTrailingColon: false
         )
       }
       try appendString(renderedKey)
@@ -216,7 +217,8 @@ struct YAMLEventWriter: FormatEventWriter {
         indent: container.indent,
         allowBlock: false,
         scalarStyle: scalarStyle,
-        allowImplicitTyping: allowImplicitTyping
+        allowImplicitTyping: allowImplicitTyping,
+        quoteTrailingColon: false
       )
     }
     try appendString(renderedKey)
@@ -730,9 +732,16 @@ struct YAMLEventWriter: FormatEventWriter {
     value: Value,
     indent: Int,
     allowBlock: Bool,
-    scalarStyle: ValueScalarStyle?
+    scalarStyle: ValueScalarStyle?,
+    quoteTrailingColon: Bool = true
   ) -> String {
-    let rendered = serializeValue(value, indent: indent, allowBlock: allowBlock, scalarStyle: scalarStyle)
+    let rendered = serializeValue(
+      value,
+      indent: indent,
+      allowBlock: allowBlock,
+      scalarStyle: scalarStyle,
+      quoteTrailingColon: quoteTrailingColon
+    )
     if rendered.isEmpty {
       return "&\(anchor)"
     }
@@ -780,7 +789,8 @@ struct YAMLEventWriter: FormatEventWriter {
     allowBlock: Bool,
     scalarStyle: ValueScalarStyle? = nil,
     allowImplicitTyping: Bool = true,
-    forceIndentIndicator: Bool = false
+    forceIndentIndicator: Bool = false,
+    quoteTrailingColon: Bool = true
   ) -> String {
     switch value {
     case .null:
@@ -805,7 +815,8 @@ struct YAMLEventWriter: FormatEventWriter {
         allowBlock: allowBlock,
         style: scalarStyle,
         allowImplicitTyping: allowImplicitTyping,
-        forceIndentIndicator: forceIndentIndicator
+        forceIndentIndicator: forceIndentIndicator,
+        quoteTrailingColon: quoteTrailingColon
       )
     case .array(let array):
       if array.isEmpty {
@@ -818,7 +829,12 @@ struct YAMLEventWriter: FormatEventWriter {
         return "{}"
       }
       let contents = object.map { key, val in
-        let keyText = serializeValue(key, indent: indent + options.indent, allowBlock: false)
+        let keyText = serializeValue(
+          key,
+          indent: indent + options.indent,
+          allowBlock: false,
+          quoteTrailingColon: false
+        )
         let valText = serializeValue(val, indent: indent + options.indent, allowBlock: false)
         return "\(keyText): \(valText)"
       }
@@ -830,7 +846,8 @@ struct YAMLEventWriter: FormatEventWriter {
           value: inner,
           indent: indent,
           allowBlock: allowBlock,
-          scalarStyle: scalarStyle
+          scalarStyle: scalarStyle,
+          quoteTrailingColon: quoteTrailingColon
         )
       }
       let tagText = tags.map { formatTag($0) }.joined(separator: " ")
@@ -842,10 +859,17 @@ struct YAMLEventWriter: FormatEventWriter {
           allowBlock: allowBlock,
           style: scalarStyle,
           allowImplicitTyping: false,
-          forceIndentIndicator: forceIndentIndicator
+          forceIndentIndicator: forceIndentIndicator,
+          quoteTrailingColon: quoteTrailingColon
         )
       } else {
-        innerText = serializeValue(inner, indent: indent, allowBlock: allowBlock, scalarStyle: scalarStyle)
+        innerText = serializeValue(
+          inner,
+          indent: indent,
+          allowBlock: allowBlock,
+          scalarStyle: scalarStyle,
+          quoteTrailingColon: quoteTrailingColon
+        )
       }
       return "\(tagText) \(innerText)"
     }
@@ -857,7 +881,8 @@ struct YAMLEventWriter: FormatEventWriter {
     allowBlock: Bool,
     style: ValueScalarStyle?,
     allowImplicitTyping: Bool = true,
-    forceIndentIndicator: Bool = false
+    forceIndentIndicator: Bool = false,
+    quoteTrailingColon: Bool = true
   ) -> String {
     if string.isEmpty, style == .plain || (style == nil && allowImplicitTyping) {
       return ""
@@ -870,7 +895,8 @@ struct YAMLEventWriter: FormatEventWriter {
       preferredStyle: style,
       allowImplicitTyping: allowImplicitTyping,
       forceIndentIndicator: forceIndentIndicator,
-      allowDocumentMarkerPrefix: options.allowDocumentMarkerPrefix
+      allowDocumentMarkerPrefix: options.allowDocumentMarkerPrefix,
+      quoteTrailingColon: quoteTrailingColon
     )
   }
 
@@ -1025,11 +1051,19 @@ struct YAMLEventWriter: FormatEventWriter {
     }
   }
 
-  private func renderBlockValueLines(_ value: Value, scalarStyle: ValueScalarStyle? = nil) -> [String] {
+  private func renderBlockValueLines(
+    _ value: Value,
+    scalarStyle: ValueScalarStyle? = nil,
+    quoteTrailingColon: Bool = true
+  ) -> [String] {
     switch value {
     case .tagged(let tags, let inner):
       if let tag = tags.first, let anchor = anchorName(from: tag) {
-        let innerLines = renderBlockValueLines(inner, scalarStyle: scalarStyle)
+        let innerLines = renderBlockValueLines(
+          inner,
+          scalarStyle: scalarStyle,
+          quoteTrailingColon: quoteTrailingColon
+        )
         guard !innerLines.isEmpty else {
           return ["&\(anchor)"]
         }
@@ -1042,7 +1076,11 @@ struct YAMLEventWriter: FormatEventWriter {
         return lines
       }
       let tagText = tags.map { formatTag($0) }.joined(separator: " ")
-      let innerLines = renderBlockValueLines(inner, scalarStyle: scalarStyle)
+      let innerLines = renderBlockValueLines(
+        inner,
+        scalarStyle: scalarStyle,
+        quoteTrailingColon: quoteTrailingColon
+      )
       if innerLines.isEmpty {
         return [tagText]
       }
@@ -1054,7 +1092,13 @@ struct YAMLEventWriter: FormatEventWriter {
       return [tagText] + innerLines.map { "\(padding)\($0)" }
 
     case .string(let string):
-      let rendered = serializeString(string, indent: 0, allowBlock: true, style: scalarStyle)
+      let rendered = serializeString(
+        string,
+        indent: 0,
+        allowBlock: true,
+        style: scalarStyle,
+        quoteTrailingColon: quoteTrailingColon
+      )
       return rendered.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
 
     case .array(let array):
@@ -1087,7 +1131,7 @@ struct YAMLEventWriter: FormatEventWriter {
       for (key, val) in object {
         let padding = indentString
         if requiresExplicitKey(key, scalarStyle: nil), !canInlineImplicitKey(key) {
-          let keyLines = renderBlockValueLines(key)
+          let keyLines = renderBlockValueLines(key, quoteTrailingColon: false)
           if keyLines.isEmpty {
             lines.append("?")
           } else {
@@ -1111,7 +1155,7 @@ struct YAMLEventWriter: FormatEventWriter {
           continue
         }
 
-        let keyText = serializeValue(key, indent: 0, allowBlock: false)
+        let keyText = serializeValue(key, indent: 0, allowBlock: false, quoteTrailingColon: false)
         let valLines = renderBlockValueLines(val)
         if valLines.isEmpty {
           lines.append("\(keyText):")
@@ -1134,7 +1178,7 @@ struct YAMLEventWriter: FormatEventWriter {
       return lines
 
     default:
-      return [serializeValue(value, indent: 0, allowBlock: false)]
+      return [serializeValue(value, indent: 0, allowBlock: false, quoteTrailingColon: quoteTrailingColon)]
     }
   }
 
@@ -1149,7 +1193,7 @@ struct YAMLEventWriter: FormatEventWriter {
       try appendString(" ")
       try appendString(properties)
     }
-    let lines = renderBlockValueLines(key, scalarStyle: scalarStyle)
+    let lines = renderBlockValueLines(key, scalarStyle: scalarStyle, quoteTrailingColon: false)
     if !lines.isEmpty {
       let inlineIndex = lines.firstIndex { !$0.isEmpty }
       let firstLine = inlineIndex.map { lines[$0] } ?? lines[0]

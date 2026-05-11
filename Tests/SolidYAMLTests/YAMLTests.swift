@@ -206,6 +206,25 @@ struct YAMLTests {
     #expect(value == testCase.value, "\(testCase.id): emitted value mismatch")
   }
 
+  @Test("Emit mapping value ending with colon")
+  func emitMappingValueEndingWithColon() throws {
+    let value: Value = [
+      "beat": [
+        "text": "They follow, snapping at his heel:",
+        "locator": [
+          "kind": "script-tree-node",
+          "nodeId": "acn-1sr7h5v",
+        ],
+      ]
+    ]
+
+    let output = try YAMLValueWriter.write(value)
+    var outputReader = try YAMLValueReader(data: output)
+    let emittedValue = try outputReader.read()
+
+    #expect(emittedValue == value)
+  }
+
   @Test("Parse stream", arguments: cases)
   func parseStream(_ testCase: TestCase) async throws {
     let source = Data(testCase.yaml.utf8).source()
@@ -308,6 +327,29 @@ struct YAMLTests {
     let reader = try YAMLDocumentReader(data: sink.data)
     let documents = try reader.readAll()
     #expect(documents == testCase.documents, "\(testCase.id): streamed emit mismatch")
+  }
+
+  @Test("Document stream writer preserves typed-looking strings")
+  func documentStreamWriterPreservesTypedLookingStrings() async throws {
+    let documents = [
+      YAMLValueDocument(value: [
+        "empty": "",
+        "null": "null",
+        "bool": "true",
+        "number": "1",
+      ])
+    ]
+
+    let sink = DataSink()
+    let writer = YAMLDocumentStreamWriter(sink: sink, options: .default)
+    for document in documents {
+      try await writer.write(document)
+    }
+    try await writer.finish()
+
+    let reader = try YAMLDocumentReader(data: sink.data)
+    let writtenDocuments = try reader.readAll()
+    #expect(writtenDocuments == documents)
   }
 
   @Test("Document stream writer rejects overlapping writes", .timeLimit(.minutes(1)))

@@ -23,7 +23,8 @@ struct YAMLStringEncoder {
     preferredStyle: ValueScalarStyle? = nil,
     allowImplicitTyping: Bool = true,
     forceIndentIndicator: Bool = false,
-    allowDocumentMarkerPrefix: Bool = false
+    allowDocumentMarkerPrefix: Bool = false,
+    quoteTrailingColon: Bool = false
   ) -> String {
     if let preferredStyle {
       return renderPreferred(
@@ -34,7 +35,8 @@ struct YAMLStringEncoder {
         style: preferredStyle,
         allowImplicitTyping: allowImplicitTyping,
         forceIndentIndicator: forceIndentIndicator,
-        allowDocumentMarkerPrefix: allowDocumentMarkerPrefix
+        allowDocumentMarkerPrefix: allowDocumentMarkerPrefix,
+        quoteTrailingColon: quoteTrailingColon
       )
     }
     if allowBlock, shouldUseBlock(string) {
@@ -49,7 +51,8 @@ struct YAMLStringEncoder {
     if needsQuotes(
       string,
       allowImplicitTyping: allowImplicitTyping,
-      allowDocumentMarkerPrefix: allowDocumentMarkerPrefix
+      allowDocumentMarkerPrefix: allowDocumentMarkerPrefix,
+      quoteTrailingColon: quoteTrailingColon
     ) {
       return renderDoubleQuoted(string, indent: indent, indentSize: indentSize)
     }
@@ -64,7 +67,8 @@ struct YAMLStringEncoder {
     style: ValueScalarStyle,
     allowImplicitTyping: Bool,
     forceIndentIndicator: Bool,
-    allowDocumentMarkerPrefix: Bool
+    allowDocumentMarkerPrefix: Bool,
+    quoteTrailingColon: Bool
   ) -> String {
     switch style {
     case .plain:
@@ -77,7 +81,8 @@ struct YAMLStringEncoder {
       if needsQuotes(
         string,
         allowImplicitTyping: allowImplicitTyping,
-        allowDocumentMarkerPrefix: allowDocumentMarkerPrefix
+        allowDocumentMarkerPrefix: allowDocumentMarkerPrefix,
+        quoteTrailingColon: quoteTrailingColon
       ) {
         if containsNonAscii(string) {
           return renderDoubleQuoted(string, indent: indent, indentSize: indentSize)
@@ -143,7 +148,8 @@ struct YAMLStringEncoder {
   private static func needsQuotes(
     _ string: String,
     allowImplicitTyping: Bool,
-    allowDocumentMarkerPrefix: Bool
+    allowDocumentMarkerPrefix: Bool,
+    quoteTrailingColon: Bool
   ) -> Bool {
     if string.isEmpty {
       return true
@@ -159,6 +165,9 @@ struct YAMLStringEncoder {
     // Check trailing whitespace
     let lastByte = utf8[utf8.index(before: utf8.endIndex)]
     if lastByte == 0x20 || lastByte == 0x09 || lastByte == 0x0A || lastByte == 0x0D {
+      return true
+    }
+    if quoteTrailingColon, lastByte == 0x3A {
       return true
     }
 

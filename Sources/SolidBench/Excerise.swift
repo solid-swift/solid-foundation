@@ -12,6 +12,7 @@ import SolidNumeric
 import SolidJSON
 import SolidYAML
 import ArgumentParser
+import Synchronization
 
 @main
 struct ExcerciseNumerics: AsyncParsableCommand {
@@ -259,17 +260,27 @@ struct ExceriseYAMLFile: AsyncParsableCommand {
     case eventNext = "event-next"
     case eventBatch = "event-batch"
     case documentValues = "document-values"
+    case valueWrite = "value-write"
+    case documentWrite = "document-write"
+  }
+
+  enum WriteSink: String, ExpressibleByArgument {
+    case discard
+    case data
   }
 
   static let configuration = CommandConfiguration(
     commandName: "excercise-yaml-file",
     abstract: "Excerise YAML file streaming",
     discussion: """
-    Excerise YAML decoding of a file-backed document stream.
+    Excerise YAML decoding and encoding of a file-backed document stream.
 
     Use event-next to measure one async driver call per returned event,
     event-batch to measure batched event consumption, and document-values to
-    measure the public YAMLDocumentStreamReader value path.
+    measure the public YAMLDocumentStreamReader value path. Use value-write to
+    parse the file before timing and measure YAMLValueWriter output. Use
+    document-write to parse the file before timing and measure
+    YAMLDocumentStreamWriter output.
     """,
     aliases: ["eyf"]
   )
@@ -277,7 +288,10 @@ struct ExceriseYAMLFile: AsyncParsableCommand {
   @Argument(help: "Path to the YAML file to read")
   var path: String
 
-  @Option(name: .shortAndLong, help: "Reader mode: event-next, event-batch, or document-values")
+  @Option(
+    name: .shortAndLong,
+    help: "Mode: event-next, event-batch, document-values, value-write, or document-write"
+  )
   var mode: Mode = .eventBatch
 
   @Option(help: "Input source buffer size")
@@ -286,27 +300,77 @@ struct ExceriseYAMLFile: AsyncParsableCommand {
   @Option(help: "Event output batch capacity for event-next and event-batch")
   var outputCapacity: Int = 64
 
+  @Option(help: "Number of write iterations for value-write and document-write")
+  var iterations: Int = 1
+
+  @Option(help: "Sink for document-write mode: discard or data")
+  var writeSink: WriteSink = .discard
+
+  @Option(help: "Write one generated output stream to this path after timing")
+  var outputPath: String?
+
+  @Flag(help: "Validate write output after timing")
+  var validateOutput: Bool = false
+
   @Flag(name: .shortAndLong, help: "Print the duration of the operation")
   var printDuration: Bool = false
 
   func run() async throws {
+    guard iterations > 0 else {
+      throw YAMLFileBenchmarkError.invalidIterations(iterations)
+    }
+
     let clock = ContinuousClock()
-    let start = clock.now
-    let result =
-      switch mode {
-      case .eventNext:
-        try await readEventsWithNext()
-      case .eventBatch:
-        try await readEventsWithBatch()
-      case .documentValues:
-        try await readDocumentValues()
+    let result: YAMLFileResult
+    let duration: Duration
+
+    switch mode {
+    case .eventNext:
+      let start = clock.now
+      result = try await readEventsWithNext()
+      duration = clock.now - start
+    case .eventBatch:
+      let start = clock.now
+      result = try await readEventsWithBatch()
+      duration = clock.now - start
+    case .documentValues:
+      let start = clock.now
+      result = try await readDocumentValues()
+      duration = clock.now - start
+    case .valueWrite:
+      let prepared = try await readPreparedDocuments()
+      let start = clock.now
+      result = try writeValues(prepared.documents, inputBytes: prepared.bytes)
+      duration = clock.now - start
+      if let outputPath {
+        try writeValueOutput(prepared.documents, to: outputPath)
       }
-    let duration = clock.now - start
+      if validateOutput {
+        try validateValueWrite(prepared.documents)
+      }
+    case .documentWrite:
+      let prepared = try await readPreparedDocuments()
+      let start = clock.now
+      result = try await writeDocuments(prepared.documents, inputBytes: prepared.bytes)
+      duration = clock.now - start
+      if let outputPath {
+        try await writeDocumentOutput(prepared.documents, to: outputPath)
+      }
+      if validateOutput {
+        try await validateDocumentWrite(prepared.documents)
+      }
+    }
 
     print("mode=\(mode.rawValue)")
     print("bytes=\(result.bytes)")
+    if result.outputBytes > 0 {
+      print("output-bytes=\(result.outputBytes)")
+    }
     print("documents=\(result.documents)")
     print("events=\(result.events)")
+    if result.iterations > 1 {
+      print("iterations=\(result.iterations)")
+    }
     if printDuration {
       print("duration=\(duration)")
     }
@@ -368,6 +432,111 @@ struct ExceriseYAMLFile: AsyncParsableCommand {
     }
   }
 
+  private func readPreparedDocuments() async throws -> (documents: [YAMLValueDocument], bytes: Int) {
+    try await withFileSource { source in
+      let reader = YAMLDocumentStreamReader(source: source, bufferSize: bufferSize)
+      var documents: [YAMLValueDocument] = []
+      while let document = try await reader.next() {
+        documents.append(document)
+      }
+      return (documents, source.bytesRead)
+    }
+  }
+
+  private func writeValues(_ documents: [YAMLValueDocument], inputBytes: Int) throws -> YAMLFileResult {
+    let writer = YAMLValueWriter(options: .default)
+    var result = YAMLFileResult(bytes: inputBytes, iterations: iterations)
+
+    for _ in 0..<iterations {
+      for document in documents {
+        let data = try writer.write(document.value)
+        result.outputBytes += data.count
+        result.documents += 1
+        blackHole(data.count)
+      }
+    }
+
+    return result
+  }
+
+  private func writeDocuments(_ documents: [YAMLValueDocument], inputBytes: Int) async throws -> YAMLFileResult {
+    var result = YAMLFileResult(bytes: inputBytes, iterations: iterations)
+
+    for _ in 0..<iterations {
+      switch writeSink {
+      case .discard:
+        let sink = CountingSink()
+        let writer = YAMLDocumentStreamWriter(sink: sink, options: .default)
+        for document in documents {
+          try await writer.write(document)
+          result.documents += 1
+        }
+        try await writer.close()
+        result.outputBytes += sink.bytesWritten
+      case .data:
+        let sink = DataSink()
+        let writer = YAMLDocumentStreamWriter(sink: sink, options: .default)
+        for document in documents {
+          try await writer.write(document)
+          result.documents += 1
+        }
+        try await writer.close()
+        result.outputBytes += sink.bytesWritten
+        blackHole(sink.data.count)
+      }
+    }
+
+    return result
+  }
+
+  private func validateValueWrite(_ documents: [YAMLValueDocument]) throws {
+    for document in documents {
+      let data = try YAMLValueWriter.write(document.value)
+      var reader = try YAMLValueReader(data: data)
+      let value = try reader.read()
+      guard value == document.value else {
+        throw YAMLFileBenchmarkError.validationMismatch
+      }
+    }
+  }
+
+  private func validateDocumentWrite(_ documents: [YAMLValueDocument]) async throws {
+    let sink = DataSink()
+    let writer = YAMLDocumentStreamWriter(sink: sink, options: .default)
+    for document in documents {
+      try await writer.write(document)
+    }
+    try await writer.close()
+
+    let reader = try YAMLDocumentReader(data: sink.data)
+    let writtenDocuments = try reader.readAll()
+    guard writtenDocuments == documents else {
+      throw YAMLFileBenchmarkError.validationMismatch
+    }
+  }
+
+  private func writeValueOutput(_ documents: [YAMLValueDocument], to path: String) throws {
+    var output = Data()
+    let writer = YAMLValueWriter(options: .default)
+    for (index, document) in documents.enumerated() {
+      if index > 0 {
+        output.append(Data("---\n".utf8))
+      }
+      output.append(try writer.write(document.value))
+    }
+    try output.write(to: URL(fileURLWithPath: path))
+  }
+
+  private func writeDocumentOutput(_ documents: [YAMLValueDocument], to path: String) async throws {
+    let sink = DataSink()
+    let writer = YAMLDocumentStreamWriter(sink: sink, options: .default)
+    for document in documents {
+      try await writer.write(document)
+    }
+    try await writer.close()
+    try sink.data.write(to: URL(fileURLWithPath: path))
+  }
+
   private func withFileSource<T>(
     _ body: (FileSource) async throws -> T
   ) async throws -> T {
@@ -385,13 +554,56 @@ struct ExceriseYAMLFile: AsyncParsableCommand {
 
 private struct YAMLFileResult {
   var bytes = 0
+  var outputBytes = 0
   var documents = 0
   var events = 0
+  var iterations = 1
 
   mutating func append(_ event: ParseDocumentEvent) {
     events += 1
     if case .startDocument = event {
       documents += 1
+    }
+  }
+}
+
+private final class CountingSink: Sink, @unchecked Sendable {
+
+  private struct State {
+    var bytesWritten = 0
+    var closed = false
+  }
+
+  private let state = Mutex(State())
+
+  var bytesWritten: Int {
+    state.withLock { $0.bytesWritten }
+  }
+
+  func write(data: Data) throws {
+    try state.withLock { state in
+      guard !state.closed else {
+        throw IOError.streamClosed
+      }
+      state.bytesWritten += data.count
+    }
+  }
+
+  func close() {
+    state.withLock { $0.closed = true }
+  }
+}
+
+private enum YAMLFileBenchmarkError: Error, CustomStringConvertible {
+  case invalidIterations(Int)
+  case validationMismatch
+
+  var description: String {
+    switch self {
+    case .invalidIterations(let iterations):
+      return "Iterations must be greater than zero, got \(iterations)"
+    case .validationMismatch:
+      return "Written YAML did not read back to the prepared document values"
     }
   }
 }

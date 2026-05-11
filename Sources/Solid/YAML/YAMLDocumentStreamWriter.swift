@@ -57,6 +57,7 @@ public final class YAMLDocumentStreamWriter: @unchecked Sendable {
       bufferSize: bufferSize,
       options: .init(
         indent: options.indent,
+        allowImplicitTyping: false,
         allowDocumentMarkerPrefix: !needsStart
       )
     )
