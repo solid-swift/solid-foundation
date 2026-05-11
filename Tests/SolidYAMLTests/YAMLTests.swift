@@ -225,6 +225,34 @@ struct YAMLTests {
     #expect(emittedValue == value)
   }
 
+  @Test("Value writer preserves typed-looking strings")
+  func valueWriterPreservesTypedLookingStrings() throws {
+    let value: Value = [
+      "empty": "",
+      "null": "null",
+      "tilde": "~",
+      "true": "true",
+      "false": "false",
+      "integer": "1",
+      "signed": "+12",
+      "decimal": "12.5",
+      "exponent": "1e9",
+      "hex": "0x10",
+      "binary": "0b1010",
+      "ordinary": "MICROSCOPIC AEROSOL BUBBLES OF LIQUID OXYGEN",
+      "colon": "They follow, snapping at his heel:",
+      "comment": "left # right",
+      "separator": "left: right",
+      "marker": "---",
+    ]
+
+    let output = try YAMLValueWriter.write(value)
+    var reader = try YAMLValueReader(data: output)
+    let written = try reader.read()
+
+    #expect(written == value)
+  }
+
   @Test("Parse stream", arguments: cases)
   func parseStream(_ testCase: TestCase) async throws {
     let source = Data(testCase.yaml.utf8).source()
@@ -337,6 +365,41 @@ struct YAMLTests {
         "null": "null",
         "bool": "true",
         "number": "1",
+      ])
+    ]
+
+    let sink = DataSink()
+    let writer = YAMLDocumentStreamWriter(sink: sink, options: .default)
+    for document in documents {
+      try await writer.write(document)
+    }
+    try await writer.finish()
+
+    let reader = try YAMLDocumentReader(data: sink.data)
+    let writtenDocuments = try reader.readAll()
+    #expect(writtenDocuments == documents)
+  }
+
+  @Test("Document stream writer preserves scalar edge strings")
+  func documentStreamWriterPreservesScalarEdgeStrings() async throws {
+    let documents = [
+      YAMLValueDocument(value: [
+        "empty": "",
+        "null": "null",
+        "tilde": "~",
+        "true": "true",
+        "false": "false",
+        "integer": "1",
+        "signed": "+12",
+        "decimal": "12.5",
+        "exponent": "1e9",
+        "hex": "0x10",
+        "binary": "0b1010",
+        "ordinary": "MICROSCOPIC AEROSOL BUBBLES OF LIQUID OXYGEN",
+        "colon": "They follow, snapping at his heel:",
+        "comment": "left # right",
+        "separator": "left: right",
+        "marker": "---",
       ])
     ]
 

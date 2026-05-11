@@ -62,8 +62,8 @@ public final class YAMLDocumentStreamWriter: @unchecked Sendable {
       )
     )
     let encoder = EmitEventEncoder()
-    try await encoder.emit(document.value) { event in
-      try await writer.write(event)
+    try await writer.writeEvents { emit in
+      try await encoder.emit(document.value, to: emit)
     }
     try await writer.finish()
     atLineStart = false
@@ -118,9 +118,12 @@ public final class YAMLDocumentStreamWriter: @unchecked Sendable {
   }
 
   private func appendString(_ string: String) async throws {
-    let data = Data(string.utf8)
+    guard !string.isEmpty else { return }
+    var data = Data()
+    data.reserveCapacity(string.utf8.count)
+    data.append(contentsOf: string.utf8)
     try await sink.write(data: data)
-    atLineStart = string.hasSuffix("\n")
+    atLineStart = string.utf8.last == 0x0A
   }
 
   private func beginOperation() throws {

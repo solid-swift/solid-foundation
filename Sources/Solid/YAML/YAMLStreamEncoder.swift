@@ -53,6 +53,7 @@ struct YAMLEventWriter: FormatEventWriter {
 
   private let options: Options
   private let indentString: String
+  private static let spaceChunk = Array(repeating: UInt8(ascii: " "), count: 64)
 
   private var buffer = Data()
   private var containers: [ContainerState] = []
@@ -624,12 +625,7 @@ struct YAMLEventWriter: FormatEventWriter {
       buffer.append(0x0A) // newline
       atLineStart = true
     }
-    for _ in 0..<indent {
-      buffer.append(0x20) // space
-    }
-    if indent > 0 {
-      atLineStart = false
-    }
+    appendSpaces(count: indent)
   }
 
   private mutating func prepareForBlockEntry(_ container: inout ContainerState) throws {
@@ -704,17 +700,17 @@ struct YAMLEventWriter: FormatEventWriter {
   }
 
   private func formatNodeProperties(tags: [Value], anchor: String?) -> String? {
-    var parts: [String] = []
-    if let anchor {
-      parts.append("&\(anchor)")
-    }
-    if !tags.isEmpty {
-      parts.append(formatTags(tags))
-    }
-    guard !parts.isEmpty else {
+    let tagText = tags.isEmpty ? nil : formatTags(tags)
+    switch (anchor, tagText) {
+    case (nil, nil):
       return nil
+    case (let anchor?, nil):
+      return "&\(anchor)"
+    case (nil, let tagText?):
+      return tagText
+    case (let anchor?, let tagText?):
+      return "&\(anchor) \(tagText)"
     }
-    return parts.joined(separator: " ")
   }
 
   private func anchorName(from tag: Value) -> String? {
@@ -963,7 +959,12 @@ struct YAMLEventWriter: FormatEventWriter {
     case .tagged(_, let inner):
       return isMultilineString(inner)
     case .string(let string):
-      return string.contains("\n") || string.contains("\r")
+      return YAMLScalarAnalysis.analyze(
+        string,
+        allowImplicitTyping: true,
+        allowDocumentMarkerPrefix: true,
+        quoteTrailingColon: false
+      ).hasLineBreak
     default:
       return false
     }
@@ -996,10 +997,12 @@ struct YAMLEventWriter: FormatEventWriter {
     case .tagged(_, let inner):
       return isOnlyNewlines(inner)
     case .string(let string):
-      guard string.contains("\n") else {
-        return false
-      }
-      return string.trimmingCharacters(in: .newlines).isEmpty
+      return YAMLScalarAnalysis.analyze(
+        string,
+        allowImplicitTyping: true,
+        allowDocumentMarkerPrefix: true,
+        quoteTrailingColon: false
+      ).isOnlyNewlines
     default:
       return false
     }
@@ -1012,7 +1015,12 @@ struct YAMLEventWriter: FormatEventWriter {
     case .array, .object:
       return false
     case .string(let string):
-      return !string.contains("\n") && !string.contains("\r")
+      return !YAMLScalarAnalysis.analyze(
+        string,
+        allowImplicitTyping: true,
+        allowDocumentMarkerPrefix: true,
+        quoteTrailingColon: false
+      ).hasLineBreak
     default:
       return true
     }
@@ -1244,12 +1252,18 @@ struct YAMLEventWriter: FormatEventWriter {
   }
 
   private mutating func appendIndent(count: Int) {
-    for _ in 0..<count {
-      buffer.append(0x20)
+    appendSpaces(count: count)
+  }
+
+  private mutating func appendSpaces(count: Int) {
+    guard count > 0 else { return }
+    var remaining = count
+    while remaining > 0 {
+      let chunkCount = min(remaining, Self.spaceChunk.count)
+      buffer.append(contentsOf: Self.spaceChunk[..<chunkCount])
+      remaining -= chunkCount
     }
-    if count > 0 {
-      atLineStart = false
-    }
+    atLineStart = false
   }
 
 }

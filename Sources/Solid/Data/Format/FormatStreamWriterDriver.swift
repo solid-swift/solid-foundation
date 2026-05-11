@@ -44,32 +44,49 @@ public final class FormatStreamWriterDriver<Encoder: FormatStreamEncoder>: Forma
 
     guard !finished else { throw IOError.streamClosed }
 
+    do {
+      try await encodeAndWrite(event)
+    } catch {
+      finished = true
+      throw error
+    }
+  }
+
+  public func write(
+    _ produceEvents: (_ emit: (EmitEvent) async throws -> Void) async throws -> Void
+  ) async throws {
+    try beginOperation()
+    defer { endOperation() }
+
+    guard !finished else { throw IOError.streamClosed }
+
+    do {
+      try await produceEvents { event in
+        try await self.encodeAndWrite(event)
+      }
+    } catch {
+      finished = true
+      throw error
+    }
+  }
+
+  private func encodeAndWrite(_ event: EmitEvent) async throws {
     var done = false
     while !done {
       var status: FormatStreamEncodeStatus = .producedOutput
       outputData.removeAll(keepingCapacity: true)
 
-      do {
-        try buffer.withUnsafeMutableBufferPointer { ptr in
-          var out = OutputSpan<UInt8>(buffer: ptr, initializedCount: 0)
-          status = try encoder.encode(event, output: &out)
-          let count = out.finalize(for: ptr)
-          if count > 0, let base = ptr.baseAddress {
-            outputData.append(base, count: count)
-          }
+      try buffer.withUnsafeMutableBufferPointer { ptr in
+        var out = OutputSpan<UInt8>(buffer: ptr, initializedCount: 0)
+        status = try encoder.encode(event, output: &out)
+        let count = out.finalize(for: ptr)
+        if count > 0, let base = ptr.baseAddress {
+          outputData.append(base, count: count)
         }
-      } catch {
-        finished = true
-        throw error
       }
 
       if !outputData.isEmpty {
-        do {
-          try await sink.write(data: outputData)
-        } catch {
-          finished = true
-          throw error
-        }
+        try await sink.write(data: outputData)
       }
 
       switch status {
