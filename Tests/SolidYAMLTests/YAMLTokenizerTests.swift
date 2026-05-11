@@ -408,6 +408,19 @@ struct YAMLTokenizerTests {
     try expectDocumentEnd(try tokenizer.readToken(), explicit: false)
   }
 
+  @Test("multiline quoted scalar completion handles long continuations")
+  func multilineQuotedScalarCompletionHandlesLongContinuations() throws {
+    let lines = (0..<128)
+      .map { index in
+        index == 64 ? "  escaped \\\" quote" : "  line \(index)"
+      }
+      .joined(separator: "\n")
+    let yaml = "\"start\n\(lines)\"\n"
+
+    #expect(try decodeTokenizerValues(yaml) == decodeProductionDocumentValues(yaml))
+    try expectTokenizerEventLineParity(yaml)
+  }
+
   @Test("multiline plain scalars fold across continuation lines")
   func multilinePlainScalars() throws {
     let yaml = """

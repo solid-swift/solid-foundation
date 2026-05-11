@@ -139,11 +139,99 @@ struct YAMLTokenizer: ~Copyable, Sendable {
     }
   }
 
+  private struct QuotedScalarCompletionState: Sendable {
+    let style: YAMLScalarStyle
+    private(set) var isComplete = false
+    private var doubleQuoteEscaped = false
+
+    init(style: YAMLScalarStyle) {
+      self.style = style
+    }
+
+    mutating func appendOpeningText(_ text: String) {
+      append(text, skippingOpeningQuote: true)
+    }
+
+    mutating func appendLineBreak() {
+      append(byte: .newline)
+    }
+
+    mutating func append(_ text: String, skippingOpeningQuote: Bool = false) {
+      guard !isComplete else {
+        return
+      }
+      let bytes = text.utf8
+      var start = bytes.startIndex
+      if skippingOpeningQuote, start < bytes.endIndex {
+        start = bytes.index(after: start)
+      }
+      append(bytes, startingAt: start)
+    }
+
+    private mutating func append(_ bytes: String.UTF8View, startingAt start: String.UTF8View.Index) {
+      switch style {
+      case .singleQuoted:
+        var index = start
+        while index < bytes.endIndex {
+          if bytes[index] == .singleQuote {
+            let next = bytes.index(after: index)
+            if next < bytes.endIndex, bytes[next] == .singleQuote {
+              index = bytes.index(after: next)
+              continue
+            }
+            isComplete = true
+            return
+          }
+          index = bytes.index(after: index)
+        }
+
+      case .doubleQuoted:
+        var index = start
+        while index < bytes.endIndex {
+          append(byte: bytes[index])
+          if isComplete {
+            return
+          }
+          index = bytes.index(after: index)
+        }
+
+      default:
+        isComplete = true
+      }
+    }
+
+    private mutating func append(byte: UInt8) {
+      guard !isComplete else {
+        return
+      }
+      guard case .doubleQuoted = style else {
+        return
+      }
+      if doubleQuoteEscaped {
+        doubleQuoteEscaped = false
+      } else if byte == .backslash {
+        doubleQuoteEscaped = true
+      } else if byte == .doubleQuote {
+        isComplete = true
+      }
+    }
+  }
+
   private struct PendingQuotedScalar: Sendable {
     var text: String
     let style: YAMLScalarStyle
     let location: YAML.ParseError.Location
     let minimumContinuationIndent: Int?
+    var completion: QuotedScalarCompletionState
+
+    var isComplete: Bool {
+      completion.isComplete
+    }
+
+    mutating func appendLineBreak() {
+      text.append("\n")
+      completion.appendLineBreak()
+    }
   }
 
   private struct PendingPlainScalarLine: Sendable {
@@ -748,7 +836,7 @@ struct YAMLTokenizer: ~Copyable, Sendable {
 
     if pendingQuotedScalar != nil {
       guard let contentStart, let contentEnd else {
-        pendingQuotedScalar?.text.append("\n")
+        pendingQuotedScalar?.appendLineBreak()
         return true
       }
 
@@ -765,22 +853,36 @@ struct YAMLTokenizer: ~Copyable, Sendable {
         )
       }
 
-      let text = try appendQuotedTrailingWhitespace(
-        quotedTrailingWhitespace,
-        to: try region.string(),
-        style: pendingQuotedScalar?.style
-      )
-      if let quoted = pendingQuotedScalar,
-        let minimumContinuationIndent = quoted.minimumContinuationIndent,
+      guard var quoted = pendingQuotedScalar else {
+        return true
+      }
+      if let minimumContinuationIndent = quoted.minimumContinuationIndent,
         indent < minimumContinuationIndent
       {
         throw YAML.ParseError.invalidIndentation(location: .init(line: line, column: indent + 1))
       }
-      pendingQuotedScalar?.text.append("\n")
-      pendingQuotedScalar?.text.append(text)
-      if let quoted = pendingQuotedScalar, quotedScalarIsComplete(quoted.text, style: quoted.style) {
+
+      quoted.appendLineBreak()
+      let rawText = try region.string()
+      var lineCompletion = quoted.completion
+      lineCompletion.append(rawText)
+      let adjusted = try appendQuotedTrailingWhitespace(
+        quotedTrailingWhitespace,
+        to: rawText,
+        style: quoted.style,
+        scalarIsComplete: lineCompletion.isComplete
+      )
+      quoted.text.append(adjusted.text)
+      if let incompleteSuffix = adjusted.incompleteSuffix {
+        lineCompletion.append(incompleteSuffix)
+      }
+      quoted.completion = lineCompletion
+
+      if quoted.isComplete {
         pendingQuotedScalar = nil
         try appendCompletedQuotedScalar(quoted)
+      } else {
+        pendingQuotedScalar = quoted
       }
       return true
     }
@@ -1575,7 +1677,7 @@ struct YAMLTokenizer: ~Copyable, Sendable {
       return
     }
     pendingQuotedScalar = nil
-    guard quotedScalarIsComplete(quoted.text, style: quoted.style) else {
+    guard quoted.isComplete else {
       throw YAML.ParseError.incompleteInput(location: quoted.location)
     }
     try appendCompletedQuotedScalar(quoted)
@@ -1669,12 +1771,19 @@ struct YAMLTokenizer: ~Copyable, Sendable {
     }
 
     if trimmed.firstByte == .singleQuote {
-      let text = try appendQuotedTrailingWhitespace(
+      let rawText = try trimmed.string()
+      var completion = quotedScalarCompletionState(forOpeningText: rawText, style: .singleQuoted)
+      let adjusted = try appendQuotedTrailingWhitespace(
         quotedTrailingWhitespace,
-        to: try trimmed.string(),
-        style: .singleQuoted
+        to: rawText,
+        style: .singleQuoted,
+        scalarIsComplete: completion.isComplete
       )
-      if quotedScalarIsComplete(text, style: .singleQuoted) {
+      if let incompleteSuffix = adjusted.incompleteSuffix {
+        completion.append(incompleteSuffix)
+      }
+      let text = adjusted.text
+      if completion.isComplete {
         appendStringScalar(try parseSingleQuoted(text, location: location), style: .singleQuoted)
       } else {
         pendingQuotedScalar = PendingQuotedScalar(
@@ -1685,19 +1794,27 @@ struct YAMLTokenizer: ~Copyable, Sendable {
             parentIndent: parentIndent,
             location: location,
             requiresMoreIndent: requiresMoreIndentForContinuation
-          )
+          ),
+          completion: completion
         )
       }
       return
     }
 
     if trimmed.firstByte == .doubleQuote {
-      let text = try appendQuotedTrailingWhitespace(
+      let rawText = try trimmed.string()
+      var completion = quotedScalarCompletionState(forOpeningText: rawText, style: .doubleQuoted)
+      let adjusted = try appendQuotedTrailingWhitespace(
         quotedTrailingWhitespace,
-        to: try trimmed.string(),
-        style: .doubleQuoted
+        to: rawText,
+        style: .doubleQuoted,
+        scalarIsComplete: completion.isComplete
       )
-      if quotedScalarIsComplete(text, style: .doubleQuoted) {
+      if let incompleteSuffix = adjusted.incompleteSuffix {
+        completion.append(incompleteSuffix)
+      }
+      let text = adjusted.text
+      if completion.isComplete {
         appendStringScalar(try parseDoubleQuoted(text, location: location), style: .doubleQuoted)
       } else {
         pendingQuotedScalar = PendingQuotedScalar(
@@ -1708,7 +1825,8 @@ struct YAMLTokenizer: ~Copyable, Sendable {
             parentIndent: parentIndent,
             location: location,
             requiresMoreIndent: requiresMoreIndentForContinuation
-          )
+          ),
+          completion: completion
         )
       }
       return
@@ -2239,25 +2357,36 @@ struct YAMLTokenizer: ~Copyable, Sendable {
     return region.subregion(3..<region.count).trimmedHorizontalWhitespace()
   }
 
+  private func quotedScalarCompletionState(
+    forOpeningText text: String,
+    style: YAMLScalarStyle
+  ) -> QuotedScalarCompletionState {
+    var completion = QuotedScalarCompletionState(style: style)
+    completion.appendOpeningText(text)
+    return completion
+  }
+
   private func appendQuotedTrailingWhitespace(
     _ trailingWhitespace: YAMLQuotedTrailingWhitespace,
     to text: String,
-    style: YAMLScalarStyle?
-  ) throws -> String {
+    style: YAMLScalarStyle,
+    scalarIsComplete: Bool
+  ) throws -> (text: String, incompleteSuffix: String?) {
     guard !trailingWhitespace.isEmpty else {
-      return text
+      return (text, nil)
     }
     let suffix = try trailingWhitespace.string()
-    guard let style, case .doubleQuoted = style else {
-      return text + suffix
+    guard case .doubleQuoted = style else {
+      return (text + suffix, nil)
     }
-    if quotedScalarIsComplete(text, style: style) {
-      return text + suffix
+    if scalarIsComplete {
+      return (text + suffix, nil)
     }
     guard text.hasSuffix("\\"), trailingWhitespace.firstByte == .tab else {
-      return text
+      return (text, nil)
     }
-    return text + "t" + (try trailingWhitespace.stringDroppingFirstByte())
+    let incompleteSuffix = "t" + (try trailingWhitespace.stringDroppingFirstByte())
+    return (text + incompleteSuffix, incompleteSuffix)
   }
 
   private func foldPlainLines<Lines: Collection>(_ lines: Lines) -> Data
@@ -2704,44 +2833,6 @@ struct YAMLTokenizer: ~Copyable, Sendable {
   private func trimTrailingTabs(from text: inout String) {
     while text.last == "\t" {
       text.removeLast()
-    }
-  }
-
-  private func quotedScalarIsComplete(_ text: String, style: YAMLScalarStyle) -> Bool {
-    switch style {
-    case .singleQuoted:
-      var index = text.index(after: text.startIndex)
-      while index < text.endIndex {
-        if text[index] == "'" {
-          let next = text.index(after: index)
-          if next < text.endIndex, text[next] == "'" {
-            index = text.index(after: next)
-            continue
-          }
-          return true
-        }
-        index = text.index(after: index)
-      }
-      return false
-
-    case .doubleQuoted:
-      var escaped = false
-      var index = text.index(after: text.startIndex)
-      while index < text.endIndex {
-        let ch = text[index]
-        if escaped {
-          escaped = false
-        } else if ch == "\\" {
-          escaped = true
-        } else if ch == "\"" {
-          return true
-        }
-        index = text.index(after: index)
-      }
-      return false
-
-    default:
-      return true
     }
   }
 
