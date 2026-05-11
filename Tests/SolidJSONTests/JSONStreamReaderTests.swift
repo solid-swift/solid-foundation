@@ -71,6 +71,42 @@ struct JSONStreamReaderTests {
     #expect(boundaryEvents.filter { if case .endDocument = $0 { true } else { false } }.count == 1)
   }
 
+  @Test("Document event batch reader emits one synthetic document")
+  func documentEventBatchReaderEmitsSyntheticDocument() async throws {
+    let json = #"{"a":[1,true]}"#
+    let source = ChunkedSource(data: Data(json.utf8), chunkSizes: [2, 1, 3])
+    let reader = JSONDocumentEventReader()
+    let driver = FormatDocumentStreamReaderDriver(reader: reader, source: source, bufferSize: 4)
+    var decoder = ParseDocumentEventDecoder(resolver: JSONScalarResolver())
+    var documents: [FormatValueDocument] = []
+    var boundaryEvents: [ParseDocumentEvent] = []
+
+    while true {
+      let status = try await driver.readBatch { events in
+        boundaryEvents.append(contentsOf: events)
+        for event in events {
+          if let document = try decoder.append(event) {
+            documents.append(document)
+          }
+        }
+      }
+      if status == .endOfStream {
+        break
+      }
+    }
+    try decoder.finish()
+
+    #expect(documents == [
+      FormatValueDocument(
+        value: .object([.string("a"): .array([.number(1), .bool(true)])]),
+        explicitStart: false,
+        explicitEnd: false
+      ),
+    ])
+    #expect(boundaryEvents.filter { if case .startDocument = $0 { true } else { false } }.count == 1)
+    #expect(boundaryEvents.filter { if case .endDocument = $0 { true } else { false } }.count == 1)
+  }
+
   @Test("JSON value reader rejects trailing root value")
   func valueReaderRejectsTrailingRootValue() throws {
     var reader = JSONValueReader(string: "1 2")

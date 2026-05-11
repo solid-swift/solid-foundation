@@ -35,6 +35,54 @@ struct FormatStreamDriverConcurrencyTests {
     #expect(try await driver.next() == nil)
   }
 
+  @Test("Reader driver reads event batches", .timeLimit(.minutes(1)))
+  func readerDriverReadsEventBatches() async throws {
+    let source = OneShotSource(data: Data([0x01]))
+    let driver = FormatStreamReaderDriver(
+      reader: MultiEventStreamReader(),
+      source: source,
+      bufferSize: 1,
+      outputCapacity: 8
+    )
+    var decoder = ParseEventDecoder()
+
+    let status = try await driver.readBatch { events in
+      #expect(events.count == 5)
+      for event in events {
+        try decoder.append(event)
+      }
+    }
+
+    #expect(status == .producedOutput)
+    #expect(try decoder.finish() == .array([.number(1), .number(2), .number(3)]))
+
+    let endStatus = try await driver.readBatch { events in
+      #expect(events.isEmpty)
+    }
+    #expect(endStatus == .endOfStream)
+  }
+
+  @Test("Reader driver rejects overlapping batch and next calls", .timeLimit(.minutes(1)))
+  func readerDriverRejectsOverlappingBatchAndNextCalls() async throws {
+    let source = BlockingSource(data: Data([0x01]))
+    let driver = FormatStreamReaderDriver(
+      reader: TestStreamReader(),
+      source: source,
+      bufferSize: 1
+    )
+
+    async let firstBatch: FormatStreamReadStatus = driver.readBatch { _ in }
+    await source.waitUntilReadStarted()
+
+    await #expect(throws: FormatStreamDriverError.operationInProgress) {
+      _ = try await driver.next()
+    }
+
+    await source.releaseRead()
+    _ = try await firstBatch
+    #expect(try await driver.next() == nil)
+  }
+
   @Test("Reader driver poisons after source failure", .timeLimit(.minutes(1)))
   func readerDriverPoisonsAfterSourceFailure() async throws {
     let source = FailingSource(error: .sourceReadFailed)
@@ -87,6 +135,57 @@ struct FormatStreamDriverConcurrencyTests {
 
     await source.releaseRead()
     _ = try await firstEvent
+    while try await driver.next() != nil {}
+  }
+
+  @Test("Document reader driver reads event batches", .timeLimit(.minutes(1)))
+  func documentReaderDriverReadsEventBatches() async throws {
+    let source = OneShotSource(data: Data([0x01]))
+    let driver = FormatDocumentStreamReaderDriver(
+      reader: TestDocumentStreamReader(),
+      source: source,
+      bufferSize: 1,
+      outputCapacity: 8
+    )
+    var decoder = ParseDocumentEventDecoder(resolver: TestScalarResolver())
+    var documents: [FormatValueDocument] = []
+
+    let status = try await driver.readBatch { events in
+      #expect(events.count == 3)
+      for event in events {
+        if let document = try decoder.append(event) {
+          documents.append(document)
+        }
+      }
+    }
+
+    #expect(status == .producedOutput)
+    #expect(documents.map(\.value) == [.number(1)])
+
+    let endStatus = try await driver.readBatch { events in
+      #expect(events.isEmpty)
+    }
+    #expect(endStatus == .endOfStream)
+  }
+
+  @Test("Document reader driver rejects overlapping batch and next calls", .timeLimit(.minutes(1)))
+  func documentReaderDriverRejectsOverlappingBatchAndNextCalls() async throws {
+    let source = BlockingSource(data: Data([0x01]))
+    let driver = FormatDocumentStreamReaderDriver(
+      reader: TestDocumentStreamReader(),
+      source: source,
+      bufferSize: 1
+    )
+
+    async let firstBatch: FormatStreamReadStatus = driver.readBatch { _ in }
+    await source.waitUntilReadStarted()
+
+    await #expect(throws: FormatStreamDriverError.operationInProgress) {
+      _ = try await driver.next()
+    }
+
+    await source.releaseRead()
+    _ = try await firstBatch
     while try await driver.next() != nil {}
   }
 
@@ -365,6 +464,12 @@ private enum TestEncoderError: Error, Sendable, Equatable {
   case finishFailed
 }
 
+private struct TestScalarResolver: ScalarResolver {
+  func resolve(_ data: Data, kind: ScalarRef.Kind) throws -> Value {
+    .bytes(data)
+  }
+}
+
 private func expectStreamClosed(
   performing operation: () async throws -> Void
 ) async {
@@ -402,6 +507,30 @@ private struct TestStreamReader: FormatStreamReader {
   ) throws -> FormatStreamReadStatus {
     if !emitted, !input.isEmpty {
       output.append(.scalar(.materialized(.number(1))))
+      emitted = true
+      return .producedOutput
+    }
+    return isFinal ? .endOfStream : .needMoreInput
+  }
+}
+
+private struct MultiEventStreamReader: FormatStreamReader {
+
+  private var emitted = false
+
+  var format: Format { TestFormat.instance }
+
+  mutating func read(
+    input: Data,
+    isFinal: Bool,
+    output: inout OutputSpan<ParseEvent>
+  ) throws -> FormatStreamReadStatus {
+    if !emitted, !input.isEmpty {
+      output.append(.beginArray(count: 3))
+      output.append(.scalar(.materialized(.number(1))))
+      output.append(.scalar(.materialized(.number(2))))
+      output.append(.scalar(.materialized(.number(3))))
+      output.append(.endArray)
       emitted = true
       return .producedOutput
     }

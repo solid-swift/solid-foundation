@@ -157,6 +157,47 @@ struct CBORStreamTests {
     #expect(endCount == 2)
   }
 
+  @Test("Document event batch reader emits one document per root item")
+  func documentEventBatchReaderEmitsOneDocumentPerRootItem() async throws {
+    var data = Data()
+    data.append(try CBORValueWriter.write(.number(1)))
+    data.append(try CBORValueWriter.write(.array([.string("two")])))
+
+    let source = ChunkedSource(data: data, chunkSizes: [1])
+    let reader = CBORDocumentEventReader()
+    let driver = FormatDocumentStreamReaderDriver(reader: reader, source: source, bufferSize: 2)
+    var decoder = ParseDocumentEventDecoder(resolver: CBORScalarResolver())
+    var documents: [FormatValueDocument] = []
+    var startCount = 0
+    var endCount = 0
+
+    while true {
+      let status = try await driver.readBatch { events in
+        for event in events {
+          if case .startDocument(let metadata) = event {
+            #expect(!metadata.explicit)
+            startCount += 1
+          }
+          if case .endDocument(let metadata) = event {
+            #expect(!metadata.explicit)
+            endCount += 1
+          }
+          if let document = try decoder.append(event) {
+            documents.append(document)
+          }
+        }
+      }
+      if status == .endOfStream {
+        break
+      }
+    }
+    try decoder.finish()
+
+    #expect(documents.map(\.value) == [.number(1), .array([.string("two")])])
+    #expect(startCount == 2)
+    #expect(endCount == 2)
+  }
+
   @Test("Emit stream", arguments: cases)
   func emitStream(_ testCase: TestCase) async throws {
     let sink = DataSink()

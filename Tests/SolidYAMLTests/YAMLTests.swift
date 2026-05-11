@@ -221,6 +221,38 @@ struct YAMLTests {
     #expect(documents == testCase.documents, "\(testCase.id): streamed documents mismatch")
   }
 
+  @Test("Parse document event batch stream", arguments: documentCases)
+  func parseDocumentEventBatchStream(_ testCase: DocumentCase) async throws {
+    let source = Data(testCase.yaml.utf8).source()
+    let driver = FormatDocumentStreamReaderDriver(
+      reader: YAMLDocumentEventReader(),
+      source: source,
+      bufferSize: 4
+    )
+    var decoder = ParseDocumentEventDecoder(resolver: YAMLScalarResolver())
+    var documents: [YAMLValueDocument] = []
+
+    while true {
+      let status = try await driver.readBatch { events in
+        for event in events {
+          if let document = try decoder.append(event) {
+            documents.append(YAMLValueDocument(
+              value: document.value,
+              explicitStart: document.explicitStart,
+              explicitEnd: document.explicitEnd
+            ))
+          }
+        }
+      }
+      if status == .endOfStream {
+        break
+      }
+    }
+    try decoder.finish()
+
+    #expect(documents == testCase.documents, "\(testCase.id): batched document events mismatch")
+  }
+
   @Test("Emit documents", arguments: documentCases)
   func emitDocuments(_ testCase: DocumentCase) throws {
     let writer = YAMLDocumentWriter(options: .default)

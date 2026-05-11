@@ -46,7 +46,7 @@ public struct ParseBuffer: ~Copyable, Sendable {
     public var bytes: Data {
       switch storage {
       case .retained(let segment, _, let segmentRange):
-        return segment.subdata(in: segmentRange)
+        return Self.copyBytes(from: segment, range: segmentRange)
       case .copied(let data):
         return data
       }
@@ -131,7 +131,7 @@ public struct ParseBuffer: ~Copyable, Sendable {
           segmentRange: (segmentRange.lowerBound + lower)..<(segmentRange.lowerBound + upper)
         )
       case .copied(let data):
-        return Region(copied: data.subdata(in: lower..<upper))
+        return Region(copied: Self.copyBytes(from: data, range: lower..<upper))
       }
     }
 
@@ -169,6 +169,17 @@ public struct ParseBuffer: ~Copyable, Sendable {
           throw ParseBufferError.invalidUTF8
         }
         return string
+      }
+    }
+
+    private static func copyBytes(from segment: Data, range: Range<Int>) -> Data {
+      guard !range.isEmpty else { return Data() }
+      return segment.withUnsafeBytes { rawBuffer in
+        guard let baseAddress = rawBuffer.bindMemory(to: UInt8.self).baseAddress else { return Data() }
+        var result = Data()
+        result.reserveCapacity(range.count)
+        result.append(baseAddress.advanced(by: range.lowerBound), count: range.count)
+        return result
       }
     }
   }
@@ -210,10 +221,11 @@ public struct ParseBuffer: ~Copyable, Sendable {
   /// Append new input data to the buffer.
   public mutating func append(_ data: consuming Data) {
     guard !data.isEmpty else { return }
+    let segment = data.startIndex == 0 && data.endIndex == data.count ? data : Data(data)
     if segmentCount < 2 {
-      inline[segmentCount] = data
+      inline[segmentCount] = segment
     } else {
-      overflow.append(data)
+      overflow.append(segment)
     }
     segmentCount += 1
   }
@@ -223,12 +235,16 @@ public struct ParseBuffer: ~Copyable, Sendable {
   /// Peek at the next byte without consuming it.
   public mutating func peekByte() -> UInt8? {
     guard let segment = ensureCurrentSegment() else { return nil }
+    guard readOffset < segment.count else { return nil }
     return segment[readOffset]
   }
 
   /// Read and consume a single byte.
   public mutating func readByte() throws -> UInt8 {
     guard let segment = ensureCurrentSegment() else {
+      throw ParseBufferError.unexpectedEnd
+    }
+    guard readOffset < segment.count else {
       throw ParseBufferError.unexpectedEnd
     }
     let byte = segment[readOffset]

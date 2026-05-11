@@ -96,6 +96,24 @@ struct ScalarRefTests {
     #expect(region.isCopied == false)
   }
 
+  @Test("ParseBuffer reads Data slices with nonzero start index")
+  func parseBufferReadsSlicedDataSegments() throws {
+    let base = Data("xxabcdef".utf8)
+    let slice = base[2..<base.count]
+    var buffer = ParseBuffer()
+    buffer.append(slice)
+
+    #expect(try buffer.readByte() == 0x61)
+    let start = buffer.mark()
+    #expect(try buffer.readBytes(count: 3) == Data("bcd".utf8))
+    let region = buffer.region(from: start, to: buffer.mark())
+    let subregion = region.subregion(1..<3)
+
+    #expect(region.bytes == Data("bcd".utf8))
+    #expect(try region.string() == "bcd")
+    #expect(subregion.bytes == Data("cd".utf8))
+  }
+
   @Test("ParseBuffer region reports retained storage size")
   func parseBufferRegionReportsRetainedStorageSize() throws {
     var buffer = ParseBuffer()

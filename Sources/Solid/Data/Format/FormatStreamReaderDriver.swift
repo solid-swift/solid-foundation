@@ -62,13 +62,63 @@ public final class FormatStreamReaderDriver<Reader: ~Copyable & FormatStreamRead
     }
   }
 
+  /// Reads the next available batch of parse events.
+  ///
+  /// The event buffer passed to `consume` is valid only for the duration of the
+  /// closure. Use this in hot paths to avoid one async call per event.
+  @discardableResult
+  public func readBatch(
+    _ consume: (UnsafeBufferPointer<ParseEvent>) throws -> Void
+  ) async throws -> FormatStreamReadStatus {
+    try beginOperation()
+    defer { endOperation() }
+
+    if let terminalError {
+      throw terminalError
+    }
+
+    let result: (status: FormatStreamReadStatus, count: Int)
+    do {
+      result = try await nextBatch()
+    } catch {
+      terminalError = error
+      finished = true
+      queue.removeAll()
+      throw error
+    }
+
+    if result.count > 0 {
+      try consume(UnsafeBufferPointer(rebasing: outputBuffer[..<result.count]))
+    }
+
+    return result.status
+  }
+
   private func nextEvent() async throws -> ParseEvent? {
     if !queue.isEmpty {
       return queue.removeFirst()
     }
-    guard !finished else { return nil }
 
-    while queue.isEmpty {
+    let result = try await nextBatch()
+    guard result.count > 0 else {
+      return nil
+    }
+
+    if result.count > 1 {
+      queue.append(contentsOf: outputBuffer[1..<result.count])
+    }
+
+    return outputBuffer[0]
+  }
+
+  private func nextBatch() async throws -> (status: FormatStreamReadStatus, count: Int) {
+    if !queue.isEmpty {
+      return drainQueuedBatch()
+    }
+
+    guard !finished else { return (.endOfStream, 0) }
+
+    while true {
       let input: Data
       let isFinal: Bool
       if reachedEOF {
@@ -91,16 +141,22 @@ public final class FormatStreamReaderDriver<Reader: ~Copyable & FormatStreamRead
       }
 
       if count > 0 {
-        queue.append(contentsOf: outputBuffer[..<count])
-        break
+        return (status == .endOfStream ? .endOfStream : .producedOutput, count)
       }
 
       if finished {
-        break
+        return (.endOfStream, 0)
       }
     }
+  }
 
-    return queue.isEmpty ? nil : queue.removeFirst()
+  private func drainQueuedBatch() -> (status: FormatStreamReadStatus, count: Int) {
+    var out = OutputSpan<ParseEvent>(buffer: outputBuffer, initializedCount: 0)
+    while !queue.isEmpty, !out.isFull {
+      out.append(queue.removeFirst())
+    }
+
+    return (.producedOutput, out.finalize(for: outputBuffer))
   }
 
   private func beginOperation() throws {
