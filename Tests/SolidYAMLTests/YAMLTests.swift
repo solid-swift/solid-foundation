@@ -163,6 +163,40 @@ struct YAMLTests {
     }
   }
 
+  @Test("Compact sequence mapping value can be nested block mapping")
+  func compactSequenceMappingValueCanBeNestedBlockMapping() throws {
+    let yaml = """
+    refusals:
+    - locator:
+        claimId: "rcl--5j6lp6"
+        relationId: null
+        endpointKind: "PARTICIPANT"
+        participantIndex: 1
+      mentionSurface: "MICROSCOPIC AEROSOL BUBBLES OF LIQUID OXYGEN"
+      candidateEntities: []
+      source: "NON_CHARACTER_REFERENT"
+    """
+
+    var yamlReader = YAMLValueReader(string: yaml)
+    let value = try yamlReader.read()
+
+    #expect(value == [
+      "refusals": [
+        [
+          "locator": [
+            "claimId": "rcl--5j6lp6",
+            "relationId": .null,
+            "endpointKind": "PARTICIPANT",
+            "participantIndex": 1,
+          ],
+          "mentionSurface": "MICROSCOPIC AEROSOL BUBBLES OF LIQUID OXYGEN",
+          "candidateEntities": .array([]),
+          "source": "NON_CHARACTER_REFERENT",
+        ]
+      ]
+    ])
+  }
+
   @Test("Emit value", arguments: cases)
   func emitValue(_ testCase: TestCase) throws {
     let writer = YAMLValueWriter(options: .default)

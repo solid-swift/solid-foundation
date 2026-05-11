@@ -2048,7 +2048,15 @@ struct YAMLTokenizer: ~Copyable, Sendable {
     )
     let value = split.value
     if value.isEmpty {
-      appendPlainScalar("")
+      if requiresMoreIndentForContinuation, let nestedMappingIndent {
+        pendingBlockValue = PendingBlockValue(
+          indent: nestedMappingIndent,
+          acceptsExplicitValueLine: false,
+          closesNestedBlocksBeforeEmptyValue: true
+        )
+      } else {
+        appendPlainScalar("")
+      }
     } else if value.isSequenceIndicator {
       throw YAML.ParseError.invalidSyntax(
         "Block sequence cannot start on the same line as a mapping key",
