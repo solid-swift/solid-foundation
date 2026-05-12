@@ -45,7 +45,7 @@ public final class CBORDocumentStreamWriter: @unchecked Sendable {
 
     let writer = CBORStreamWriter(
       sink: sink,
-      options: .init(deterministicMode: options.deterministic ? .buffered() : .none),
+      options: .init(deterministic: options.deterministic),
       bufferSize: bufferSize
     )
     try await writer.writeValue(document.value)

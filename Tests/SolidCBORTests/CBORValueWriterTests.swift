@@ -93,6 +93,15 @@ struct CBORValueWriterTests {
     #expect(nested == [0xBF, 0x61, 0x61, 0x9F, 0x01, 0x02, 0xFF, 0xFF])
   }
 
+  @Test("Deterministic encoding uses definite containers")
+  func deterministicEncodingUsesDefiniteContainers() throws {
+    let arrayBytes = try encode(.array([1, 2]), deterministic: true, includeContainerSizes: false)
+    #expect(arrayBytes == [0x82, 0x01, 0x02])
+
+    let mapBytes = try encode(object([(1, 2)]), deterministic: true, includeContainerSizes: false)
+    #expect(mapBytes == [0xA1, 0x01, 0x02])
+  }
+
   @Test("Encode indefinite arrays")
   func encodeIndefiniteArrays() throws {
     let bytes = try encode { encoder in

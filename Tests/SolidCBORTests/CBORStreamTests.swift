@@ -27,13 +27,6 @@ struct CBORStreamTests {
     let chunkSizes: [Int]
   }
 
-  struct DeterministicCase: Sendable {
-    let id: String
-    let value: Value
-    let options: CBORStreamWriter.Options
-    let expectedDeterministic: Bool
-  }
-
   static let cases: [TestCase] = [
     .init(id: "null", value: .null),
     .init(id: "bool", value: .bool(true)),
@@ -73,39 +66,6 @@ struct CBORStreamTests {
       bytes: [0x78, 0x18] + Array(repeating: 0x61, count: 24),
       expected: .string(String(repeating: "a", count: 24)),
       chunkSizes: [1, 1, 7, 8, 9]
-    ),
-  ]
-
-  static let deterministicCases: [DeterministicCase] = [
-    .init(
-      id: "buffered-sorts-keys",
-      value: .object([.string("b"): .number(1), .string("a"): .number(2)]),
-      options: .init(deterministicMode: .buffered()),
-      expectedDeterministic: true
-    ),
-    .init(
-      id: "assume-sorted-keeps-order",
-      value: .object([.string("b"): .number(1), .string("a"): .number(2)]),
-      options: .init(deterministicMode: .assumeSortedKeys),
-      expectedDeterministic: false
-    ),
-    .init(
-      id: "assume-sorted-preserves-sorted",
-      value: .object([.string("a"): .number(2), .string("b"): .number(1)]),
-      options: .init(deterministicMode: .assumeSortedKeys),
-      expectedDeterministic: true
-    ),
-    .init(
-      id: "buffered-maxpairs-fallback",
-      value: .object([.string("b"): .number(1), .string("a"): .number(2)]),
-      options: .init(deterministicMode: .buffered(maxPairs: 1, maxBytes: 1024)),
-      expectedDeterministic: false
-    ),
-    .init(
-      id: "buffered-maxbytes-fallback",
-      value: .object([.string("b"): .number(1), .string("a"): .number(2)]),
-      options: .init(deterministicMode: .buffered(maxPairs: 10, maxBytes: 1)),
-      expectedDeterministic: false
     ),
   ]
 
@@ -242,7 +202,7 @@ struct CBORStreamTests {
     let sink = DataSink()
     let writer = CBORStreamWriter(
       sink: sink,
-      options: .init(deterministicMode: .buffered()),
+      options: .init(deterministic: true),
       bufferSize: 8
     )
 
@@ -252,27 +212,32 @@ struct CBORStreamTests {
     #expect(sink.data == expected)
   }
 
-  @Test("Emit deterministic stream", arguments: deterministicCases)
-  func emitDeterministicStream(_ testCase: DeterministicCase) async throws {
+  @Test("Emit deterministic stream")
+  func emitDeterministicStream() async throws {
+    let value: Value = .object([
+      .string("b"): .number(Float64(0.5)),
+      .string("a"): .object([
+        .number(100): .number(2),
+        .number(10): .number(1),
+      ]),
+    ])
+
     let sink = DataSink()
-    let writer = CBORStreamWriter(sink: sink, options: testCase.options)
-    let events = EmitEventEncoder().encode(testCase.value)
+    let writer = CBORStreamWriter(sink: sink, options: .init(deterministic: true))
+    let events = EmitEventEncoder().encode(value)
     for event in events {
       try await writer.write(event)
     }
     try await writer.finish()
 
-    let deterministicBytes = try CBORValueWriter.write(testCase.value, options: .init(deterministic: true))
-    let nondeterministicBytes = try CBORValueWriter.write(testCase.value, options: .init(deterministic: false))
-    let expected = testCase.expectedDeterministic ? deterministicBytes : nondeterministicBytes
-
-    #expect(sink.data == expected, "\(testCase.id): deterministic stream bytes mismatch")
+    let expected = try CBORValueWriter.write(value, options: .init(deterministic: true))
+    #expect(sink.data == expected)
   }
 
   @Test("Emit deterministic stream with complex key events")
   func emitDeterministicStreamWithComplexKeyEvents() async throws {
     let sink = DataSink()
-    let writer = CBORStreamWriter(sink: sink, options: .init(deterministicMode: .buffered()))
+    let writer = CBORStreamWriter(sink: sink, options: .init(deterministic: true))
     let complexKey: Value = .array([
       .object([
         .string("inner"): .object([
@@ -316,7 +281,7 @@ struct CBORStreamTests {
   @Test("Emit deterministic stream with complex key in buffered value")
   func emitDeterministicStreamWithComplexKeyInBufferedValue() async throws {
     let sink = DataSink()
-    let writer = CBORStreamWriter(sink: sink, options: .init(deterministicMode: .buffered()))
+    let writer = CBORStreamWriter(sink: sink, options: .init(deterministic: true))
     let events: [EmitEvent] = [
       .beginObject(count: 1),
       .scalar(.string("outer")),
@@ -343,13 +308,10 @@ struct CBORStreamTests {
     #expect(sink.data == expected)
   }
 
-  @Test("Emit strict deterministic rejects indefinite map")
-  func emitStrictDeterministicRejectsIndefiniteMap() async {
+  @Test("Deterministic stream rejects indefinite map")
+  func deterministicStreamRejectsIndefiniteMap() async {
     let sink = DataSink()
-    let writer = CBORStreamWriter(
-      sink: sink,
-      options: .init(deterministicMode: .strict(maxPairs: 10, maxBytes: 1024))
-    )
+    let writer = CBORStreamWriter(sink: sink, options: .init(deterministic: true))
     let events: [EmitEvent] = [
       .beginObject(count: nil),
       .scalar(.string("a")),
@@ -365,15 +327,15 @@ struct CBORStreamTests {
     }
   }
 
-  @Test("Emit strict deterministic rejects max bytes")
-  func emitStrictDeterministicRejectsMaxBytes() async throws {
+  @Test("Deterministic stream rejects indefinite array")
+  func deterministicStreamRejectsIndefiniteArray() async throws {
     let sink = DataSink()
-    let writer = CBORStreamWriter(
-      sink: sink,
-      options: .init(deterministicMode: .strict(maxPairs: 10, maxBytes: 1))
-    )
-    let value = Value.object([.string("b"): .number(1), .string("a"): .number(2)])
-    let events = EmitEventEncoder().encode(value)
+    let writer = CBORStreamWriter(sink: sink, options: .init(deterministic: true))
+    let events: [EmitEvent] = [
+      .beginArray(count: nil),
+      .scalar(.number(1)),
+      .endArray,
+    ]
 
     await #expect(throws: Swift.Error.self) {
       for event in events {

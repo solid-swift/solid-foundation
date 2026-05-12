@@ -20,12 +20,10 @@ struct BufferedPair {
 struct MapBufferCompletion {
   let expectedPairs: Int
   let pairs: [BufferedPair]
-  let mode: CBOREncoder.DeterministicMode
 }
 
 struct MapBuffer {
   let expectedPairs: Int
-  let mode: CBOREncoder.DeterministicMode
   var pairs: [BufferedPair] = []
   var currentKeyBytes: Data?
   var keyBuilder: BalancedEmitEventSequenceBuilder?
@@ -61,7 +59,7 @@ struct MapBuffer {
         guard pairs.count == expectedPairs else {
           throw CBOREncoder.Error.invalidEventSequence("Missing map entries")
         }
-        return MapBufferCompletion(expectedPairs: expectedPairs, pairs: pairs, mode: mode)
+        return MapBufferCompletion(expectedPairs: expectedPairs, pairs: pairs)
       case .scalar(let value):
         currentKeyBytes = try CBOREncoder.encodeValue(value, deterministic: true)
         return nil
@@ -111,8 +109,7 @@ struct MapBuffer {
       events,
       options: .init(
         deterministic: true,
-        deterministicMode: .buffered(maxPairs: Int.max, maxBytes: Int.max),
-        deterministicBufferedValueEvents: true
+        deterministicMode: .sortMapEvents
       )
     )
   }

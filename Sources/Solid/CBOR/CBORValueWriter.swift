@@ -45,7 +45,7 @@ public struct CBORValueWriter: FormatWriter {
       emitValue: { value, emit in
         let encoder = CBOREmitEventEncoder(
           deterministic: options.deterministic,
-          includeContainerSizes: options.includeContainerSizes
+          includeContainerSizes: options.deterministic || options.includeContainerSizes
         )
         try encoder.emit(value, to: emit)
       }

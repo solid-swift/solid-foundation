@@ -28,21 +28,21 @@ struct CBOREncoder: FormatEventWriter {
     case invalidTagValue
   }
 
-  typealias DeterministicMode = CBORStreamWriter.DeterministicMode
+  enum DeterministicMode: Sendable, Equatable {
+    case none
+    case sortMapEvents
+  }
 
   struct Options: Sendable {
     var deterministic: Bool
     var deterministicMode: DeterministicMode
-    var deterministicBufferedValueEvents: Bool
 
     init(
       deterministic: Bool = false,
-      deterministicMode: DeterministicMode = .none,
-      deterministicBufferedValueEvents: Bool = false
+      deterministicMode: DeterministicMode = .none
     ) {
       self.deterministic = deterministic
       self.deterministicMode = deterministicMode
-      self.deterministicBufferedValueEvents = deterministicBufferedValueEvents
     }
   }
 
@@ -106,25 +106,22 @@ struct CBOREncoder: FormatEventWriter {
       return
     }
 
-    if case .beginObject(let count) = event, options.deterministicMode != .none, options.deterministicMode != .assumeSortedKeys {
-      switch options.deterministicMode {
-      case .buffered(let maxPairs, _):
-        if let count, count <= maxPairs {
-          try prepareForValue(isKey: false)
-          mapBuffer = MapBuffer(expectedPairs: count, mode: options.deterministicMode)
-          return
-        }
-      case .strict(let maxPairs, _):
-        guard let count else {
-          throw Error.invalidEventSequence("Indefinite map not allowed in deterministic mode")
-        }
-        guard count <= maxPairs else {
-          throw Error.invalidEventSequence("Map exceeds deterministic limit")
-        }
-        try prepareForValue(isKey: false)
-        mapBuffer = MapBuffer(expectedPairs: count, mode: options.deterministicMode)
-        return
-      case .assumeSortedKeys, .none:
+    if case .beginObject(let count) = event, options.deterministicMode == .sortMapEvents {
+      guard let count else {
+        throw Error.invalidEventSequence("Indefinite map not allowed in deterministic mode")
+      }
+      try prepareForValue(isKey: false)
+      mapBuffer = MapBuffer(expectedPairs: count)
+      return
+    }
+
+    if options.deterministic {
+      switch event {
+      case .beginArray(count: nil):
+        throw Error.invalidEventSequence("Indefinite array not allowed in deterministic mode")
+      case .beginObject(count: nil):
+        throw Error.invalidEventSequence("Indefinite map not allowed in deterministic mode")
+      default:
         break
       }
     }
@@ -283,48 +280,19 @@ struct CBOREncoder: FormatEventWriter {
 
   private mutating func emitBufferedMap(_ completion: MapBufferCompletion) throws {
     let encodedPairs = try completion.pairs.map { pair -> (keyBytes: Data, valueBytes: Data, order: Int) in
-      let valueOptions = options.deterministicBufferedValueEvents
-        ? options
-        // Re-encode ordinary buffered values with map buffering enabled only
-        // to support complex keys; maxBytes: 0 preserves original pair order.
-        : Options(
-            deterministic: false,
-            deterministicMode: .buffered(maxPairs: Int.max, maxBytes: 0)
-          )
       let valueBytes = try Self.encodeEmitEvents(
         pair.valueEvents,
-        options: valueOptions
+        options: options
       )
       return (keyBytes: pair.keyBytes, valueBytes: valueBytes, order: pair.order)
     }
 
-    let totalBytes = encodedPairs.reduce(0) { $0 + $1.keyBytes.count + $1.valueBytes.count }
-    let useOriginalOrder: Bool
-
-    switch completion.mode {
-    case .none:
-      useOriginalOrder = true
-    case .assumeSortedKeys:
-      useOriginalOrder = true
-    case .buffered(_, let maxBytes):
-      useOriginalOrder = totalBytes > maxBytes
-    case .strict(_, let maxBytes):
-      if totalBytes > maxBytes {
-        throw Error.invalidEventSequence("Deterministic map exceeds max bytes")
-      }
-      useOriginalOrder = false
-    }
-
     let orderedPairs: [(keyBytes: Data, valueBytes: Data, order: Int)]
-    if useOriginalOrder {
-      orderedPairs = encodedPairs.sorted { $0.order < $1.order }
-    } else {
-      orderedPairs = encodedPairs.sorted {
-        if $0.keyBytes == $1.keyBytes {
-          return $0.order < $1.order
-        }
-        return $0.keyBytes.lexicographicallyPrecedes($1.keyBytes)
+    orderedPairs = encodedPairs.sorted {
+      if $0.keyBytes == $1.keyBytes {
+        return $0.order < $1.order
       }
+      return $0.keyBytes.lexicographicallyPrecedes($1.keyBytes)
     }
 
     writePendingTags()

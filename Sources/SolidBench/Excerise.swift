@@ -1088,17 +1088,29 @@ struct ExceriseCBORFile: AsyncParsableCommand {
     case eventBatch = "event-batch"
     case documentValues = "document-values"
     case valueRead = "value-read"
+    case valueWrite = "value-write"
+    case streamWrite = "stream-write"
+    case streamValueWrite = "stream-value-write"
+  }
+
+  enum WriteSink: String, ExpressibleByArgument {
+    case discard
+    case data
   }
 
   static let configuration = CommandConfiguration(
     commandName: "excercise-cbor-file",
-    abstract: "Excerise CBOR file reading",
+    abstract: "Excerise CBOR file streaming",
     discussion: """
-    Excerise CBOR decoding of a large file.
+    Excerise CBOR decoding and encoding of a large file.
 
     Use event-next to measure one async driver call per returned event,
     event-batch to measure batched event consumption, document-values to
     measure CBORDocumentStreamReader, and value-read to measure CBORValueReader.
+    Use value-write to parse the file before timing and measure CBORValueWriter
+    output. Use stream-write to parse the file before timing and measure
+    CBORStreamWriter output one event at a time. Use stream-value-write to
+    measure the bulk value stream path.
     """,
     aliases: ["ecf"]
   )
@@ -1108,7 +1120,7 @@ struct ExceriseCBORFile: AsyncParsableCommand {
 
   @Option(
     name: .shortAndLong,
-    help: "Mode: event-next, event-batch, document-values, or value-read"
+    help: "Mode: event-next, event-batch, document-values, value-read, value-write, stream-write, or stream-value-write"
   )
   var mode: Mode = .valueRead
 
@@ -1118,8 +1130,20 @@ struct ExceriseCBORFile: AsyncParsableCommand {
   @Option(help: "Event output batch capacity for event-next and event-batch")
   var outputCapacity: Int = 64
 
-  @Option(help: "Number of value-read or document-values iterations")
+  @Option(help: "Number of value-read, document-values, or write iterations")
   var iterations: Int = 1
+
+  @Option(help: "Sink for stream-write modes: discard or data")
+  var writeSink: WriteSink = .discard
+
+  @Flag(help: "Use deterministic CBOR map ordering for write modes")
+  var deterministic: Bool = false
+
+  @Option(help: "Write one generated output stream to this path after timing")
+  var outputPath: String?
+
+  @Flag(help: "Validate write output after timing")
+  var validateOutput: Bool = false
 
   @Flag(name: .shortAndLong, help: "Print the duration of the operation")
   var printDuration: Bool = false
@@ -1151,10 +1175,46 @@ struct ExceriseCBORFile: AsyncParsableCommand {
       let start = clock.now
       result = try readValue(data)
       duration = clock.now - start
+    case .valueWrite:
+      let prepared = try readPreparedValue()
+      let start = clock.now
+      result = try writeValue(prepared.value, inputBytes: prepared.bytes)
+      duration = clock.now - start
+      if let outputPath {
+        try writeValueOutput(prepared.value, to: outputPath)
+      }
+      if validateOutput {
+        try validateValueWrite(prepared.value)
+      }
+    case .streamWrite:
+      let prepared = try readPreparedValue()
+      let start = clock.now
+      result = try await writeStream(prepared.value, inputBytes: prepared.bytes)
+      duration = clock.now - start
+      if let outputPath {
+        try await writeStreamOutput(prepared.value, to: outputPath)
+      }
+      if validateOutput {
+        try await validateStreamWrite(prepared.value)
+      }
+    case .streamValueWrite:
+      let prepared = try readPreparedValue()
+      let start = clock.now
+      result = try await writeStreamValue(prepared.value, inputBytes: prepared.bytes)
+      duration = clock.now - start
+      if let outputPath {
+        try await writeStreamValueOutput(prepared.value, to: outputPath)
+      }
+      if validateOutput {
+        try await validateStreamValueWrite(prepared.value)
+      }
     }
 
     print("mode=\(mode.rawValue)")
     print("bytes=\(result.bytes)")
+    if result.outputBytes > 0 {
+      print("output-bytes=\(result.outputBytes)")
+    }
     print("documents=\(result.documents)")
     print("events=\(result.events)")
     if result.iterations > 1 {
@@ -1234,6 +1294,166 @@ struct ExceriseCBORFile: AsyncParsableCommand {
     return result
   }
 
+  private func readPreparedValue() throws -> (value: Value, bytes: Int) {
+    let data = try Data(contentsOf: URL(fileURLWithPath: path))
+    var reader = CBORValueReader(data: data)
+    return (try reader.read(), data.count)
+  }
+
+  private func writeValue(_ value: Value, inputBytes: Int) throws -> CBORFileResult {
+    let writer = CBORValueWriter(options: .init(deterministic: deterministic))
+    var result = CBORFileResult(bytes: inputBytes, iterations: iterations)
+
+    for _ in 0..<iterations {
+      let data = try writer.write(value)
+      result.outputBytes += data.count
+      result.documents += 1
+      blackHole(data.count)
+    }
+
+    return result
+  }
+
+  private func writeStream(_ value: Value, inputBytes: Int) async throws -> CBORFileResult {
+    var result = CBORFileResult(bytes: inputBytes, iterations: iterations)
+
+    for _ in 0..<iterations {
+      switch writeSink {
+      case .discard:
+        let sink = CountingSink()
+        let writer = CBORStreamWriter(sink: sink, options: streamWriterOptions)
+        try await EmitEventEncoder().emit(value) { event in
+          try await writer.write(event)
+          result.events += 1
+        }
+        try await writer.close()
+        result.outputBytes += sink.bytesWritten
+      case .data:
+        let sink = DataSink()
+        let writer = CBORStreamWriter(sink: sink, options: streamWriterOptions)
+        try await EmitEventEncoder().emit(value) { event in
+          try await writer.write(event)
+          result.events += 1
+        }
+        try await writer.close()
+        result.outputBytes += sink.bytesWritten
+        blackHole(sink.data.count)
+      }
+      result.documents += 1
+    }
+
+    return result
+  }
+
+  private func writeStreamValue(_ value: Value, inputBytes: Int) async throws -> CBORFileResult {
+    var result = CBORFileResult(bytes: inputBytes, iterations: iterations)
+
+    for _ in 0..<iterations {
+      switch writeSink {
+      case .discard:
+        let sink = CountingSink()
+        let writer = CBORStreamWriter(sink: sink, options: streamWriterOptions)
+        try await writer.writeValue(value)
+        try await writer.close()
+        result.outputBytes += sink.bytesWritten
+      case .data:
+        let sink = DataSink()
+        let writer = CBORStreamWriter(sink: sink, options: streamWriterOptions)
+        try await writer.writeValue(value)
+        try await writer.close()
+        result.outputBytes += sink.bytesWritten
+        blackHole(sink.data.count)
+      }
+      result.documents += 1
+    }
+
+    return result
+  }
+
+  private var streamWriterOptions: CBORStreamWriter.Options {
+    CBORStreamWriter.Options(deterministic: deterministic)
+  }
+
+  private func validateValueWrite(_ value: Value) throws {
+    let data = try CBORValueWriter.write(value, options: .init(deterministic: deterministic))
+
+    if deterministic {
+      try validateDeterministicCBOR(data)
+    } else {
+      try validateCBOR(data, equals: value)
+    }
+  }
+
+  private func validateStreamWrite(_ value: Value) async throws {
+    let sink = DataSink()
+    let writer = CBORStreamWriter(sink: sink, options: streamWriterOptions)
+    try await EmitEventEncoder().emit(value) { event in
+      try await writer.write(event)
+    }
+    try await writer.close()
+
+    if deterministic {
+      try validateDeterministicCBOR(sink.data)
+    } else {
+      try validateCBOR(sink.data, equals: value)
+    }
+  }
+
+  private func validateStreamValueWrite(_ value: Value) async throws {
+    let sink = DataSink()
+    let writer = CBORStreamWriter(sink: sink, options: streamWriterOptions)
+    try await writer.writeValue(value)
+    try await writer.close()
+
+    if deterministic {
+      try validateDeterministicCBOR(sink.data)
+    } else {
+      try validateCBOR(sink.data, equals: value)
+    }
+  }
+
+  private func validateCBOR(_ data: Data, equals expected: Value) throws {
+    guard try readValidatedCBOR(data) == expected else {
+      throw CBORFileBenchmarkError.validationMismatch
+    }
+  }
+
+  private func readValidatedCBOR(_ data: Data) throws -> Value {
+    var reader = CBORValueReader(data: data)
+    return try reader.read()
+  }
+
+  private func validateDeterministicCBOR(_ data: Data) throws {
+    let decoded = try readValidatedCBOR(data)
+    let reencoded = try CBORValueWriter.write(decoded, options: .init(deterministic: true))
+    guard reencoded == data else {
+      throw CBORFileBenchmarkError.validationMismatch
+    }
+  }
+
+  private func writeValueOutput(_ value: Value, to path: String) throws {
+    let data = try CBORValueWriter.write(value, options: .init(deterministic: deterministic))
+    try data.write(to: URL(fileURLWithPath: path))
+  }
+
+  private func writeStreamOutput(_ value: Value, to path: String) async throws {
+    let sink = DataSink()
+    let writer = CBORStreamWriter(sink: sink, options: streamWriterOptions)
+    try await EmitEventEncoder().emit(value) { event in
+      try await writer.write(event)
+    }
+    try await writer.close()
+    try sink.data.write(to: URL(fileURLWithPath: path))
+  }
+
+  private func writeStreamValueOutput(_ value: Value, to path: String) async throws {
+    let sink = DataSink()
+    let writer = CBORStreamWriter(sink: sink, options: streamWriterOptions)
+    try await writer.writeValue(value)
+    try await writer.close()
+    try sink.data.write(to: URL(fileURLWithPath: path))
+  }
+
   private func withFileSource<T>(
     _ body: (FileSource) async throws -> T
   ) async throws -> T {
@@ -1251,6 +1471,7 @@ struct ExceriseCBORFile: AsyncParsableCommand {
 
 private struct CBORFileResult {
   var bytes = 0
+  var outputBytes = 0
   var documents = 0
   var events = 0
   var iterations = 1
@@ -1265,11 +1486,14 @@ private struct CBORFileResult {
 
 private enum CBORFileBenchmarkError: Error, CustomStringConvertible {
   case invalidIterations(Int)
+  case validationMismatch
 
   var description: String {
     switch self {
     case .invalidIterations(let iterations):
       return "Iterations must be greater than zero, got \(iterations)"
+    case .validationMismatch:
+      return "Written CBOR did not read back to the prepared value"
     }
   }
 }
