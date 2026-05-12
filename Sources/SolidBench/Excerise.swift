@@ -11,6 +11,7 @@ import SolidIO
 import SolidNumeric
 import SolidJSON
 import SolidYAML
+import SolidCBOR
 import ArgumentParser
 import Synchronization
 
@@ -28,6 +29,8 @@ struct ExcerciseNumerics: AsyncParsableCommand {
       ExceriseYAMLFile.self,
       ExceriseYAMLToJSONFile.self,
       ExceriseJSONFile.self,
+      ExceriseJSONToCBORFile.self,
+      ExceriseCBORFile.self,
     ]
   )
 }
@@ -1036,6 +1039,237 @@ private enum JSONFileBenchmarkError: Error, CustomStringConvertible {
       return "Iterations must be greater than zero, got \(iterations)"
     case .validationMismatch:
       return "Written JSON did not read back to the prepared value"
+    }
+  }
+}
+
+struct ExceriseJSONToCBORFile: ParsableCommand {
+
+  static let configuration = CommandConfiguration(
+    commandName: "convert-json-cbor-file",
+    abstract: "Convert a JSON value to CBOR",
+    discussion: """
+    Reads a JSON file with JSONValueReader and writes the same value as CBOR.
+    """,
+    aliases: ["j2c"]
+  )
+
+  @Argument(help: "Path to the JSON file to read")
+  var inputPath: String
+
+  @Argument(help: "Path to the CBOR file to write")
+  var outputPath: String
+
+  @Flag(name: .shortAndLong, help: "Print the duration of the conversion")
+  var printDuration: Bool = false
+
+  func run() throws {
+    let clock = ContinuousClock()
+    let start = clock.now
+
+    let input = try Data(contentsOf: URL(fileURLWithPath: inputPath))
+    var reader = JSONValueReader(data: input)
+    let value = try reader.read()
+    let output = try CBORValueWriter.write(value)
+    try output.write(to: URL(fileURLWithPath: outputPath))
+
+    print("input-bytes=\(input.count)")
+    print("output-bytes=\(output.count)")
+    if printDuration {
+      print("duration=\(clock.now - start)")
+    }
+  }
+}
+
+struct ExceriseCBORFile: AsyncParsableCommand {
+
+  enum Mode: String, ExpressibleByArgument {
+    case eventNext = "event-next"
+    case eventBatch = "event-batch"
+    case documentValues = "document-values"
+    case valueRead = "value-read"
+  }
+
+  static let configuration = CommandConfiguration(
+    commandName: "excercise-cbor-file",
+    abstract: "Excerise CBOR file reading",
+    discussion: """
+    Excerise CBOR decoding of a large file.
+
+    Use event-next to measure one async driver call per returned event,
+    event-batch to measure batched event consumption, document-values to
+    measure CBORDocumentStreamReader, and value-read to measure CBORValueReader.
+    """,
+    aliases: ["ecf"]
+  )
+
+  @Argument(help: "Path to the CBOR file to read")
+  var path: String
+
+  @Option(
+    name: .shortAndLong,
+    help: "Mode: event-next, event-batch, document-values, or value-read"
+  )
+  var mode: Mode = .valueRead
+
+  @Option(help: "Input source buffer size")
+  var bufferSize: Int = BufferedSource.segmentSize
+
+  @Option(help: "Event output batch capacity for event-next and event-batch")
+  var outputCapacity: Int = 64
+
+  @Option(help: "Number of value-read or document-values iterations")
+  var iterations: Int = 1
+
+  @Flag(name: .shortAndLong, help: "Print the duration of the operation")
+  var printDuration: Bool = false
+
+  func run() async throws {
+    guard iterations > 0 else {
+      throw CBORFileBenchmarkError.invalidIterations(iterations)
+    }
+
+    let clock = ContinuousClock()
+    let result: CBORFileResult
+    let duration: Duration
+
+    switch mode {
+    case .eventNext:
+      let start = clock.now
+      result = try await readEventsWithNext()
+      duration = clock.now - start
+    case .eventBatch:
+      let start = clock.now
+      result = try await readEventsWithBatch()
+      duration = clock.now - start
+    case .documentValues:
+      let start = clock.now
+      result = try await readDocumentValues()
+      duration = clock.now - start
+    case .valueRead:
+      let data = try Data(contentsOf: URL(fileURLWithPath: path))
+      let start = clock.now
+      result = try readValue(data)
+      duration = clock.now - start
+    }
+
+    print("mode=\(mode.rawValue)")
+    print("bytes=\(result.bytes)")
+    print("documents=\(result.documents)")
+    print("events=\(result.events)")
+    if result.iterations > 1 {
+      print("iterations=\(result.iterations)")
+    }
+    if printDuration {
+      print("duration=\(duration)")
+    }
+  }
+
+  private func readEventsWithNext() async throws -> CBORFileResult {
+    try await withFileSource { source in
+      let driver = FormatDocumentStreamReaderDriver(
+        reader: CBORDocumentEventReader(),
+        source: source,
+        bufferSize: bufferSize,
+        outputCapacity: outputCapacity
+      )
+
+      var result = CBORFileResult()
+      while let event = try await driver.next() {
+        result.append(event)
+      }
+      result.bytes = source.bytesRead
+      return result
+    }
+  }
+
+  private func readEventsWithBatch() async throws -> CBORFileResult {
+    try await withFileSource { source in
+      let driver = FormatDocumentStreamReaderDriver(
+        reader: CBORDocumentEventReader(),
+        source: source,
+        bufferSize: bufferSize,
+        outputCapacity: outputCapacity
+      )
+
+      var result = CBORFileResult()
+      while true {
+        let status = try await driver.readBatch { events in
+          for event in events {
+            result.append(event)
+          }
+        }
+        if status == .endOfStream {
+          result.bytes = source.bytesRead
+          return result
+        }
+      }
+    }
+  }
+
+  private func readDocumentValues() async throws -> CBORFileResult {
+    var result = CBORFileResult(iterations: iterations)
+
+    for _ in 0..<iterations {
+      try await withFileSource { source in
+        let reader = CBORDocumentStreamReader(source: source, bufferSize: bufferSize)
+        while let document = try await reader.next() {
+          result.documents += 1
+          blackHole(document)
+        }
+        result.bytes += source.bytesRead
+      }
+    }
+
+    return result
+  }
+
+  private func readValue(_ data: Data) throws -> CBORFileResult {
+    var result = CBORFileResult(bytes: data.count, iterations: iterations)
+    for _ in 0..<iterations {
+      var reader = CBORValueReader(data: data)
+      blackHole(try reader.read())
+      result.documents += 1
+    }
+    return result
+  }
+
+  private func withFileSource<T>(
+    _ body: (FileSource) async throws -> T
+  ) async throws -> T {
+    let source = try FileSource(path: path)
+    do {
+      let result = try await body(source)
+      try await source.close()
+      return result
+    } catch {
+      try? await source.close()
+      throw error
+    }
+  }
+}
+
+private struct CBORFileResult {
+  var bytes = 0
+  var documents = 0
+  var events = 0
+  var iterations = 1
+
+  mutating func append(_ event: ParseDocumentEvent) {
+    events += 1
+    if case .startDocument = event {
+      documents += 1
+    }
+  }
+}
+
+private enum CBORFileBenchmarkError: Error, CustomStringConvertible {
+  case invalidIterations(Int)
+
+  var description: String {
+    switch self {
+    case .invalidIterations(let iterations):
+      return "Iterations must be greater than zero, got \(iterations)"
     }
   }
 }
