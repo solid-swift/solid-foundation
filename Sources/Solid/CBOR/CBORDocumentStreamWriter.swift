@@ -48,10 +48,7 @@ public final class CBORDocumentStreamWriter: @unchecked Sendable {
       options: .init(deterministicMode: options.deterministic ? .buffered() : .none),
       bufferSize: bufferSize
     )
-    let encoder = EmitEventEncoder()
-    try await encoder.emit(document.value) { event in
-      try await writer.write(event)
-    }
+    try await writer.writeValue(document.value)
     try await writer.finish()
   }
 

@@ -194,6 +194,34 @@ struct ScalarRefTests {
     #expect(region.isCopied == false)
   }
 
+  @Test("ParseBuffer exposes contiguous readable bytes and advances within segment")
+  func parseBufferContiguousReadableBytes() throws {
+    var buffer = ParseBuffer()
+    buffer.append(Data("abc".utf8))
+    buffer.append(Data("def".utf8))
+
+    let firstSegment = buffer.withContiguousReadableBytes { bytes in
+      String(decoding: bytes, as: UTF8.self)
+    }
+    #expect(firstSegment == "abc")
+
+    try buffer.advanceInCurrentSegment(count: 2)
+    let remainingFirstSegment = buffer.withContiguousReadableBytes { bytes in
+      String(decoding: bytes, as: UTF8.self)
+    }
+    #expect(remainingFirstSegment == "c")
+
+    let start = buffer.mark()
+    try buffer.advanceInCurrentSegment(count: 1)
+    let region = buffer.region(from: start, to: buffer.mark())
+    let secondSegment = buffer.withContiguousReadableBytes { bytes in
+      String(decoding: bytes, as: UTF8.self)
+    }
+    #expect(secondSegment == "def")
+
+    #expect(region.bytes == Data("c".utf8))
+  }
+
   @Test("ParseBuffer readRegion preserves retained and copied storage")
   func parseBufferReadRegionStorage() throws {
     var retainedBuffer = ParseBuffer()
@@ -488,6 +516,25 @@ struct ParseEventDecoderTests {
     #expect(throws: ParseEventDecoder.Error.self) {
       try decoder.append(.endObject)
     }
+  }
+
+  @Test("decoder uses cached retained region resolver")
+  func decoderUsesCachedRegionResolver() throws {
+    var buffer = ParseBuffer()
+    buffer.append(Data("hello".utf8))
+
+    let start = buffer.mark()
+    _ = try buffer.readBytes(count: 5)
+    let region = buffer.region(from: start, to: buffer.mark())
+    let resolver = RegionCountingResolver()
+    let erasedResolver: any ScalarResolver = resolver
+
+    var decoder = ParseEventDecoder(resolver: erasedResolver)
+    try decoder.append(.scalar(ScalarRef(kind: .string, region: region)))
+
+    #expect(try decoder.finish() == .string("hello"))
+    #expect(resolver.regionCallCount == 1)
+    #expect(resolver.dataCallCount == 0)
   }
 }
 

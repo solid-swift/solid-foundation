@@ -373,59 +373,75 @@ struct JSONEventWriter: FormatEventWriter {
       return [0x5C, 0x75, 0x30, 0x30, hexChars[hi], hexChars[lo]]
     }
   }()
+  private static let trueBytes: [UInt8] = [0x74, 0x72, 0x75, 0x65]
+  private static let falseBytes: [UInt8] = [0x66, 0x61, 0x6C, 0x73, 0x65]
+  private static let nullBytes: [UInt8] = [0x6E, 0x75, 0x6C, 0x6C]
 
   private mutating func writeString(_ value: String) {
     appendByte(JSONStructure.quotationMark)
     let escapeSlashes = options.escapeSlashes
-    let utf8 = value.utf8
-    var safeStart = utf8.startIndex
-    var i = utf8.startIndex
-    while i < utf8.endIndex {
-      let byte = utf8[i]
-      // Multi-byte UTF-8 sequences (byte >= 0x80) are always safe — include in the run
-      if byte >= 0x80 {
-        i = utf8.index(after: i)
-        continue
-      }
-      switch byte {
-      case 0x22: // "
-        appendEscapedByte(0x22, safeStart: &safeStart, current: i, utf8: utf8)
-      case 0x5C: // backslash
-        appendEscapedByte(0x5C, safeStart: &safeStart, current: i, utf8: utf8)
-      case 0x2F where escapeSlashes: // /
-        appendEscapedByte(0x2F, safeStart: &safeStart, current: i, utf8: utf8)
-      case 0x08: // \b
-        appendEscapedByte(0x62, safeStart: &safeStart, current: i, utf8: utf8)
-      case 0x0C: // \f
-        appendEscapedByte(0x66, safeStart: &safeStart, current: i, utf8: utf8)
-      case 0x0A: // \n
-        appendEscapedByte(0x6E, safeStart: &safeStart, current: i, utf8: utf8)
-      case 0x0D: // \r
-        appendEscapedByte(0x72, safeStart: &safeStart, current: i, utf8: utf8)
-      case 0x09: // \t
-        appendEscapedByte(0x74, safeStart: &safeStart, current: i, utf8: utf8)
-      case 0x00...0x1F: // other control characters
-        // Flush safe run before escape
-        if safeStart < i {
-          buffer.append(contentsOf: utf8[safeStart..<i])
-        }
-        buffer.append(contentsOf: Self.controlCharEscapes[Int(byte)])
-        i = utf8.index(after: i)
-        safeStart = i
-        continue
-      default:
-        // Safe ASCII byte (0x20-0x7E excluding " and \)
-        i = utf8.index(after: i)
-        continue
-      }
-      i = utf8.index(after: i)
-      safeStart = i
-    }
-    // Flush remaining safe run
-    if safeStart < utf8.endIndex {
-      buffer.append(contentsOf: utf8[safeStart..<utf8.endIndex])
+    if value.utf8.withContiguousStorageIfAvailable({
+      writeStringBytes($0, escapeSlashes: escapeSlashes)
+    }) == nil {
+      writeStringBytes(Array(value.utf8), escapeSlashes: escapeSlashes)
     }
     appendByte(JSONStructure.quotationMark)
+  }
+
+  private mutating func writeStringBytes(
+    _ utf8: UnsafeBufferPointer<UInt8>,
+    escapeSlashes: Bool
+  ) {
+    var safeStart = 0
+    var index = 0
+    while index < utf8.count {
+      let byte = utf8[index]
+      // Multi-byte UTF-8 sequences (byte >= 0x80) are always safe.
+      if byte >= 0x80 {
+        index += 1
+        continue
+      }
+
+      switch byte {
+      case 0x22: // "
+        appendEscapedByte(0x22, safeStart: &safeStart, current: index, utf8: utf8)
+      case 0x5C: // backslash
+        appendEscapedByte(0x5C, safeStart: &safeStart, current: index, utf8: utf8)
+      case 0x2F where escapeSlashes: // /
+        appendEscapedByte(0x2F, safeStart: &safeStart, current: index, utf8: utf8)
+      case 0x08: // \b
+        appendEscapedByte(0x62, safeStart: &safeStart, current: index, utf8: utf8)
+      case 0x0C: // \f
+        appendEscapedByte(0x66, safeStart: &safeStart, current: index, utf8: utf8)
+      case 0x0A: // \n
+        appendEscapedByte(0x6E, safeStart: &safeStart, current: index, utf8: utf8)
+      case 0x0D: // \r
+        appendEscapedByte(0x72, safeStart: &safeStart, current: index, utf8: utf8)
+      case 0x09: // \t
+        appendEscapedByte(0x74, safeStart: &safeStart, current: index, utf8: utf8)
+      case 0x00...0x1F: // other control characters
+        appendUTF8(utf8, range: safeStart..<index)
+        appendBytes(Self.controlCharEscapes[Int(byte)])
+        index += 1
+        safeStart = index
+        continue
+      default:
+        index += 1
+        continue
+      }
+      index += 1
+      safeStart = index
+    }
+    appendUTF8(utf8, range: safeStart..<utf8.count)
+  }
+
+  private mutating func writeStringBytes(
+    _ utf8: [UInt8],
+    escapeSlashes: Bool
+  ) {
+    utf8.withUnsafeBufferPointer { bytes in
+      writeStringBytes(bytes, escapeSlashes: escapeSlashes)
+    }
   }
 
   private mutating func writeNumber(_ value: Value.Number) throws {
@@ -451,34 +467,43 @@ struct JSONEventWriter: FormatEventWriter {
 
   private mutating func appendEscapedByte(
     _ escapedByte: UInt8,
-    safeStart: inout String.UTF8View.Index,
-    current: String.UTF8View.Index,
-    utf8: String.UTF8View
+    safeStart: inout Int,
+    current: Int,
+    utf8: UnsafeBufferPointer<UInt8>
   ) {
-    if safeStart < current {
-      buffer.append(contentsOf: utf8[safeStart..<current])
-    }
+    appendUTF8(utf8, range: safeStart..<current)
     buffer.append(0x5C)
     buffer.append(escapedByte)
   }
 
   private mutating func writeBool(_ value: Bool) {
-    appendString(value ? "true" : "false")
+    appendBytes(value ? Self.trueBytes : Self.falseBytes)
   }
 
   private mutating func writeNull() {
-    appendString("null")
+    appendBytes(Self.nullBytes)
   }
 
   private mutating func appendString(_ string: String) {
-    appendBytes(string.utf8)
+    if string.utf8.withContiguousStorageIfAvailable({
+      appendUTF8($0, range: 0..<$0.count)
+    }) == nil {
+      appendBytes(Array(string.utf8))
+    }
   }
 
-  private mutating func appendBytes<S: Sequence>(_ bytes: S) where S.Element == UInt8 {
-    buffer.append(contentsOf: bytes)
+  private mutating func appendBytes(_ bytes: [UInt8]) {
+    bytes.withUnsafeBufferPointer {
+      appendUTF8($0, range: 0..<$0.count)
+    }
   }
 
   private mutating func appendByte(_ byte: UInt8) {
     buffer.append(byte)
+  }
+
+  private mutating func appendUTF8(_ utf8: UnsafeBufferPointer<UInt8>, range: Range<Int>) {
+    guard !range.isEmpty, let baseAddress = utf8.baseAddress else { return }
+    buffer.append(baseAddress.advanced(by: range.lowerBound), count: range.count)
   }
 }

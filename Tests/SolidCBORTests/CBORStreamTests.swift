@@ -213,6 +213,45 @@ struct CBORStreamTests {
     #expect(value == testCase.value, "\(testCase.id): streamed emit mismatch")
   }
 
+  @Test("Stream writer writes a full value through bulk path")
+  func cborStreamWriterWritesValueThroughBulkPath() async throws {
+    let value: Value = .object([
+      .string("a"): .array([.number(1), .string("two")]),
+      .string("b"): .bool(false),
+    ])
+
+    let expected = try CBORValueWriter.write(value)
+    let sink = DataSink()
+    let writer = CBORStreamWriter(sink: sink, bufferSize: 8)
+
+    try await writer.writeValue(value)
+    try await writer.close()
+
+    #expect(sink.data == expected)
+  }
+
+  @Test("Deterministic stream value write matches deterministic value writer")
+  func deterministicStreamValueWriteMatchesValueWriter() async throws {
+    let value: Value = .object([
+      .string("z"): .number(1),
+      .string("a"): .number(2),
+      .bytes(Data([0x01])): .string("bytes"),
+    ])
+
+    let expected = try CBORValueWriter.write(value, options: .init(deterministic: true))
+    let sink = DataSink()
+    let writer = CBORStreamWriter(
+      sink: sink,
+      options: .init(deterministicMode: .buffered()),
+      bufferSize: 8
+    )
+
+    try await writer.writeValue(value)
+    try await writer.close()
+
+    #expect(sink.data == expected)
+  }
+
   @Test("Emit deterministic stream", arguments: deterministicCases)
   func emitDeterministicStream(_ testCase: DeterministicCase) async throws {
     let sink = DataSink()

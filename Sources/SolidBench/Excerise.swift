@@ -26,6 +26,8 @@ struct ExcerciseNumerics: AsyncParsableCommand {
       ExceriseYAMLDecode.self,
       ExceriseJSONDecode.self,
       ExceriseYAMLFile.self,
+      ExceriseYAMLToJSONFile.self,
+      ExceriseJSONFile.self,
     ]
   )
 }
@@ -604,6 +606,436 @@ private enum YAMLFileBenchmarkError: Error, CustomStringConvertible {
       return "Iterations must be greater than zero, got \(iterations)"
     case .validationMismatch:
       return "Written YAML did not read back to the prepared document values"
+    }
+  }
+}
+
+struct ExceriseYAMLToJSONFile: AsyncParsableCommand {
+
+  static let configuration = CommandConfiguration(
+    commandName: "convert-yaml-json-file",
+    abstract: "Convert a YAML value document stream to JSON",
+    discussion: """
+    Reads a YAML file through YAMLDocumentStreamReader and writes JSON with JSONValueWriter.
+    Single-document YAML is written as that document's value. Multi-document YAML is written
+    as a JSON array containing each document value.
+    """,
+    aliases: ["y2j"]
+  )
+
+  @Argument(help: "Path to the YAML file to read")
+  var inputPath: String
+
+  @Argument(help: "Path to the JSON file to write")
+  var outputPath: String
+
+  @Option(help: "Input source buffer size")
+  var bufferSize: Int = BufferedSource.segmentSize
+
+  @Flag(name: .shortAndLong, help: "Print the duration of the conversion")
+  var printDuration: Bool = false
+
+  func run() async throws {
+    let clock = ContinuousClock()
+    let start = clock.now
+
+    let documents = try await readDocuments()
+    let value: Value
+    if documents.count == 1, let document = documents.first {
+      value = document.value
+    } else {
+      value = .array(documents.map(\.value))
+    }
+
+    let data = try JSONValueWriter.write(value)
+    try data.write(to: URL(fileURLWithPath: outputPath))
+
+    let duration = clock.now - start
+    print("input-bytes=\((try FileManager.default.attributesOfItem(atPath: inputPath)[.size] as? NSNumber)?.intValue ?? 0)")
+    print("output-bytes=\(data.count)")
+    print("documents=\(documents.count)")
+    if printDuration {
+      print("duration=\(duration)")
+    }
+  }
+
+  private func readDocuments() async throws -> [YAMLValueDocument] {
+    let source = try FileSource(path: inputPath)
+    do {
+      let reader = YAMLDocumentStreamReader(source: source, bufferSize: bufferSize)
+      var documents: [YAMLValueDocument] = []
+      while let document = try await reader.next() {
+        documents.append(document)
+      }
+      try await source.close()
+      return documents
+    } catch {
+      try? await source.close()
+      throw error
+    }
+  }
+}
+
+struct ExceriseJSONFile: AsyncParsableCommand {
+
+  enum Mode: String, ExpressibleByArgument {
+    case eventNext = "event-next"
+    case eventBatch = "event-batch"
+    case valueRead = "value-read"
+    case valueWrite = "value-write"
+    case streamWrite = "stream-write"
+    case streamValueWrite = "stream-value-write"
+  }
+
+  enum WriteSink: String, ExpressibleByArgument {
+    case discard
+    case data
+  }
+
+  static let configuration = CommandConfiguration(
+    commandName: "excercise-json-file",
+    abstract: "Excerise JSON file streaming",
+    discussion: """
+    Excerise JSON decoding and encoding of a large file.
+
+    Use event-next to measure one async driver call per returned event,
+    event-batch to measure batched event consumption, and value-read to measure
+    JSONValueReader. Use value-write to parse the file before timing and measure
+    JSONValueWriter output. Use stream-write to parse the file before timing and
+    measure JSONStreamWriter output one event at a time. Use stream-value-write
+    to measure the bulk value stream path.
+    """,
+    aliases: ["ejf"]
+  )
+
+  @Argument(help: "Path to the JSON file to read")
+  var path: String
+
+  @Option(
+    name: .shortAndLong,
+    help: "Mode: event-next, event-batch, value-read, value-write, stream-write, or stream-value-write"
+  )
+  var mode: Mode = .valueRead
+
+  @Option(help: "Input source buffer size")
+  var bufferSize: Int = BufferedSource.segmentSize
+
+  @Option(help: "Event output batch capacity for event-next and event-batch")
+  var outputCapacity: Int = 64
+
+  @Option(help: "Number of write or value-read iterations")
+  var iterations: Int = 1
+
+  @Option(help: "Sink for stream-write mode: discard or data")
+  var writeSink: WriteSink = .discard
+
+  @Option(help: "Write one generated output stream to this path after timing")
+  var outputPath: String?
+
+  @Flag(help: "Validate write output after timing")
+  var validateOutput: Bool = false
+
+  @Flag(name: .shortAndLong, help: "Print the duration of the operation")
+  var printDuration: Bool = false
+
+  func run() async throws {
+    guard iterations > 0 else {
+      throw JSONFileBenchmarkError.invalidIterations(iterations)
+    }
+
+    let clock = ContinuousClock()
+    let result: JSONFileResult
+    let duration: Duration
+
+    switch mode {
+    case .eventNext:
+      let start = clock.now
+      result = try await readEventsWithNext()
+      duration = clock.now - start
+    case .eventBatch:
+      let start = clock.now
+      result = try await readEventsWithBatch()
+      duration = clock.now - start
+    case .valueRead:
+      let data = try Data(contentsOf: URL(fileURLWithPath: path))
+      let start = clock.now
+      result = try readValue(data)
+      duration = clock.now - start
+    case .valueWrite:
+      let prepared = try readPreparedValue()
+      let start = clock.now
+      result = try writeValue(prepared.value, inputBytes: prepared.bytes)
+      duration = clock.now - start
+      if let outputPath {
+        try writeValueOutput(prepared.value, to: outputPath)
+      }
+      if validateOutput {
+        try validateValueWrite(prepared.value)
+      }
+    case .streamWrite:
+      let prepared = try readPreparedValue()
+      let start = clock.now
+      result = try await writeStream(prepared.value, inputBytes: prepared.bytes)
+      duration = clock.now - start
+      if let outputPath {
+        try await writeStreamOutput(prepared.value, to: outputPath)
+      }
+      if validateOutput {
+        try await validateStreamWrite(prepared.value)
+      }
+    case .streamValueWrite:
+      let prepared = try readPreparedValue()
+      let start = clock.now
+      result = try await writeStreamValue(prepared.value, inputBytes: prepared.bytes)
+      duration = clock.now - start
+      if let outputPath {
+        try await writeStreamValueOutput(prepared.value, to: outputPath)
+      }
+      if validateOutput {
+        try await validateStreamValueWrite(prepared.value)
+      }
+    }
+
+    print("mode=\(mode.rawValue)")
+    print("bytes=\(result.bytes)")
+    if result.outputBytes > 0 {
+      print("output-bytes=\(result.outputBytes)")
+    }
+    print("documents=\(result.documents)")
+    print("events=\(result.events)")
+    if result.iterations > 1 {
+      print("iterations=\(result.iterations)")
+    }
+    if printDuration {
+      print("duration=\(duration)")
+    }
+  }
+
+  private func readEventsWithNext() async throws -> JSONFileResult {
+    try await withFileSource { source in
+      let driver = FormatDocumentStreamReaderDriver(
+        reader: JSONDocumentEventReader(),
+        source: source,
+        bufferSize: bufferSize,
+        outputCapacity: outputCapacity
+      )
+
+      var result = JSONFileResult()
+      while let event = try await driver.next() {
+        result.append(event)
+      }
+      result.bytes = source.bytesRead
+      return result
+    }
+  }
+
+  private func readEventsWithBatch() async throws -> JSONFileResult {
+    try await withFileSource { source in
+      let driver = FormatDocumentStreamReaderDriver(
+        reader: JSONDocumentEventReader(),
+        source: source,
+        bufferSize: bufferSize,
+        outputCapacity: outputCapacity
+      )
+
+      var result = JSONFileResult()
+      while true {
+        let status = try await driver.readBatch { events in
+          for event in events {
+            result.append(event)
+          }
+        }
+        if status == .endOfStream {
+          result.bytes = source.bytesRead
+          return result
+        }
+      }
+    }
+  }
+
+  private func readValue(_ data: Data) throws -> JSONFileResult {
+    var result = JSONFileResult(bytes: data.count, iterations: iterations)
+    for _ in 0..<iterations {
+      var reader = JSONValueReader(data: data)
+      blackHole(try reader.read())
+      result.documents += 1
+    }
+    return result
+  }
+
+  private func readPreparedValue() throws -> (value: Value, bytes: Int) {
+    let data = try Data(contentsOf: URL(fileURLWithPath: path))
+    var reader = JSONValueReader(data: data)
+    return (try reader.read(), data.count)
+  }
+
+  private func writeValue(_ value: Value, inputBytes: Int) throws -> JSONFileResult {
+    let writer = JSONValueWriter(options: .default)
+    var result = JSONFileResult(bytes: inputBytes, iterations: iterations)
+
+    for _ in 0..<iterations {
+      let data = try writer.write(value)
+      result.outputBytes += data.count
+      result.documents += 1
+      blackHole(data.count)
+    }
+
+    return result
+  }
+
+  private func writeStream(_ value: Value, inputBytes: Int) async throws -> JSONFileResult {
+    var result = JSONFileResult(bytes: inputBytes, iterations: iterations)
+
+    for _ in 0..<iterations {
+      switch writeSink {
+      case .discard:
+        let sink = CountingSink()
+        let writer = JSONStreamWriter(sink: sink, options: .default)
+        try await EmitEventEncoder().emit(value) { event in
+          try await writer.write(event)
+          result.events += 1
+        }
+        try await writer.close()
+        result.outputBytes += sink.bytesWritten
+      case .data:
+        let sink = DataSink()
+        let writer = JSONStreamWriter(sink: sink, options: .default)
+        try await EmitEventEncoder().emit(value) { event in
+          try await writer.write(event)
+          result.events += 1
+        }
+        try await writer.close()
+        result.outputBytes += sink.data.count
+        blackHole(sink.data.count)
+      }
+      result.documents += 1
+    }
+
+    return result
+  }
+
+  private func writeStreamValue(_ value: Value, inputBytes: Int) async throws -> JSONFileResult {
+    var result = JSONFileResult(bytes: inputBytes, iterations: iterations)
+
+    for _ in 0..<iterations {
+      switch writeSink {
+      case .discard:
+        let sink = CountingSink()
+        let writer = JSONStreamWriter(sink: sink, options: .default)
+        try await writer.writeValue(value)
+        try await writer.close()
+        result.outputBytes += sink.bytesWritten
+      case .data:
+        let sink = DataSink()
+        let writer = JSONStreamWriter(sink: sink, options: .default)
+        try await writer.writeValue(value)
+        try await writer.close()
+        result.outputBytes += sink.data.count
+        blackHole(sink.data.count)
+      }
+      result.documents += 1
+    }
+
+    return result
+  }
+
+  private func validateValueWrite(_ value: Value) throws {
+    let data = try JSONValueWriter.write(value)
+    var reader = JSONValueReader(data: data)
+    guard try reader.read() == value else {
+      throw JSONFileBenchmarkError.validationMismatch
+    }
+  }
+
+  private func validateStreamWrite(_ value: Value) async throws {
+    let sink = DataSink()
+    let writer = JSONStreamWriter(sink: sink, options: .default)
+    try await EmitEventEncoder().emit(value) { event in
+      try await writer.write(event)
+    }
+    try await writer.close()
+
+    var reader = JSONValueReader(data: sink.data)
+    guard try reader.read() == value else {
+      throw JSONFileBenchmarkError.validationMismatch
+    }
+  }
+
+  private func validateStreamValueWrite(_ value: Value) async throws {
+    let sink = DataSink()
+    let writer = JSONStreamWriter(sink: sink, options: .default)
+    try await writer.writeValue(value)
+    try await writer.close()
+
+    var reader = JSONValueReader(data: sink.data)
+    guard try reader.read() == value else {
+      throw JSONFileBenchmarkError.validationMismatch
+    }
+  }
+
+  private func writeValueOutput(_ value: Value, to path: String) throws {
+    let data = try JSONValueWriter.write(value)
+    try data.write(to: URL(fileURLWithPath: path))
+  }
+
+  private func writeStreamOutput(_ value: Value, to path: String) async throws {
+    let sink = DataSink()
+    let writer = JSONStreamWriter(sink: sink, options: .default)
+    try await EmitEventEncoder().emit(value) { event in
+      try await writer.write(event)
+    }
+    try await writer.close()
+    try sink.data.write(to: URL(fileURLWithPath: path))
+  }
+
+  private func writeStreamValueOutput(_ value: Value, to path: String) async throws {
+    let sink = DataSink()
+    let writer = JSONStreamWriter(sink: sink, options: .default)
+    try await writer.writeValue(value)
+    try await writer.close()
+    try sink.data.write(to: URL(fileURLWithPath: path))
+  }
+
+  private func withFileSource<T>(
+    _ body: (FileSource) async throws -> T
+  ) async throws -> T {
+    let source = try FileSource(path: path)
+    do {
+      let result = try await body(source)
+      try await source.close()
+      return result
+    } catch {
+      try? await source.close()
+      throw error
+    }
+  }
+}
+
+private struct JSONFileResult {
+  var bytes = 0
+  var outputBytes = 0
+  var documents = 0
+  var events = 0
+  var iterations = 1
+
+  mutating func append(_ event: ParseDocumentEvent) {
+    events += 1
+    if case .startDocument = event {
+      documents += 1
+    }
+  }
+}
+
+private enum JSONFileBenchmarkError: Error, CustomStringConvertible {
+  case invalidIterations(Int)
+  case validationMismatch
+
+  var description: String {
+    switch self {
+    case .invalidIterations(let iterations):
+      return "Iterations must be greater than zero, got \(iterations)"
+    case .validationMismatch:
+      return "Written JSON did not read back to the prepared value"
     }
   }
 }

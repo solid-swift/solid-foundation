@@ -63,6 +63,8 @@ public struct ParseEventDecoder {
   }
 
   private let resolver: any ScalarResolver
+  private let metadataResolver: (any ScalarMetadataResolver)?
+  private let regionResolver: (any RegionScalarResolver)?
   private var containers = ContainerStack()
   private var stack: [Container] = []
   private var pendingTags: [Value] = []
@@ -72,6 +74,8 @@ public struct ParseEventDecoder {
 
   public init(resolver: any ScalarResolver) {
     self.resolver = resolver
+    self.metadataResolver = resolver as? any ScalarMetadataResolver
+    self.regionResolver = resolver as? any RegionScalarResolver
   }
 
   /// Convenience initializer for consuming pre-materialized events.
@@ -80,6 +84,8 @@ public struct ParseEventDecoder {
   /// ``ScalarRef/materialized(_:)``), no resolver is needed.
   public init() {
     self.resolver = _PassthroughScalarResolver()
+    self.metadataResolver = nil
+    self.regionResolver = nil
   }
 
   public var isComplete: Bool {
@@ -92,7 +98,11 @@ public struct ParseEventDecoder {
       break
 
     case .tag(let ref):
-      let tagValue = try ref.materialize(using: resolver)
+      let tagValue = try ref.materialize(
+        using: resolver,
+        metadataResolver: metadataResolver,
+        regionResolver: regionResolver
+      )
       pendingTags.append(tagValue)
 
     case .anchor(let name):
@@ -111,7 +121,11 @@ public struct ParseEventDecoder {
       try appendResolvedValue(value)
 
     case .scalar(let ref):
-      let value = try ref.materialize(using: resolver)
+      let value = try ref.materialize(
+        using: resolver,
+        metadataResolver: metadataResolver,
+        regionResolver: regionResolver
+      )
       try appendValue(value)
 
     case .beginArray(let count):

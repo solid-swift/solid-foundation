@@ -29,6 +29,8 @@ public struct JSONEventReader: ~Copyable, FormatEventReader, Sendable {
     var mark: ParseBuffer.Position
     /// Whether the previous byte was an unprocessed `\`.
     var escaping: Bool = false
+    /// Whether any JSON escape sequence was observed while scanning this string.
+    var containsEscapes: Bool = false
   }
 
   private enum NumberPhase: Sendable {
@@ -313,38 +315,72 @@ public struct JSONEventReader: ~Copyable, FormatEventReader, Sendable {
   /// and closing quotes (with escape sequences still present) are captured as a
   /// zero-copy ``ParseBuffer/Region`` for deferred unescaping by ``JSONScalarResolver``.
   private mutating func continueString(_ state: inout StringScanState) throws -> ParseEvent? {
-    while let byte = buffer.peekByte() {
+    while true {
+      let action = buffer.withContiguousReadableBytes { bytes -> StringScanAction in
+        guard !bytes.isEmpty else {
+          return .needMoreInput
+        }
 
-      if state.escaping {
-        _ = try readByte()
+        if state.escaping {
+          return .consumeEscaped
+        }
+
+        var index = bytes.startIndex
+        while index < bytes.endIndex {
+          switch bytes[index] {
+          case JSONStructure.quotationMark:
+            return .finish(consumed: index - bytes.startIndex)
+          case JSONStructure.escape:
+            return .escape(consumed: index - bytes.startIndex + 1)
+          case 0x00...0x1F:
+            return .invalidString
+          default:
+            bytes.formIndex(after: &index)
+          }
+        }
+        return .consume(consumed: bytes.count)
+      }
+
+      switch action {
+      case .consumeEscaped:
+        try buffer.advanceInCurrentSegment(count: 1)
         state.escaping = false
         continue
-      }
 
-      switch byte {
-      case JSONStructure.quotationMark:
+      case .consume(let consumed):
+        try buffer.advanceInCurrentSegment(count: consumed)
+        continue
+
+      case .escape(let consumed):
+        try buffer.advanceInCurrentSegment(count: consumed)
+        state.escaping = true
+        state.containsEscapes = true
+        continue
+
+      case .finish(let consumed):
+        if consumed > 0 {
+          try buffer.advanceInCurrentSegment(count: consumed)
+        }
         // End of string — slice from markOffset to offset (exclusive)
         let region = buffer.region(from: state.mark, to: buffer.mark())
-        _ = try readByte() // consume closing "
-        let ref = ScalarRef(kind: .string, region: region)
+        try buffer.advanceInCurrentSegment(count: 1) // consume closing "
+        let ref = ScalarRef(
+          kind: .string,
+          region: region,
+          metadata: .init(stringContainsEscapes: state.containsEscapes)
+        )
         return try handleScalar(ref, isString: true)
 
-      case JSONStructure.escape:
-        _ = try readByte()
-        state.escaping = true
-
-      case 0x00...0x1F:
+      case .invalidString:
         throw JSON.Error.invalidString
 
-      default:
-        _ = try readByte()
+      case .needMoreInput:
+        if finalReceived {
+          throw JSON.Error.unexpectedEndOfStream
+        }
+        return nil
       }
     }
-
-    if finalReceived {
-      throw JSON.Error.unexpectedEndOfStream
-    }
-    return nil
   }
 
   // MARK: - Number scanning (zero-copy)
@@ -354,24 +390,60 @@ public struct JSONEventReader: ~Copyable, FormatEventReader, Sendable {
   /// The raw number text is captured as a zero-copy slice for deferred
   /// parsing by ``JSONScalarResolver``.
   private mutating func continueNumber(_ state: inout NumberScanState) throws -> ParseEvent? {
-    while let byte = buffer.peekByte() {
-
-      switch numberAction(current: state.phase, byte: byte) {
-      case .consume(let newPhase):
-        _ = try readByte()
-        state.phase = newPhase
-        if !state.isInteger {
-          // already non-integer, no need to check
-        } else {
-          switch newPhase {
-          case .fracStart, .fracDigits, .expStart, .expSign, .expDigits:
-            state.isInteger = false
-          default:
-            break
-          }
+    while true {
+      let action = buffer.withContiguousReadableBytes { bytes -> NumberScanAction in
+        guard !bytes.isEmpty else {
+          return .needMoreInput
         }
 
-      case .stop:
+        var phase = state.phase
+        var isInteger = state.isInteger
+        var index = bytes.startIndex
+        while index < bytes.endIndex {
+          switch Self.numberAction(current: phase, byte: bytes[index]) {
+          case .consume(let newPhase):
+            phase = newPhase
+            if isInteger {
+              switch newPhase {
+              case .fracStart, .fracDigits, .expStart, .expSign, .expDigits:
+                isInteger = false
+              default:
+                break
+              }
+            }
+            bytes.formIndex(after: &index)
+          case .stop:
+            return .stop(
+              consumed: index - bytes.startIndex,
+              phase: phase,
+              isInteger: isInteger
+            )
+          case .invalid:
+            return .invalid
+          }
+        }
+        return .consume(
+          consumed: bytes.count,
+          phase: phase,
+          isInteger: isInteger
+        )
+      }
+
+      switch action {
+      case .consume(let consumed, let phase, let isInteger):
+        if consumed > 0 {
+          try buffer.advanceInCurrentSegment(count: consumed)
+        }
+        state.phase = phase
+        state.isInteger = isInteger
+        continue
+
+      case .stop(let consumed, let phase, let isInteger):
+        if consumed > 0 {
+          try buffer.advanceInCurrentSegment(count: consumed)
+        }
+        state.phase = phase
+        state.isInteger = isInteger
         guard state.isAccepting else {
           throw JSON.Error.invalidNumber
         }
@@ -379,16 +451,17 @@ public struct JSONEventReader: ~Copyable, FormatEventReader, Sendable {
 
       case .invalid:
         throw JSON.Error.invalidNumber
-      }
-    }
 
-    if finalReceived {
-      guard state.isAccepting else {
-        throw JSON.Error.unexpectedEndOfStream
+      case .needMoreInput:
+        if finalReceived {
+          guard state.isAccepting else {
+            throw JSON.Error.unexpectedEndOfStream
+          }
+          return try finalizeNumber(state)
+        }
+        return nil
       }
-      return try finalizeNumber(state)
     }
-    return nil
   }
 
   private mutating func finalizeNumber(_ state: NumberScanState) throws -> ParseEvent {
@@ -480,15 +553,30 @@ public struct JSONEventReader: ~Copyable, FormatEventReader, Sendable {
   ///
   /// Only called when `tokenState == .idle`, so no mark positions are active.
   private mutating func skipWhitespace() {
-    while let byte = buffer.peekByte() {
-      switch byte {
-      case 0x09, 0x0A, 0x0D, 0x20:
-        _ = try? readByte()
-      default:
+    var consumedWhitespace = false
+    while true {
+      let consumed = buffer.withContiguousReadableBytes { bytes in
+        var index = bytes.startIndex
+        while index < bytes.endIndex {
+          switch bytes[index] {
+          case 0x09, 0x0A, 0x0D, 0x20:
+            bytes.formIndex(after: &index)
+          default:
+            return index - bytes.startIndex
+          }
+        }
+        return bytes.count
+      }
+
+      guard consumed > 0 else {
+        if consumedWhitespace {
+          buffer.compact()
+        }
         return
       }
+      _ = try? buffer.advanceInCurrentSegment(count: consumed)
+      consumedWhitespace = true
     }
-    buffer.compact()
   }
 
   private mutating func readByte() throws -> UInt8 {
@@ -511,7 +599,23 @@ public struct JSONEventReader: ~Copyable, FormatEventReader, Sendable {
     case invalid
   }
 
-  private func numberAction(current: NumberPhase, byte: UInt8) -> NumberAction {
+  private enum StringScanAction {
+    case consumeEscaped
+    case consume(consumed: Int)
+    case escape(consumed: Int)
+    case finish(consumed: Int)
+    case invalidString
+    case needMoreInput
+  }
+
+  private enum NumberScanAction {
+    case consume(consumed: Int, phase: NumberPhase, isInteger: Bool)
+    case stop(consumed: Int, phase: NumberPhase, isInteger: Bool)
+    case invalid
+    case needMoreInput
+  }
+
+  private static func numberAction(current: NumberPhase, byte: UInt8) -> NumberAction {
     switch current {
     case .start:
       if byte == UInt8(ascii: "-") { return .consume(.minus) }

@@ -77,6 +77,15 @@ public final class CBORStreamWriter: FormatStreamWriter {
     try await adapter.write(event)
   }
 
+  public func writeEvents<Cursor: EmitEventCursor>(_ cursor: inout Cursor) async throws {
+    try await adapter.write(events: &cursor)
+  }
+
+  public func writeValue(_ value: Value) async throws {
+    var cursor = ValueEmitEventCursor(value)
+    try await writeEvents(&cursor)
+  }
+
   public func finish() async throws {
     try await adapter.finish()
   }

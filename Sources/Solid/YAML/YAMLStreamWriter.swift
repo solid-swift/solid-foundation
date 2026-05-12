@@ -51,10 +51,13 @@ public final class YAMLStreamWriter: FormatStreamWriter {
     try await adapter.write(event)
   }
 
-  func writeEvents(
-    _ produceEvents: (_ emit: (EmitEvent) async throws -> Void) async throws -> Void
-  ) async throws {
-    try await adapter.write(produceEvents)
+  public func writeEvents<Cursor: EmitEventCursor>(_ cursor: inout Cursor) async throws {
+    try await adapter.write(events: &cursor)
+  }
+
+  public func writeValue(_ value: Value) async throws {
+    var cursor = ValueEmitEventCursor(value)
+    try await writeEvents(&cursor)
   }
 
   public func finish() async throws {

@@ -42,6 +42,23 @@ struct JSONStreamWriterTests {
     #expect(output == expected)
   }
 
+  @Test("Stream writer writes a full value through bulk path")
+  func streamWriterWritesValueThroughBulkPath() async throws {
+    let value: Value = [
+      "a": [1, "two"],
+      "b": false,
+    ]
+
+    let expected = try JSONValueWriter.write(value)
+    let sink = DataSink()
+    let writer = JSONStreamWriter(sink: sink, bufferSize: 8)
+
+    try await writer.writeValue(value)
+    try await writer.close()
+
+    #expect(sink.data == expected)
+  }
+
   @Test("JSON format metadata reports text and no native bytes")
   func formatMetadataReportsTextAndNoNativeBytes() {
     #expect(JSON.format.kind == .text)

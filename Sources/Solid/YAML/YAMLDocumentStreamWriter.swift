@@ -61,10 +61,7 @@ public final class YAMLDocumentStreamWriter: @unchecked Sendable {
         allowDocumentMarkerPrefix: !needsStart
       )
     )
-    let encoder = EmitEventEncoder()
-    try await writer.writeEvents { emit in
-      try await encoder.emit(document.value, to: emit)
-    }
+    try await writer.writeValue(document.value)
     try await writer.finish()
     atLineStart = false
 

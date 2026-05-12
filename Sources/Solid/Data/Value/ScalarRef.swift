@@ -33,20 +33,43 @@ public struct ScalarRef: Sendable {
     case number
   }
 
+  /// Optional parser-provided facts about the scalar bytes.
+  ///
+  /// Resolvers should treat `nil` fields as unknown and fall back to validating or
+  /// scanning the raw bytes normally.
+  public struct Metadata: Sendable, Equatable {
+    /// Whether a string scalar is known to contain format-level escape sequences.
+    public var stringContainsEscapes: Bool?
+
+    public init(stringContainsEscapes: Bool? = nil) {
+      self.stringContainsEscapes = stringContainsEscapes
+    }
+
+    public static let none = Metadata()
+  }
+
   /// The kind of scalar, available without materialization.
   public let kind: Kind
 
+  private let metadata: Metadata
   private let storage: Storage
 
   /// Create a scalar reference backed by a buffer region.
   public init(kind: Kind, region: ParseBuffer.Region) {
+    self.init(kind: kind, region: region, metadata: .none)
+  }
+
+  /// Create a scalar reference backed by a buffer region and parser metadata.
+  public init(kind: Kind, region: ParseBuffer.Region, metadata: Metadata) {
     self.kind = kind
+    self.metadata = metadata
     self.storage = .buffered(region)
   }
 
   /// Create a scalar reference with a pre-materialized value.
   public init(kind: Kind, value: Value) {
     self.kind = kind
+    self.metadata = .none
     self.storage = .materialized(value)
   }
 
@@ -106,12 +129,57 @@ public struct ScalarRef: Sendable {
   /// callers that need repeated materialization should cache the returned value.
   ///
   /// For pre-materialized storage, returns the value directly.
-  public func materialize(using resolver: some ScalarResolver) throws -> Value {
+  public func materialize(using resolver: some ScalarMetadataResolver) throws -> Value {
     switch storage {
     case .materialized(let value):
       return value
     case .buffered(let region):
-      if let regionResolver = resolver as? any RegionScalarResolver {
+      return try resolver.resolve(region, kind: kind, metadata: metadata)
+    }
+  }
+
+  /// Materialize this scalar into a `Value`.
+  ///
+  /// For buffered storage, the provided resolver performs format-specific decoding
+  /// (string unescaping, number parsing, etc.). Buffered storage does not cache;
+  /// callers that need repeated materialization should cache the returned value.
+  ///
+  /// For pre-materialized storage, returns the value directly.
+  public func materialize(using resolver: some RegionScalarResolver) throws -> Value {
+    switch storage {
+    case .materialized(let value):
+      return value
+    case .buffered(let region):
+      return try resolver.resolve(region, kind: kind)
+    }
+  }
+
+  /// Materialize this scalar into a `Value`.
+  ///
+  /// This fallback accepts resolvers without retained-region support. Region-aware
+  /// hot paths should use the ``RegionScalarResolver`` overload or the internal
+  /// cached-region-resolver entry point below.
+  public func materialize(using resolver: some ScalarResolver) throws -> Value {
+    try materialize(
+      using: resolver,
+      metadataResolver: resolver as? any ScalarMetadataResolver,
+      regionResolver: resolver as? any RegionScalarResolver
+    )
+  }
+
+  func materialize(
+    using resolver: any ScalarResolver,
+    metadataResolver: (any ScalarMetadataResolver)?,
+    regionResolver: (any RegionScalarResolver)?
+  ) throws -> Value {
+    switch storage {
+    case .materialized(let value):
+      return value
+    case .buffered(let region):
+      if let metadataResolver {
+        return try metadataResolver.resolve(region, kind: kind, metadata: metadata)
+      }
+      if let regionResolver {
         return try regionResolver.resolve(region, kind: kind)
       }
       return try resolver.resolve(region.bytes, kind: kind)
@@ -131,6 +199,16 @@ public protocol ScalarResolver: Sendable {
 /// from a retained ``ParseBuffer/Region``.
 public protocol RegionScalarResolver: ScalarResolver {
   func resolve(_ region: ParseBuffer.Region, kind: ScalarRef.Kind) throws -> Value
+}
+
+/// Optional resolver refinement for implementations that can use parser metadata
+/// to avoid repeated validation or scans.
+public protocol ScalarMetadataResolver: RegionScalarResolver {
+  func resolve(
+    _ region: ParseBuffer.Region,
+    kind: ScalarRef.Kind,
+    metadata: ScalarRef.Metadata
+  ) throws -> Value
 }
 
 // MARK: - Internal storage

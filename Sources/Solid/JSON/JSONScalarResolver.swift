@@ -12,7 +12,7 @@ import SolidData
 ///
 /// Handles deferred string unescaping (including surrogate pair reassembly)
 /// and number parsing (fast-path integer, fallback to TextNumber/BigDecimal).
-public struct JSONScalarResolver: RegionScalarResolver {
+public struct JSONScalarResolver: ScalarMetadataResolver {
 
   public init() {}
 
@@ -46,6 +46,26 @@ public struct JSONScalarResolver: RegionScalarResolver {
       return try resolveNumber(region)
     default:
       return try resolve(region.bytes, kind: kind)
+    }
+  }
+
+  public func resolve(
+    _ region: ParseBuffer.Region,
+    kind: ScalarRef.Kind,
+    metadata: ScalarRef.Metadata
+  ) throws -> Value {
+    switch kind {
+    case .string:
+      switch metadata.stringContainsEscapes {
+      case .some(false):
+        return .string(try decodeUTF8(region))
+      case .some(true):
+        return .string(try resolveString(region))
+      case .none:
+        return try resolve(region, kind: kind)
+      }
+    default:
+      return try resolve(region, kind: kind)
     }
   }
 

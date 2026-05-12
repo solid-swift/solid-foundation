@@ -252,6 +252,40 @@ public struct ParseBuffer: ~Copyable, Sendable {
     return byte
   }
 
+  /// Access the currently readable bytes in the active segment without copying.
+  ///
+  /// The pointer passed to `body` is valid only for the duration of the call.
+  /// Use ``advanceInCurrentSegment(count:)`` after the call returns to consume
+  /// bytes inspected by the caller.
+  public mutating func withContiguousReadableBytes<R>(
+    _ body: (UnsafeBufferPointer<UInt8>) throws -> R
+  ) rethrows -> R {
+    guard let segment = ensureCurrentSegment(), readOffset < segment.count else {
+      return try body(UnsafeBufferPointer(start: nil, count: 0))
+    }
+    return try segment.withUnsafeBytes { rawBuffer in
+      let bytes = rawBuffer.bindMemory(to: UInt8.self)
+      guard let baseAddress = bytes.baseAddress else {
+        return try body(UnsafeBufferPointer(start: nil, count: 0))
+      }
+      return try body(
+        UnsafeBufferPointer(
+          start: baseAddress.advanced(by: readOffset),
+          count: segment.count - readOffset
+        )
+      )
+    }
+  }
+
+  /// Consume bytes that are known to be available in the current segment.
+  public mutating func advanceInCurrentSegment(count: Int) throws {
+    guard count > 0 else { return }
+    guard let segment = ensureCurrentSegment(), readOffset + count <= segment.count else {
+      throw ParseBufferError.unexpectedEnd
+    }
+    readOffset += count
+  }
+
   /// Read and consume `count` bytes.
   public mutating func readBytes(count: Int) throws -> Data {
     guard count > 0 else { return Data() }

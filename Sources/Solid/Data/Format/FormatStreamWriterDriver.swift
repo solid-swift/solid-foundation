@@ -34,6 +34,7 @@ public final class FormatStreamWriterDriver<Encoder: FormatStreamEncoder>: Forma
     self.sink = sink
     self.bufferSize = bufferSize
     self.buffer = [UInt8](repeating: 0, count: bufferSize)
+    self.outputData.reserveCapacity(bufferSize)
   }
 
   public var format: Format { streamFormat }
@@ -46,6 +47,24 @@ public final class FormatStreamWriterDriver<Encoder: FormatStreamEncoder>: Forma
 
     do {
       try await encodeAndWrite(event)
+    } catch {
+      finished = true
+      throw error
+    }
+  }
+
+  public func write<Cursor: EmitEventCursor>(events cursor: inout Cursor) async throws {
+    try beginOperation()
+    defer { endOperation() }
+
+    guard !finished else { throw IOError.streamClosed }
+
+    do {
+      outputData.removeAll(keepingCapacity: true)
+      while let event = try cursor.next() {
+        try await encodeIntoOutputData(event)
+      }
+      try await flushOutputData()
     } catch {
       finished = true
       throw error
@@ -71,10 +90,15 @@ public final class FormatStreamWriterDriver<Encoder: FormatStreamEncoder>: Forma
   }
 
   private func encodeAndWrite(_ event: EmitEvent) async throws {
+    outputData.removeAll(keepingCapacity: true)
+    try await encodeIntoOutputData(event)
+    try await flushOutputData()
+  }
+
+  private func encodeIntoOutputData(_ event: EmitEvent) async throws {
     var done = false
     while !done {
       var status: FormatStreamEncodeStatus = .producedOutput
-      outputData.removeAll(keepingCapacity: true)
 
       try buffer.withUnsafeMutableBufferPointer { ptr in
         var out = OutputSpan<UInt8>(buffer: ptr, initializedCount: 0)
@@ -85,8 +109,8 @@ public final class FormatStreamWriterDriver<Encoder: FormatStreamEncoder>: Forma
         }
       }
 
-      if !outputData.isEmpty {
-        try await sink.write(data: outputData)
+      if outputData.count >= bufferSize {
+        try await flushOutputData()
       }
 
       switch status {
@@ -99,6 +123,12 @@ public final class FormatStreamWriterDriver<Encoder: FormatStreamEncoder>: Forma
         done = true
       }
     }
+  }
+
+  private func flushOutputData() async throws {
+    guard !outputData.isEmpty else { return }
+    try await sink.write(data: outputData)
+    outputData.removeAll(keepingCapacity: true)
   }
 
   public func finish() async throws {

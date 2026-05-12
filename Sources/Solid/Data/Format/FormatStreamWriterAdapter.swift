@@ -59,6 +59,15 @@ public final class FormatStreamWriterAdapter<Encoder: FormatStreamEncoder>: Form
     }
   }
 
+  public func write<Cursor: EmitEventCursor>(events cursor: inout Cursor) async throws {
+    guard !finished else { throw alreadyFinishedError() }
+    do {
+      try await driver.write(events: &cursor)
+    } catch {
+      throw mapError(error)
+    }
+  }
+
   public func finish() async throws {
     guard !finished else { throw alreadyFinishedError() }
     do {

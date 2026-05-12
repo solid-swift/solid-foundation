@@ -268,6 +268,35 @@ struct FormatStreamDriverConcurrencyTests {
     try await driver.close()
   }
 
+  @Test("Writer driver rejects overlapping bulk cursor writes", .timeLimit(.minutes(1)))
+  func writerDriverRejectsOverlappingBulkCursorWrites() async throws {
+    let sink = BlockingSink()
+    let driver = FormatStreamWriterDriver(
+      encoder: TestStreamEncoder(),
+      sink: sink,
+      bufferSize: 8
+    )
+
+    async let firstWrite: Void = {
+      var cursor = BufferedEmitEventCursor([
+        .scalar(.string("first")),
+        .scalar(.string("write")),
+      ])
+      try await driver.write(events: &cursor)
+    }()
+    await sink.waitUntilWriteStarted()
+
+    var secondCursor = BufferedEmitEventCursor([
+      .scalar(.string("second")),
+    ])
+    await #expect(throws: FormatStreamDriverError.operationInProgress) {
+      try await driver.write(events: &secondCursor)
+    }
+
+    await sink.releaseWrites()
+    try await firstWrite
+  }
+
   @Test("Writer driver rejects overlapping close during finish", .timeLimit(.minutes(1)))
   func writerDriverRejectsOverlappingCloseDuringFinish() async throws {
     let sink = BlockingSink()

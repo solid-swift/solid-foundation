@@ -284,6 +284,23 @@ struct YAMLTests {
     #expect(value == testCase.value, "\(testCase.id): streamed emit mismatch")
   }
 
+  @Test("Stream writer writes a full value through bulk path")
+  func yamlStreamWriterWritesValueThroughBulkPath() async throws {
+    let value: Value = [
+      "a": [1, "two"],
+      "b": false,
+    ]
+
+    let expected = try YAMLValueWriter.write(value)
+    let sink = DataSink()
+    let writer = YAMLStreamWriter(sink: sink, bufferSize: 8)
+
+    try await writer.writeValue(value)
+    try await writer.close()
+
+    #expect(sink.data == expected)
+  }
+
   @Test("Parse documents", .serialized, arguments: documentCases)
   func parseDocuments(_ testCase: DocumentCase) throws {
     let reader = try YAMLDocumentReader(data: Data(testCase.yaml.utf8))

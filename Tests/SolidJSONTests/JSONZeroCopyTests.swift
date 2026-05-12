@@ -130,6 +130,24 @@ struct JSONZeroCopyTests {
     #expect(materialized == .string("hello\nworld"))
   }
 
+  @Test("JSON string scalars carry escape metadata")
+  func jsonStringScalarsCarryEscapeMetadata() throws {
+    let events = try parseEvents(#"["plain","line\n","slash\\"]"#)
+    let resolver = MetadataRecordingJSONResolver()
+    var decoder = ParseEventDecoder(resolver: resolver)
+
+    for event in events {
+      try decoder.append(event)
+    }
+
+    #expect(try decoder.finish() == .array([
+      .string("plain"),
+      .string("line\n"),
+      .string("slash\\"),
+    ]))
+    #expect(resolver.stringEscapeHints == [false, true, true])
+  }
+
   @Test("JSON string without escapes materializes directly")
   func jsonStringWithoutEscapesMaterializes() throws {
     let region = ParseBuffer.Region(data: Data("hello".utf8))
@@ -337,4 +355,30 @@ private func parseChunked(chunks: [Data]) throws -> Value {
   }
 
   return try decoder.finish()
+}
+
+
+private final class MetadataRecordingJSONResolver: ScalarMetadataResolver, @unchecked Sendable {
+
+  var stringEscapeHints: [Bool?] = []
+  private let resolver = JSONScalarResolver()
+
+  func resolve(_ data: Data, kind: ScalarRef.Kind) throws -> Value {
+    try resolver.resolve(data, kind: kind)
+  }
+
+  func resolve(_ region: ParseBuffer.Region, kind: ScalarRef.Kind) throws -> Value {
+    try resolver.resolve(region, kind: kind)
+  }
+
+  func resolve(
+    _ region: ParseBuffer.Region,
+    kind: ScalarRef.Kind,
+    metadata: ScalarRef.Metadata
+  ) throws -> Value {
+    if kind == .string {
+      stringEscapeHints.append(metadata.stringContainsEscapes)
+    }
+    return try resolver.resolve(region, kind: kind, metadata: metadata)
+  }
 }
