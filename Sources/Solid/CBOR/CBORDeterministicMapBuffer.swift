@@ -145,11 +145,3 @@ struct MapBuffer {
     }
   }
 }
-
-private extension Optional {
-  mutating func take() -> Wrapped? {
-    let value = self
-    self = nil
-    return value
-  }
-}
