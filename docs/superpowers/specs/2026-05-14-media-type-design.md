@@ -63,10 +63,14 @@ name present on both sides has the same value.
 
 ## MediaType Extension Sets
 
-`MediaType` should ship with curated static constants for common API, document, media, problem, and
-security formats. These should be implemented as focused extensions in separate files, not as one
-large registry type. The goal is ergonomic coverage for real application code, not a full mirror of
-the IANA media type registry.
+`MediaType` should ship with curated static constants for common API, document, archive, media,
+font, model, problem, and security formats. These should be implemented as focused extensions in
+separate files, not as one large registry type. The goal is ergonomic coverage for real application
+code, not a full mirror of the IANA media type registry.
+
+Include a constant when the type is a broad standard, common web platform type, common API
+interchange type, common security material type, or very common de-facto file upload/download type.
+Avoid narrow product-specific vendor types unless they are widely used as interchange formats.
 
 Use short names for unambiguous everyday types and longer names when the shorter form would be
 unclear:
@@ -78,6 +82,9 @@ MediaType.pkcs12
 MediaType.pemCertificateChain
 ```
 
+Common file-extension aliases are acceptable when they make call sites clearer, even if two aliases
+serialize to the same registered media type.
+
 The initial extension set should include:
 
 ```swift
@@ -88,12 +95,29 @@ public static let cborSequence: MediaType
 public static let xml: MediaType
 public static let yaml: MediaType
 public static let ndjson: MediaType
+public static let jsonSequence: MediaType
 public static let jsonPatch: MediaType
 public static let mergePatchJSON: MediaType
+public static let eventStream: MediaType
 public static let formUrlEncoded: MediaType
 public static let multipartFormData: MediaType
+public static let multipartMixed: MediaType
+public static let multipartAlternative: MediaType
+public static let multipartRelated: MediaType
 public static let graphql: MediaType
 public static let graphqlResponseJSON: MediaType
+public static let activityJSON: MediaType
+public static let halJSON: MediaType
+public static let jsonAPI: MediaType
+public static let jsonLD: MediaType
+public static let webAppManifest: MediaType
+public static let atom: MediaType
+public static let rss: MediaType
+public static let messagePack: MediaType
+public static let protobuf: MediaType
+public static let avro: MediaType
+public static let parquet: MediaType
+public static let wasm: MediaType
 public static let senmlCBOR: MediaType
 public static let sensmlCBOR: MediaType
 public static let senmlEtchCBOR: MediaType
@@ -110,26 +134,89 @@ public static let css: MediaType
 public static let csv: MediaType
 public static let markdown: MediaType
 public static let javascript: MediaType
+public static let calendar: MediaType
+public static let vcard: MediaType
+public static let rtf: MediaType
 public static let pdf: MediaType
+public static let epub: MediaType
+public static let postscript: MediaType
+public static let doc: MediaType
+public static let docx: MediaType
+public static let xls: MediaType
+public static let xlsx: MediaType
+public static let ppt: MediaType
+public static let pptx: MediaType
+public static let odt: MediaType
+public static let ods: MediaType
+public static let odp: MediaType
+
+// Archives and compression
 public static let zip: MediaType
 public static let gzip: MediaType
+public static let tar: MediaType
+public static let brotli: MediaType
+public static let zstandard: MediaType
+public static let sevenZip: MediaType
+public static let rar: MediaType
 public static let octetStream: MediaType
 
 // Images
+public static let apng: MediaType
 public static let png: MediaType
 public static let jpeg: MediaType
 public static let gif: MediaType
+public static let bmp: MediaType
 public static let webp: MediaType
 public static let avif: MediaType
+public static let heic: MediaType
+public static let heif: MediaType
+public static let jpeg2000: MediaType
+public static let jpegXL: MediaType
 public static let svg: MediaType
 public static let tiff: MediaType
 public static let icon: MediaType
+
+// Audio
+public static let aac: MediaType
+public static let flac: MediaType
+public static let midi: MediaType
+public static let mp3: MediaType
+public static let mp4Audio: MediaType
+public static let mpegAudio: MediaType
+public static let oggAudio: MediaType
+public static let opus: MediaType
+public static let wav: MediaType
+public static let webmAudio: MediaType
+public static let audio3GPP: MediaType
+public static let audio3GPP2: MediaType
 
 // Video
 public static let mp4: MediaType
 public static let mpegVideo: MediaType
 public static let quickTime: MediaType
 public static let webmVideo: MediaType
+public static let avi: MediaType
+public static let video3GPP: MediaType
+public static let video3GPP2: MediaType
+public static let av1: MediaType
+public static let h264: MediaType
+public static let h265: MediaType
+public static let matroska: MediaType
+public static let mp2t: MediaType
+public static let oggVideo: MediaType
+
+// Fonts
+public static let collectionFont: MediaType
+public static let otf: MediaType
+public static let ttf: MediaType
+public static let woff: MediaType
+public static let woff2: MediaType
+
+// Models and 3D assets
+public static let gltfJSON: MediaType
+public static let gltfBinary: MediaType
+public static let stl: MediaType
+public static let obj: MediaType
 
 // Security material: certificates, keys, signatures, and bundles
 public static let jose: MediaType
@@ -164,7 +251,11 @@ public static let x509UserCertificate: MediaType
 public static let any: MediaType
 public static let anyText: MediaType
 public static let anyImage: MediaType
+public static let anyAudio: MediaType
 public static let anyVideo: MediaType
+public static let anyFont: MediaType
+public static let anyModel: MediaType
+public static let anyMultipart: MediaType
 public static let anyJSON: MediaType
 public static let anyXML: MediaType
 public static let anyCBOR: MediaType
