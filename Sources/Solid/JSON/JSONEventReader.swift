@@ -433,7 +433,7 @@ public struct JSONEventReader: ~Copyable, FormatEventReader, Sendable {
             guard isLowSurrogate(lowUnit) else {
               throw JSON.Error.invalidEscapeSequence
             }
-          } else if isLowSurrogate(codeUnit) || UnicodeScalar(codeUnit) == nil {
+          } else if isLowSurrogate(codeUnit) {
             throw JSON.Error.invalidEscapeSequence
           }
 

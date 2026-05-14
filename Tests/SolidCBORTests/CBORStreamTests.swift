@@ -212,6 +212,38 @@ struct CBORStreamTests {
     #expect(sink.data == expected)
   }
 
+  @Test("Deterministic stream value writes inside event root stay sorted")
+  func deterministicStreamValueWritesInsideEventRootStaySorted() async throws {
+    let values: [Value] = [
+      .object([
+        .string("z"): .number(1),
+        .string("a"): .number(2),
+        .bytes(Data([0x01])): .string("bytes"),
+      ]),
+      .object([
+        .string("b"): .number(3),
+        .string("a"): .number(4),
+      ]),
+    ]
+
+    let sink = DataSink()
+    let writer = CBORStreamWriter(
+      sink: sink,
+      options: .init(deterministic: true),
+      bufferSize: 8
+    )
+
+    try await writer.write(.beginArray(count: values.count))
+    for value in values {
+      try await writer.writeValue(value)
+    }
+    try await writer.write(.endArray)
+    try await writer.finish()
+
+    let expected = try CBORValueWriter.write(.array(values), options: .init(deterministic: true))
+    #expect(sink.data == expected)
+  }
+
   @Test("Emit deterministic stream")
   func emitDeterministicStream() async throws {
     let value: Value = .object([

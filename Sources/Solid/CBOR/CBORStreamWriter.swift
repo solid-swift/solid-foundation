@@ -44,16 +44,11 @@ public final class CBORStreamWriter: FormatStreamWriter {
     }
   }
 
-  private let sink: any Sink
   private let options: Options
-  private let bufferSize: Int
-  private var adapter: FormatStreamWriterAdapter<CBORStreamEncoder>
-  private var hasStarted = false
+  private let adapter: FormatStreamWriterAdapter<CBORStreamEncoder>
 
   public init(sink: any Sink, options: Options = .default, bufferSize: Int = BufferedSink.segmentSize) {
-    self.sink = sink
     self.options = options
-    self.bufferSize = bufferSize
     self.adapter = Self.makeAdapter(
       sink: sink,
       options: options,
@@ -92,24 +87,15 @@ public final class CBORStreamWriter: FormatStreamWriter {
   public var format: Format { adapter.format }
 
   public func write(_ event: EmitEvent) async throws {
-    hasStarted = true
     try await adapter.write(event)
   }
 
   public func writeEvents<Cursor: EmitEventCursor>(_ cursor: inout Cursor) async throws {
-    hasStarted = true
     try await adapter.write(events: &cursor)
   }
 
   public func writeValue(_ value: Value) async throws {
-    if options.deterministic, !hasStarted {
-      adapter = Self.makeAdapter(
-        sink: sink,
-        options: options,
-        bufferSize: bufferSize,
-        sortMapEvents: false
-      )
-      hasStarted = true
+    if options.deterministic {
       var cursor = CBORDeterministicValueEmitEventCursor(value)
       try await adapter.write(events: &cursor)
     } else {
@@ -119,12 +105,10 @@ public final class CBORStreamWriter: FormatStreamWriter {
   }
 
   public func finish() async throws {
-    hasStarted = true
     try await adapter.finish()
   }
 
   public func close() async throws {
-    hasStarted = true
     try await adapter.close()
   }
 }
