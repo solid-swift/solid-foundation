@@ -14,10 +14,11 @@ let package = Package(
   products: [
     .library(name: "Solid", targets: ["Solid"]),
     .library(name: "SolidCore", targets: ["SolidCore"]),
-    .library(name: "SolidIO", targets: ["SolidCore"]),
+    .library(name: "SolidIO", targets: ["SolidIO"]),
     .library(name: "SolidNumeric", targets: ["SolidNumeric"]),
     .library(name: "SolidTempo", targets: ["SolidTempo"]),
     .library(name: "SolidURI", targets: ["SolidURI"]),
+    .library(name: "SolidNet", targets: ["SolidNet"]),
     .library(name: "SolidID", targets: ["SolidID"]),
     .library(name: "SolidData", targets: ["SolidData"]),
     .library(name: "SolidSchema", targets: ["SolidSchema"]),

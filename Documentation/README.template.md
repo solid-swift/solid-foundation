@@ -20,6 +20,7 @@ This isn't a framework that tries to do everything. It's the foundation that let
 | [SolidIO](#solidio) | Async I/O streams with compression, hashing, and network support |
 | [SolidData](#soliddata) | Universal value representation powering formats and schema validation |
 | [SolidJSON](#solidjson) | JSON serialization and deserialization |
+| [SolidYAML](#solidyaml) | YAML tokenization, streaming, node, and value APIs |
 | [SolidCBOR](#solidcbor) | CBOR binary format, the IETF standard behind CWT and COSE |
 | [SolidSchema](#solidschema) | JSON Schema validation for any format, not just JSON |
 | [SolidURI](#soliduri) | RFC 3986 URI and IRI parsing, resolution, and manipulation |
@@ -44,8 +45,10 @@ Then add the modules you need to your target:
 .target(
     name: "YourTarget",
     dependencies: [
-        .product(name: "Solid", package: "solid-foundation"),      // Everything
-        // Or pick what you need:
+        .product(name: "Solid", package: "solid-foundation"),      // Convenience surface
+        // Or import modules directly:
+        .product(name: "SolidIO", package: "solid-foundation"),
+        .product(name: "SolidNet", package: "solid-foundation"),
         .product(name: "SolidNumeric", package: "solid-foundation"),
         .product(name: "SolidTempo", package: "solid-foundation"),
         .product(name: "SolidSchema", package: "solid-foundation"),
@@ -53,7 +56,7 @@ Then add the modules you need to your target:
 )
 ```
 
-The `Solid` module re-exports all other modules, so you can import everything at once if you're feeling adventurous.
+The `Solid` product provides a convenience surface for common APIs, but direct product dependencies are the canonical way to use a specific module such as `SolidIO`, `SolidNet`, `SolidJSON`, `SolidYAML`, or `SolidCBOR`.
 
 ## Requirements
 
@@ -132,6 +135,18 @@ JSON serialization that plays nicely with the `Value` type. Nothing fancy, just 
 
 ---
 
+### SolidYAML
+
+YAML parsing and writing for token streams, document streams, node trees, and `Value` instances. SolidYAML is useful when you need human-editable structured data without converting everything through JSON first.
+
+<!-- snippet: SolidYAMLExample -->
+
+**Standout Features:**
+
+The YAML implementation includes tokenizer, event reader/writer, document reader/writer, node builder, scalar analysis, scalar resolution, and `Value` adapters. It is covered by the YAML test suite fixtures checked into `Tests/SolidYAMLTests`.
+
+---
+
 ### SolidCBOR
 
 CBOR (Concise Binary Object Representation) is an IETF standard that can losslessly represent both JSON and YAML in a compact binary format. It's the foundation for other IETF standards like CWT (CBOR Web Tokens) and COSE (CBOR Object Signing and Encryption).
@@ -171,6 +186,10 @@ The component system makes URI manipulation a breeze. Update or remove individua
 Network identifier parsing and validation: email addresses, hostnames, IPv4, IPv6, with full internationalized domain name (IDN) support.
 
 <!-- snippet: SolidNetExample -->
+
+**Standout Features:**
+
+SolidNet keeps network identifier parsing separate from transport concerns. It gives SolidURI, SolidID, and SolidSchema shared validation primitives for hostnames, email addresses, IP addresses, and IDN-aware formats.
 
 ---
 
