@@ -18,6 +18,7 @@ let package = Package(
     .library(name: "SolidNumeric", targets: ["SolidNumeric"]),
     .library(name: "SolidTempo", targets: ["SolidTempo"]),
     .library(name: "SolidURI", targets: ["SolidURI"]),
+    .library(name: "SolidNet", targets: ["SolidNet"]),
     .library(name: "SolidID", targets: ["SolidID"]),
     .library(name: "SolidData", targets: ["SolidData"]),
     .library(name: "SolidSchema", targets: ["SolidSchema"]),
