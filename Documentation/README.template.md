@@ -48,6 +48,7 @@ Then add the modules you need to your target:
         .product(name: "Solid", package: "solid-foundation"),      // Convenience surface
         // Or import modules directly:
         .product(name: "SolidIO", package: "solid-foundation"),
+        .product(name: "SolidNet", package: "solid-foundation"),
         .product(name: "SolidNumeric", package: "solid-foundation"),
         .product(name: "SolidTempo", package: "solid-foundation"),
         .product(name: "SolidSchema", package: "solid-foundation"),
@@ -185,6 +186,10 @@ The component system makes URI manipulation a breeze. Update or remove individua
 Network identifier parsing and validation: email addresses, hostnames, IPv4, IPv6, with full internationalized domain name (IDN) support.
 
 <!-- snippet: SolidNetExample -->
+
+**Standout Features:**
+
+SolidNet keeps network identifier parsing separate from transport concerns. It gives SolidURI, SolidID, and SolidSchema shared validation primitives for hostnames, email addresses, IP addresses, and IDN-aware formats.
 
 ---
 
