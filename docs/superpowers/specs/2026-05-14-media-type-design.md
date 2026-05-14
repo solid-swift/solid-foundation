@@ -84,6 +84,7 @@ The initial extension set should include:
 // API and structured data
 public static let json: MediaType
 public static let cbor: MediaType
+public static let cborSequence: MediaType
 public static let xml: MediaType
 public static let yaml: MediaType
 public static let ndjson: MediaType
@@ -93,10 +94,14 @@ public static let formUrlEncoded: MediaType
 public static let multipartFormData: MediaType
 public static let graphql: MediaType
 public static let graphqlResponseJSON: MediaType
+public static let senmlCBOR: MediaType
+public static let sensmlCBOR: MediaType
+public static let senmlEtchCBOR: MediaType
 
 // RFC 9457 Problem Details
 public static let problemJSON: MediaType
 public static let problemXML: MediaType
+public static let conciseProblemCBOR: MediaType
 
 // Text and documents
 public static let plainText: MediaType
@@ -162,6 +167,8 @@ public static let anyImage: MediaType
 public static let anyVideo: MediaType
 public static let anyJSON: MediaType
 public static let anyXML: MediaType
+public static let anyCBOR: MediaType
+public static let anyCBORSequence: MediaType
 ```
 
 Constants that represent registered obsolete or `x-` types should preserve their registered spelling
