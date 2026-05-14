@@ -55,24 +55,118 @@ The type should support:
 - `LosslessStringConvertible` and `CustomStringConvertible`
 - `Sendable`, `Equatable`, and `Hashable`
 
-Common static constants should live on `MediaType`:
-
-```swift
-public static let json: MediaType
-public static let cbor: MediaType
-public static let html: MediaType
-public static let plainText: MediaType
-public static let eventStream: MediaType
-public static let octetStream: MediaType
-public static let formUrlEncoded: MediaType
-public static let any: MediaType
-public static let anyText: MediaType
-public static let anyJSON: MediaType
-```
+Common static constants should live on `MediaType` and are detailed in the extension set below.
 
 Matching should be symmetric compatibility, not HTTP negotiation. Two media types match when their
 non-wildcard type, tree, and subtype components agree, their suffixes are equal, and every parameter
 name present on both sides has the same value.
+
+## MediaType Extension Sets
+
+`MediaType` should ship with curated static constants for common API, document, media, problem, and
+security formats. These should be implemented as focused extensions in separate files, not as one
+large registry type. The goal is ergonomic coverage for real application code, not a full mirror of
+the IANA media type registry.
+
+Use short names for unambiguous everyday types and longer names when the shorter form would be
+unclear:
+
+```swift
+MediaType.json
+MediaType.problemJSON
+MediaType.pkcs12
+MediaType.pemCertificateChain
+```
+
+The initial extension set should include:
+
+```swift
+// API and structured data
+public static let json: MediaType
+public static let cbor: MediaType
+public static let xml: MediaType
+public static let yaml: MediaType
+public static let ndjson: MediaType
+public static let jsonPatch: MediaType
+public static let mergePatchJSON: MediaType
+public static let formUrlEncoded: MediaType
+public static let multipartFormData: MediaType
+public static let graphql: MediaType
+public static let graphqlResponseJSON: MediaType
+
+// RFC 9457 Problem Details
+public static let problemJSON: MediaType
+public static let problemXML: MediaType
+
+// Text and documents
+public static let plainText: MediaType
+public static let html: MediaType
+public static let css: MediaType
+public static let csv: MediaType
+public static let markdown: MediaType
+public static let javascript: MediaType
+public static let pdf: MediaType
+public static let zip: MediaType
+public static let gzip: MediaType
+public static let octetStream: MediaType
+
+// Images
+public static let png: MediaType
+public static let jpeg: MediaType
+public static let gif: MediaType
+public static let webp: MediaType
+public static let avif: MediaType
+public static let svg: MediaType
+public static let tiff: MediaType
+public static let icon: MediaType
+
+// Video
+public static let mp4: MediaType
+public static let mpegVideo: MediaType
+public static let quickTime: MediaType
+public static let webmVideo: MediaType
+
+// Security material: certificates, keys, signatures, and bundles
+public static let jose: MediaType
+public static let joseJSON: MediaType
+public static let jwt: MediaType
+public static let jwkJSON: MediaType
+public static let jwkSetJSON: MediaType
+public static let cms: MediaType
+public static let cose: MediaType
+public static let coseKey: MediaType
+public static let coseKeySet: MediaType
+public static let coseX509: MediaType
+public static let cwt: MediaType
+public static let pemCertificateChain: MediaType
+public static let pkixCertificate: MediaType
+public static let pkixAttributeCertificate: MediaType
+public static let pkixCertificateRevocationList: MediaType
+public static let pkixCertificationPath: MediaType
+public static let pkcs7Mime: MediaType
+public static let pkcs7Signature: MediaType
+public static let pkcs10: MediaType
+public static let pkcs8: MediaType
+public static let pkcs8Encrypted: MediaType
+public static let pkcs12: MediaType
+public static let pgpKeys: MediaType
+public static let pgpSignature: MediaType
+public static let pgpEncrypted: MediaType
+public static let x509CACertificate: MediaType
+public static let x509UserCertificate: MediaType
+
+// Wildcards and structured suffix matching
+public static let any: MediaType
+public static let anyText: MediaType
+public static let anyImage: MediaType
+public static let anyVideo: MediaType
+public static let anyJSON: MediaType
+public static let anyXML: MediaType
+```
+
+Constants that represent registered obsolete or `x-` types should preserve their registered spelling
+in serialization but use modern Swift names. For example, `x509CACertificate` should serialize as
+`application/x-x509-ca-cert`.
 
 ## SolidHTTP.MediaRange
 
