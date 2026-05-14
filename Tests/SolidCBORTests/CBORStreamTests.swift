@@ -234,6 +234,27 @@ struct CBORStreamTests {
     #expect(sink.data == expected)
   }
 
+  @Test("Emit deterministic stream sorts keys by core lexicographic order")
+  func emitDeterministicStreamSortsKeysByCoreLexicographicOrder() async throws {
+    let sink = DataSink()
+    let writer = CBORStreamWriter(sink: sink, options: .init(deterministic: true))
+    let events: [EmitEvent] = [
+      .beginObject(count: 2),
+      .scalar(.number(24)),
+      .scalar(.number(2)),
+      .scalar(.string("")),
+      .scalar(.number(1)),
+      .endObject,
+    ]
+
+    for event in events {
+      try await writer.write(event)
+    }
+    try await writer.finish()
+
+    #expect(sink.data == Data([0xA2, 0x18, 0x18, 0x02, 0x60, 0x01]))
+  }
+
   @Test("Emit deterministic stream with complex key events")
   func emitDeterministicStreamWithComplexKeyEvents() async throws {
     let sink = DataSink()

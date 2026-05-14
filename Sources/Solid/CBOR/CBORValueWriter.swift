@@ -95,12 +95,20 @@ private struct CBOREmitEventEncoder {
     case .object(let object):
       try emit(.beginObject(count: includeContainerSizes ? object.count : nil))
       if deterministic {
-        let entries = try object.map { key, value in
-          (try deterministicBytes(of: key), key, value)
+        let entries = try object.enumerated().map { order, entry in
+          (keyBytes: try deterministicBytes(of: entry.key), order: order, key: entry.key, value: entry.value)
         }
-        for (_, key, value) in entries.sorted(by: { $0.0.lexicographicallyPrecedes($1.0) }) {
-          try emit(.scalar(key))
-          try self.emit(value, to: emit)
+        let sorted = entries.sorted {
+          CBORDeterministicKeyEncoder.isOrderedBefore(
+            $0.keyBytes,
+            order: $0.order,
+            $1.keyBytes,
+            order: $1.order
+          )
+        }
+        for entry in sorted {
+          try emit(.scalar(entry.key))
+          try self.emit(entry.value, to: emit)
         }
       } else {
         for (key, value) in object {

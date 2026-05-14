@@ -7,6 +7,20 @@
 
 import Foundation
 
+/// Errors thrown by the generic synchronous value reader.
+public enum FormatValueReaderError: Error, Sendable, Equatable, LocalizedError {
+
+  /// Additional data was found after the root value.
+  case trailingData
+
+  public var errorDescription: String? {
+    switch self {
+    case .trailingData:
+      return "Extra data after root value"
+    }
+  }
+}
+
 /// A generic synchronous value reader that decodes a ``Value`` from raw `Data`
 /// using a ``FormatStreamReader`` pipeline.
 ///
@@ -30,7 +44,7 @@ public struct FormatValueReader<Reader: ~Copyable & FormatStreamReader>: ~Copyab
     unexpectedEndError: @escaping @Sendable () -> any Swift.Error,
     requiresEndOfStream: Bool = false,
     trailingDataError: @escaping @Sendable () -> any Swift.Error = {
-      FormatStreamDriverError.operationInProgress
+      FormatValueReaderError.trailingData
     }
   ) {
     self.reader = reader

@@ -289,10 +289,12 @@ struct CBOREncoder: FormatEventWriter {
 
     let orderedPairs: [(keyBytes: Data, valueBytes: Data, order: Int)]
     orderedPairs = encodedPairs.sorted {
-      if $0.keyBytes == $1.keyBytes {
-        return $0.order < $1.order
-      }
-      return $0.keyBytes.lexicographicallyPrecedes($1.keyBytes)
+      CBORDeterministicKeyEncoder.isOrderedBefore(
+        $0.keyBytes,
+        order: $0.order,
+        $1.keyBytes,
+        order: $1.order
+      )
     }
 
     writePendingTags()
@@ -527,11 +529,20 @@ struct CBOREncoder: FormatEventWriter {
   private mutating func writeMap(_ map: Value.Object) throws {
     writeLength(map.count, majorType: 0b101)
     if options.deterministic {
-      let sorted = try map.map { (try deterministicBytes(of: $0), ($0, $1)) }
-        .sorted { (itemA, itemB) in itemA.0.lexicographicallyPrecedes(itemB.0) }
-      for (_, pair) in sorted {
-        try writeValue(pair.0)
-        try writeValue(pair.1)
+      let sorted = try map.enumerated().map { order, entry in
+        (keyBytes: try deterministicBytes(of: entry.key), order: order, key: entry.key, value: entry.value)
+      }
+      .sorted {
+        CBORDeterministicKeyEncoder.isOrderedBefore(
+          $0.keyBytes,
+          order: $0.order,
+          $1.keyBytes,
+          order: $1.order
+        )
+      }
+      for entry in sorted {
+        try writeValue(entry.key)
+        try writeValue(entry.value)
       }
     } else {
       try writeMapChunk(map)

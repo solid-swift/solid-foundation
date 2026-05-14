@@ -17,6 +17,24 @@ enum CBORDeterministicKeyEncoder {
     return try CBOREncoder.encodeValue(value, deterministic: true)
   }
 
+  static func isOrderedBefore(_ lhs: Data, _ rhs: Data) -> Bool {
+    // RFC 8949 core deterministic encoding sorts keys by bytewise lexicographic order.
+    // Length-first ordering is the RFC 7049 compatibility variant.
+    return lhs.lexicographicallyPrecedes(rhs)
+  }
+
+  static func isOrderedBefore(
+    _ lhs: Data,
+    order lhsOrder: Int,
+    _ rhs: Data,
+    order rhsOrder: Int
+  ) -> Bool {
+    if lhs == rhs {
+      return lhsOrder < rhsOrder
+    }
+    return isOrderedBefore(lhs, rhs)
+  }
+
   private static func fastEncode(_ value: Value) throws -> Data? {
     switch value {
     case .null:

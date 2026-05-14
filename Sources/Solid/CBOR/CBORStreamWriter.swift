@@ -217,10 +217,12 @@ private struct CBORDeterministicValueEmitEventCursor: EmitEventCursor {
         )
       }
       .sorted {
-        if $0.keyBytes == $1.keyBytes {
-          return $0.order < $1.order
-        }
-        return $0.keyBytes.lexicographicallyPrecedes($1.keyBytes)
+        CBORDeterministicKeyEncoder.isOrderedBefore(
+          $0.keyBytes,
+          order: $0.order,
+          $1.keyBytes,
+          order: $1.order
+        )
       }
       .map { (key: $0.key, value: $0.value) }
 

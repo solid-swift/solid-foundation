@@ -3229,7 +3229,7 @@ private struct YAMLFlowLexer: ~Copyable, Sendable {
   }
 
   private var tokens = YAMLFlowLexTokenQueue()
-  private let location: YAML.ParseError.Location
+  private var location: YAML.ParseError.Location
   private let tagHandles: [String: String]
   private var pendingPlain: PendingPlain?
   private var pendingColon = false

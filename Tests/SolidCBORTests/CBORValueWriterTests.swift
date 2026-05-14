@@ -475,6 +475,17 @@ private let deterministicMapCases: [CBORValueWriterTests.EncodeCase] = [
     ],
     deterministic: true
   ),
+  .init(
+    id: "det-map-core-lexicographic",
+    value: object([
+      (.number(24), 2),
+      (.string(""), 1),
+    ]),
+    expected: [
+      0xA2, 0x18, 0x18, 0x02, 0x60, 0x01,
+    ],
+    deterministic: true
+  ),
 ]
 
 private let taggedCases: [CBORValueWriterTests.EncodeCase] = [
