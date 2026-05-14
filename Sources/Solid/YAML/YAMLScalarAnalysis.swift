@@ -112,7 +112,6 @@ struct YAMLScalarAnalysis: Sendable {
       if byte < 0x80 {
         switch byte {
         case 0x09:
-          hasNonPrintable = true
           isOnlyNewlines = false
         case 0x0A:
           hasLineBreak = true

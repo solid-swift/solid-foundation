@@ -59,4 +59,17 @@ struct YAMLScalarAnalysisTests {
     #expect(valueAnalysis.needsQuotes)
     #expect(!keyAnalysis.needsQuotes)
   }
+
+  @Test("Tabs are printable scalar content")
+  func tabsArePrintableScalarContent() {
+    let analysis = YAMLScalarAnalysis.analyze(
+      "left\tright",
+      allowImplicitTyping: false,
+      allowDocumentMarkerPrefix: false,
+      quoteTrailingColon: true
+    )
+
+    #expect(!analysis.hasNonPrintable)
+    #expect(!analysis.needsQuotes)
+  }
 }

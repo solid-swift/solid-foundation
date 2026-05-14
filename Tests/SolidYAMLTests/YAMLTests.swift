@@ -318,6 +318,21 @@ struct YAMLTests {
     #expect(written == value)
   }
 
+  @Test("Value writer can emit inline tabs without quoting")
+  func valueWriterCanEmitInlineTabsWithoutQuoting() throws {
+    let value: Value = [
+      "tabbed": "left\tright"
+    ]
+
+    let output = try YAMLValueWriter.write(value)
+    let yaml = String(decoding: output, as: UTF8.self)
+    var reader = try YAMLValueReader(data: output)
+    let written = try reader.read()
+
+    #expect(yaml == "tabbed: left\tright")
+    #expect(written == value)
+  }
+
   @Test("Parse stream", arguments: cases)
   func parseStream(_ testCase: TestCase) async throws {
     let source = Data(testCase.yaml.utf8).source()
