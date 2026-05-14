@@ -10,21 +10,24 @@ import Foundation
 /// Synchronous YAML reader that loads a full document stream as raw nodes.
 struct YAMLNodeDocumentReader {
 
-  private let text: String
+  private let data: Data
 
   init(data: Data) throws {
-    guard let text = String(data: data, encoding: .utf8) else {
-      throw YAML.DataError.invalidEncoding(.utf8)
-    }
-    self.text = text
+    self.data = data
   }
 
   init(string: String) {
-    self.text = string
+    self.data = Data(string.utf8)
   }
 
   func readAll() throws -> [YAMLDocument] {
-    var parser = try YAMLParser(text: text)
-    return try parser.parseDocumentStream()
+    var stream = YAMLTokenDocumentStream()
+    stream.feedInput(data, isFinal: true)
+
+    var documents: [YAMLDocument] = []
+    while let document = try stream.readNodeDocument() {
+      documents.append(document)
+    }
+    return documents
   }
 }

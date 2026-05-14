@@ -29,47 +29,12 @@ public struct CBORDocumentReader {
   }
 
   public func readAll() throws -> [CBORValueDocument] {
-    var reader = CBORStreamReader(options: .init(undefined: options.undefined))
-    var decoder = ValueEventDecoder()
-    var documents: [CBORValueDocument] = []
-    var input = data
-    let isFinal = true
-    var done = false
-    var hasPendingEvents = false
-
-    try withUnsafeTemporaryAllocation(of: ValueEvent.self, capacity: 64) { buffer in
-      while !done {
-        var out = OutputSpan<ValueEvent>(buffer: buffer, initializedCount: 0)
-        let status = try reader.read(input: input, isFinal: isFinal, output: &out)
-        let count = out.finalize(for: buffer)
-        if count > 0 {
-          hasPendingEvents = true
-          for event in buffer[..<count] {
-            try decoder.append(event)
-            if decoder.isComplete {
-              let value = try decoder.finish()
-              documents.append(CBORValueDocument(value: value))
-              decoder = ValueEventDecoder()
-              hasPendingEvents = false
-            }
-          }
-        }
-
-        switch status {
-        case .producedOutput:
-          input = Data()
-        case .needMoreInput:
-          throw CBOR.Error.unexpectedEndOfStream
-        case .endOfStream:
-          done = true
-        }
-      }
-    }
-
-    if hasPendingEvents {
-      throw CBOR.Error.unexpectedEndOfStream
-    }
-
-    return documents
+    var reader = FormatDocumentValueReader(
+      reader: CBORDocumentEventReader(options: .init(undefined: options.undefined)),
+      data: data,
+      resolver: CBORScalarResolver(),
+      unexpectedEndError: { CBOR.Error.unexpectedEndOfStream }
+    )
+    return try reader.readAll().map { CBORValueDocument(value: $0.value) }
   }
 }

@@ -10,7 +10,7 @@ import SolidData
 
 extension Schema {
 
-  /// Streaming schema validator that consumes ``ValueEvent`` instances.
+  /// Streaming schema validator that consumes ``EmitEvent`` instances.
   ///
   /// - Note: This currently buffers a full value before validating.
   public struct StreamValidator {
@@ -24,7 +24,7 @@ extension Schema {
     private let schema: Schema
     private let outputFormat: Schema.Validator.OutputFormat
     private let options: Schema.Options
-    private var decoder = ValueEventDecoder()
+    private var decoder = EmitEventDecoder()
     private var finished = false
 
     public init(
@@ -37,13 +37,13 @@ extension Schema {
       self.options = options
     }
 
-    public mutating func consume(_ event: ValueEvent) throws {
+    public mutating func consume(_ event: EmitEvent) throws {
       guard !finished else {
         throw Error.alreadyFinished
       }
       do {
         try decoder.append(event)
-      } catch let error as ValueEventDecoder.Error {
+      } catch let error as EmitEventDecoder.Error {
         throw mapDecoderError(error)
       }
     }
@@ -56,7 +56,7 @@ extension Schema {
       let instance: Value
       do {
         instance = try decoder.finish()
-      } catch let error as ValueEventDecoder.Error {
+      } catch let error as EmitEventDecoder.Error {
         throw mapDecoderError(error)
       }
       return try Validator.validate(
@@ -67,7 +67,7 @@ extension Schema {
       )
     }
 
-    private func mapDecoderError(_ error: ValueEventDecoder.Error) -> Error {
+    private func mapDecoderError(_ error: EmitEventDecoder.Error) -> Error {
       switch error {
       case .invalidEventSequence(let message):
         return .invalidEventSequence(message)

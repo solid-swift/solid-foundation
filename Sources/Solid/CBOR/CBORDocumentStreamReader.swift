@@ -21,31 +21,57 @@ public final class CBORDocumentStreamReader {
     }
   }
 
-  private let driver: FormatStreamReaderDriver<CBORStreamReader>
-  private var decoder = ValueEventDecoder()
-  private var hasPendingEvents = false
+  private let driver: FormatDocumentStreamReaderDriver<CBORDocumentEventReader>
+  private var decoder = ParseDocumentEventDecoder(resolver: CBORScalarResolver())
+  private var pendingDocuments: [CBORValueDocument] = []
+  private var pendingDocumentIndex = 0
 
   public init(source: any Source, bufferSize: Int = BufferedSource.segmentSize, options: Options = .default) {
-    let reader = CBORStreamReader(options: .init(undefined: options.undefined))
-    self.driver = FormatStreamReaderDriver(reader: reader, source: source, bufferSize: bufferSize)
+    let reader = CBORDocumentEventReader(options: .init(undefined: options.undefined))
+    self.driver = FormatDocumentStreamReaderDriver(reader: reader, source: source, bufferSize: bufferSize)
   }
 
   public func next() async throws -> CBORValueDocument? {
-    while let event = try await driver.next() {
-      hasPendingEvents = true
-      try decoder.append(event)
-      if decoder.isComplete {
-        let value = try decoder.finish()
-        decoder = ValueEventDecoder()
-        hasPendingEvents = false
-        return CBORValueDocument(value: value)
+    if let document = popPendingDocument() {
+      return document
+    }
+
+    while true {
+      let status = try await driver.readBatch { events in
+        for event in events {
+          if let document = try decoder.append(event) {
+            pendingDocuments.append(CBORValueDocument(value: document.value))
+          }
+        }
+      }
+
+      if let document = popPendingDocument() {
+        return document
+      }
+
+      if status == .endOfStream {
+        do {
+          try decoder.finish()
+        } catch {
+          throw CBOR.Error.unexpectedEndOfStream
+        }
+
+        return nil
       }
     }
+  }
 
-    if hasPendingEvents {
-      throw CBOR.Error.unexpectedEndOfStream
+  private func popPendingDocument() -> CBORValueDocument? {
+    guard pendingDocumentIndex < pendingDocuments.count else {
+      return nil
     }
 
-    return nil
+    let document = pendingDocuments[pendingDocumentIndex]
+    pendingDocumentIndex += 1
+    if pendingDocumentIndex == pendingDocuments.count {
+      pendingDocuments.removeAll(keepingCapacity: true)
+      pendingDocumentIndex = 0
+    }
+    return document
   }
 }

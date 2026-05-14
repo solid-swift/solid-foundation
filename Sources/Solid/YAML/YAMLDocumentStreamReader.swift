@@ -12,62 +12,64 @@ import SolidIO
 /// Async YAML reader that produces document values for a full document stream.
 public final class YAMLDocumentStreamReader {
 
-  private let source: any Source
-  private let bufferSize: Int
-  private var remainingText = ""
-  private var allowDirectives = true
-  private var requireDocumentStart = false
-  private var reachedEOF = false
+  private let driver: FormatDocumentStreamReaderDriver<YAMLDocumentEventReader>
+  private var decoder = ParseDocumentEventDecoder(resolver: YAMLScalarResolver())
+  private var pendingDocuments: [YAMLValueDocument] = []
+  private var pendingDocumentIndex = 0
 
   public init(source: any Source, bufferSize: Int = BufferedSource.segmentSize) {
-    self.source = source
-    self.bufferSize = bufferSize
+    self.driver = FormatDocumentStreamReaderDriver(
+      reader: YAMLDocumentEventReader(),
+      source: source,
+      bufferSize: bufferSize
+    )
   }
 
   public func next() async throws -> YAMLValueDocument? {
+    if let document = popPendingDocument() {
+      return document
+    }
+
     while true {
-      if let document = try readNextDocument(isFinal: reachedEOF) {
-        var anchors: [String: Value] = [:]
-        let value = try document.node.toValue(anchors: &anchors)
-        return YAMLValueDocument(
-          value: value,
-          explicitStart: document.explicitStart,
-          explicitEnd: document.explicitEnd
-        )
+      let status = try await driver.readBatch { events in
+        for event in events {
+          if let document = try decoder.append(event) {
+            pendingDocuments.append(YAMLValueDocument(
+              value: document.value,
+              explicitStart: document.explicitStart,
+              explicitEnd: document.explicitEnd
+            ))
+          }
+        }
       }
 
-      if reachedEOF {
+      if let document = popPendingDocument() {
+        return document
+      }
+
+      if status == .endOfStream {
+        do {
+          try decoder.finish()
+        } catch {
+          throw YAML.ParseError.incompleteInput(location: nil)
+        }
+
         return nil
       }
-
-      guard let chunk = try await source.read(max: bufferSize) else {
-        reachedEOF = true
-        continue
-      }
-      guard let text = String(data: chunk, encoding: .utf8) else {
-        throw YAML.DataError.invalidEncoding(.utf8)
-      }
-      remainingText += text
     }
   }
 
-  private func readNextDocument(isFinal: Bool) throws -> YAMLDocument? {
-    guard !remainingText.isEmpty else {
+  private func popPendingDocument() -> YAMLValueDocument? {
+    guard pendingDocumentIndex < pendingDocuments.count else {
       return nil
     }
 
-    var parser = try YAMLParser(
-      text: remainingText,
-      allowIncompleteInput: !isFinal,
-      allowDirectives: allowDirectives,
-      requireDocumentStart: requireDocumentStart
-    )
-    guard let document = try parser.parseNextDocument() else {
-      return nil
+    let document = pendingDocuments[pendingDocumentIndex]
+    pendingDocumentIndex += 1
+    if pendingDocumentIndex == pendingDocuments.count {
+      pendingDocuments.removeAll(keepingCapacity: true)
+      pendingDocumentIndex = 0
     }
-    allowDirectives = parser.allowsDirectives
-    requireDocumentStart = parser.requiresDocumentStart
-    remainingText = parser.remainingText()
     return document
   }
 }

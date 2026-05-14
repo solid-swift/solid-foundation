@@ -93,6 +93,15 @@ struct CBORValueWriterTests {
     #expect(nested == [0xBF, 0x61, 0x61, 0x9F, 0x01, 0x02, 0xFF, 0xFF])
   }
 
+  @Test("Deterministic encoding uses definite containers")
+  func deterministicEncodingUsesDefiniteContainers() throws {
+    let arrayBytes = try encode(.array([1, 2]), deterministic: true, includeContainerSizes: false)
+    #expect(arrayBytes == [0x82, 0x01, 0x02])
+
+    let mapBytes = try encode(object([(1, 2)]), deterministic: true, includeContainerSizes: false)
+    #expect(mapBytes == [0xA1, 0x01, 0x02])
+  }
+
   @Test("Encode indefinite arrays")
   func encodeIndefiniteArrays() throws {
     let bytes = try encode { encoder in
@@ -466,6 +475,17 @@ private let deterministicMapCases: [CBORValueWriterTests.EncodeCase] = [
     ],
     deterministic: true
   ),
+  .init(
+    id: "det-map-core-lexicographic",
+    value: object([
+      (.number(24), 2),
+      (.string(""), 1),
+    ]),
+    expected: [
+      0xA2, 0x18, 0x18, 0x02, 0x60, 0x01,
+    ],
+    deterministic: true
+  ),
 ]
 
 private let taggedCases: [CBORValueWriterTests.EncodeCase] = [
@@ -532,6 +552,12 @@ private let floatCases: [CBORValueWriterTests.EncodeCase] = [
   ),
   .init(id: "float-inf", value: .number(Float32.infinity), expected: [0xFA, 0x7F, 0x80, 0x00, 0x00], deterministic: false),
   .init(id: "float--inf", value: .number(-Float32.infinity), expected: [0xFA, 0xFF, 0x80, 0x00, 0x00], deterministic: false),
+  .init(
+    id: "half-noncanonical-nan",
+    value: .number(Float16(bitPattern: 0x7E01)),
+    expected: [0xF9, 0x7E, 0x01],
+    deterministic: false
+  ),
   .init(
     id: "double-inf",
     value: .number(Double.infinity),
@@ -600,6 +626,12 @@ private let deterministicFloatCases: [CBORValueWriterTests.EncodeCase] = [
     id: "det-half-1.23",
     value: .number(Float16(1.23)),
     expected: [0xF9, 0x3C, 0xEC],
+    deterministic: true
+  ),
+  .init(
+    id: "det-half-noncanonical-nan",
+    value: .number(Float16(bitPattern: 0x7E01)),
+    expected: [0xF9, 0x7E, 0x00],
     deterministic: true
   ),
 ]

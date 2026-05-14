@@ -7,7 +7,7 @@
 
 import Foundation
 
-/// A synchronous event writer that serializes ``ValueEvent`` values into bytes.
+/// A synchronous event writer that serializes ``EmitEvent`` values into bytes.
 ///
 /// Conformers own only their format-specific semantic state (containers, tags, style)
 /// and write formatted bytes into a provided `inout Data` buffer. Buffer management
@@ -18,7 +18,7 @@ public protocol FormatEventWriter {
   var format: Format { get }
 
   /// Write a single event's bytes into the buffer.
-  mutating func writeEvent(_ event: ValueEvent, into buffer: inout Data) throws
+  mutating func writeEvent(_ event: EmitEvent, into buffer: inout Data) throws
 
   /// Validate completion state and write any finalization bytes (e.g., trailing newline)
   /// into the buffer.

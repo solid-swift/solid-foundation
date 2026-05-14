@@ -85,7 +85,9 @@ struct YAMLTestSuite {
   // Enable specific expected-fail cases when the parser reports errors reliably.
   private static let failingCases: [Case] = filteredCases.filter { $0.shouldFail }
   private static let passingCases: [Case] = filteredCases.filter {
-    !$0.shouldFail && FileManager.default.fileExists(atPath: $0.directory.appendingPathComponent("in.json").path)
+    !$0.shouldFail
+      && FileManager.default.fileExists(atPath: $0.directory.appendingPathComponent("in.json").path)
+      && hasSingleDocument(at: $0.directory.appendingPathComponent("in.yaml"))
   }
   private static let eventCases: [Case] = filteredCases.filter {
     !$0.shouldFail && FileManager.default.fileExists(atPath: $0.directory.appendingPathComponent("test.event").path)
@@ -137,7 +139,13 @@ struct YAMLTestSuite {
       if jsonData.isEmpty || jsonData.allSatisfy({ $0 == 0x20 || $0 == 0x0A || $0 == 0x0D || $0 == 0x09 }) {
         expected = .null
       } else {
-        var jsonReader = JSONValueReader(data: jsonData)
+        var jsonReader = FormatValueReader(
+          reader: JSONStreamReader(),
+          data: jsonData,
+          format: JSON.format,
+          scalarResolver: JSONScalarResolver(),
+          unexpectedEndError: { JSON.Error.unexpectedEndOfStream }
+        )
         expected = try jsonReader.read()
       }
       let actual = Self.stripTags(from: value)
@@ -555,10 +563,10 @@ struct YAMLTestSuite {
   }
 
   private static func normalizeEmitEvents(
-    _ events: [ValueEvent],
+    _ events: [EmitEvent],
     usesEmitYAML: Bool,
     explicitEnd: Bool
-  ) -> [ValueEvent] {
+  ) -> [EmitEvent] {
     guard usesEmitYAML, !explicitEnd, events.count == 2 else {
       return events
     }
@@ -596,7 +604,7 @@ struct YAMLTestSuite {
   private struct ParsedEventDocument {
     let explicitStart: Bool
     let explicitEnd: Bool
-    let events: [ValueEvent]
+    let events: [EmitEvent]
   }
 
   private struct ParsedEventStream {
@@ -968,10 +976,10 @@ struct YAMLTestSuite {
   }
 
   private struct EventNodeEmitter {
-    private var events: [ValueEvent] = []
+    private var events: [EmitEvent] = []
     private var anchors: [String: Value] = [:]
 
-    mutating func emit(node: YAMLNode) throws -> [ValueEvent] {
+    mutating func emit(node: YAMLNode) throws -> [EmitEvent] {
       events.removeAll(keepingCapacity: true)
       anchors.removeAll(keepingCapacity: true)
       try emitNode(node)
@@ -1049,7 +1057,7 @@ struct YAMLTestSuite {
         events.append(.style(.scalar(mapScalarStyle(scalar.style))))
       }
       let value = try nodeToValueWithAnchors(node, includeTag: false, includeAnchor: false)
-      events.append(.key(value))
+      events.append(.scalar(value))
     }
 
     private func nodeTag(_ node: YAMLNode) -> String? {

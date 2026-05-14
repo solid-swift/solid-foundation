@@ -43,9 +43,9 @@ public struct JSONValueWriter: FormatWriter {
   private let writer: FormatValueWriter<JSONStreamEncoder>
 
   /// Write a value into a new in-memory Data buffer.
-  public static func write(_ value: Value, options: Options = .default) -> Data {
+  public static func write(_ value: Value, options: Options = .default) throws -> Data {
     let writer = JSONValueWriter(options: options)
-    return (try? writer.write(value)) ?? Data()
+    return try writer.write(value)
   }
 
   public init(options: Options = Options()) {
@@ -56,8 +56,8 @@ public struct JSONValueWriter: FormatWriter {
           writer: JSONEventWriter(options: .init(tagShape: options.tagShape, escapeSlashes: false))
         )
       },
-      encodeValue: { value in
-        ValueEventEncoder().encode(value)
+      emitValue: { value, emit in
+        try EmitEventEncoder().emit(value, to: emit)
       }
     )
   }

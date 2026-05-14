@@ -147,6 +147,121 @@ struct YAMLTests {
     #expect(value == testCase.value, "\(testCase.id): parsed value mismatch")
   }
 
+  @Test("Value reader rejects additional document")
+  func valueReaderRejectsAdditionalDocument() throws {
+    var yamlReader = YAMLValueReader(
+      string: """
+      ---
+      foo: 1
+      ---
+      bar: 2
+      """
+    )
+
+    #expect(throws: Error.self) {
+      _ = try yamlReader.read()
+    }
+  }
+
+  @Test("Value reader rejects invalid UTF-8 byte")
+  func valueReaderRejectsInvalidUTF8Byte() {
+    #expect(throws: YAML.DataError.self) {
+      _ = try YAMLValueReader(data: Data([0x80]))
+    }
+  }
+
+  @Test("Value reader rejects truncated UTF-8 sequence")
+  func valueReaderRejectsTruncatedUTF8Sequence() {
+    #expect(throws: YAML.DataError.self) {
+      _ = try YAMLValueReader(data: Data([0x66, 0x6F, 0xC3]))
+    }
+  }
+
+  @Test("Value reader accepts valid non-ASCII UTF-8 bytes")
+  func valueReaderAcceptsValidNonASCIIUTF8Bytes() throws {
+    let data = Data([0x6E, 0x61, 0x6D, 0x65, 0x3A, 0x20, 0x63, 0x61, 0x66, 0xC3, 0xA9, 0x0A])
+    var reader = try YAMLValueReader(data: data)
+
+    #expect(try reader.read() == ["name": "caf\u{00E9}"])
+  }
+
+  @Test("Value reader rejects invalid percent-encoded tag UTF-8")
+  func valueReaderRejectsInvalidPercentEncodedTagUTF8() throws {
+    var reader = try YAMLValueReader(data: Data("!!%80 value\n".utf8))
+
+    #expect(throws: Error.self) {
+      _ = try reader.read()
+    }
+  }
+
+  @Test("Value reader decodes multibyte percent-encoded tag suffix")
+  func valueReaderDecodesMultibytePercentEncodedTagSuffix() throws {
+    var reader = try YAMLValueReader(data: Data("!!caf%C3%A9 value\n".utf8))
+
+    #expect(try reader.read() == .tagged(
+      tags: ["tag:yaml.org,2002:caf\u{00E9}"],
+      value: "value"
+    ))
+  }
+
+  @Test("Document reader rejects invalid UTF-8 in flow tag")
+  func documentReaderRejectsInvalidUTF8InFlowTag() throws {
+    let data = Data([
+      UInt8(ascii: "["),
+      UInt8(ascii: "!"),
+      UInt8(ascii: "<"),
+      0x80,
+      UInt8(ascii: ">"),
+      UInt8(ascii: " "),
+      UInt8(ascii: "v"),
+      UInt8(ascii: "a"),
+      UInt8(ascii: "l"),
+      UInt8(ascii: "u"),
+      UInt8(ascii: "e"),
+      UInt8(ascii: "]"),
+      UInt8(ascii: "\n"),
+    ])
+    let reader = try YAMLDocumentReader(data: data)
+
+    #expect(throws: Error.self) {
+      _ = try reader.readAll()
+    }
+  }
+
+  @Test("Compact sequence mapping value can be nested block mapping")
+  func compactSequenceMappingValueCanBeNestedBlockMapping() throws {
+    let yaml = """
+    refusals:
+    - locator:
+        claimId: "rcl--5j6lp6"
+        relationId: null
+        endpointKind: "PARTICIPANT"
+        participantIndex: 1
+      mentionSurface: "MICROSCOPIC AEROSOL BUBBLES OF LIQUID OXYGEN"
+      candidateEntities: []
+      source: "NON_CHARACTER_REFERENT"
+    """
+
+    var yamlReader = YAMLValueReader(string: yaml)
+    let value = try yamlReader.read()
+
+    #expect(value == [
+      "refusals": [
+        [
+          "locator": [
+            "claimId": "rcl--5j6lp6",
+            "relationId": .null,
+            "endpointKind": "PARTICIPANT",
+            "participantIndex": 1,
+          ],
+          "mentionSurface": "MICROSCOPIC AEROSOL BUBBLES OF LIQUID OXYGEN",
+          "candidateEntities": .array([]),
+          "source": "NON_CHARACTER_REFERENT",
+        ]
+      ]
+    ])
+  }
+
   @Test("Emit value", arguments: cases)
   func emitValue(_ testCase: TestCase) throws {
     let writer = YAMLValueWriter(options: .default)
@@ -156,12 +271,74 @@ struct YAMLTests {
     #expect(value == testCase.value, "\(testCase.id): emitted value mismatch")
   }
 
+  @Test("Emit mapping value ending with colon")
+  func emitMappingValueEndingWithColon() throws {
+    let value: Value = [
+      "beat": [
+        "text": "They follow, snapping at his heel:",
+        "locator": [
+          "kind": "script-tree-node",
+          "nodeId": "acn-1sr7h5v",
+        ],
+      ]
+    ]
+
+    let output = try YAMLValueWriter.write(value)
+    var outputReader = try YAMLValueReader(data: output)
+    let emittedValue = try outputReader.read()
+
+    #expect(emittedValue == value)
+  }
+
+  @Test("Value writer preserves typed-looking strings")
+  func valueWriterPreservesTypedLookingStrings() throws {
+    let value: Value = [
+      "empty": "",
+      "null": "null",
+      "tilde": "~",
+      "true": "true",
+      "false": "false",
+      "integer": "1",
+      "signed": "+12",
+      "decimal": "12.5",
+      "exponent": "1e9",
+      "hex": "0x10",
+      "binary": "0b1010",
+      "ordinary": "MICROSCOPIC AEROSOL BUBBLES OF LIQUID OXYGEN",
+      "colon": "They follow, snapping at his heel:",
+      "comment": "left # right",
+      "separator": "left: right",
+      "marker": "---",
+    ]
+
+    let output = try YAMLValueWriter.write(value)
+    var reader = try YAMLValueReader(data: output)
+    let written = try reader.read()
+
+    #expect(written == value)
+  }
+
+  @Test("Value writer can emit inline tabs without quoting")
+  func valueWriterCanEmitInlineTabsWithoutQuoting() throws {
+    let value: Value = [
+      "tabbed": "left\tright"
+    ]
+
+    let output = try YAMLValueWriter.write(value)
+    let yaml = String(decoding: output, as: UTF8.self)
+    var reader = try YAMLValueReader(data: output)
+    let written = try reader.read()
+
+    #expect(yaml == "tabbed: left\tright")
+    #expect(written == value)
+  }
+
   @Test("Parse stream", arguments: cases)
   func parseStream(_ testCase: TestCase) async throws {
     let source = Data(testCase.yaml.utf8).source()
     let reader = YAMLStreamReader()
     let driver = FormatStreamReaderDriver(reader: reader, source: source)
-    var decoder = ValueEventDecoder()
+    var decoder = ParseEventDecoder(resolver: YAMLScalarResolver())
 
     while let event = try await driver.next() {
       try decoder.append(event)
@@ -175,7 +352,7 @@ struct YAMLTests {
   func emitStream(_ testCase: TestCase) async throws {
     let sink = DataSink()
     let writer = YAMLStreamWriter(sink: sink)
-    var events: [ValueEvent] = []
+    var events: [EmitEvent] = []
     emitEvents(from: testCase.value, into: &events)
     for event in events {
       try await writer.write(event)
@@ -185,6 +362,23 @@ struct YAMLTests {
     var sinkReader = try YAMLValueReader(data: sink.data)
     let value = try sinkReader.read()
     #expect(value == testCase.value, "\(testCase.id): streamed emit mismatch")
+  }
+
+  @Test("Stream writer writes a full value through bulk path")
+  func yamlStreamWriterWritesValueThroughBulkPath() async throws {
+    let value: Value = [
+      "a": [1, "two"],
+      "b": false,
+    ]
+
+    let expected = try YAMLValueWriter.write(value)
+    let sink = DataSink()
+    let writer = YAMLStreamWriter(sink: sink, bufferSize: 8)
+
+    try await writer.writeValue(value)
+    try await writer.close()
+
+    #expect(sink.data == expected)
   }
 
   @Test("Parse documents", .serialized, arguments: documentCases)
@@ -203,6 +397,38 @@ struct YAMLTests {
       documents.append(document)
     }
     #expect(documents == testCase.documents, "\(testCase.id): streamed documents mismatch")
+  }
+
+  @Test("Parse document event batch stream", arguments: documentCases)
+  func parseDocumentEventBatchStream(_ testCase: DocumentCase) async throws {
+    let source = Data(testCase.yaml.utf8).source()
+    let driver = FormatDocumentStreamReaderDriver(
+      reader: YAMLDocumentEventReader(),
+      source: source,
+      bufferSize: 4
+    )
+    var decoder = ParseDocumentEventDecoder(resolver: YAMLScalarResolver())
+    var documents: [YAMLValueDocument] = []
+
+    while true {
+      let status = try await driver.readBatch { events in
+        for event in events {
+          if let document = try decoder.append(event) {
+            documents.append(YAMLValueDocument(
+              value: document.value,
+              explicitStart: document.explicitStart,
+              explicitEnd: document.explicitEnd
+            ))
+          }
+        }
+      }
+      if status == .endOfStream {
+        break
+      }
+    }
+    try decoder.finish()
+
+    #expect(documents == testCase.documents, "\(testCase.id): batched document events mismatch")
   }
 
   @Test("Emit documents", arguments: documentCases)
@@ -228,6 +454,81 @@ struct YAMLTests {
     #expect(documents == testCase.documents, "\(testCase.id): streamed emit mismatch")
   }
 
+  @Test("Document stream writer preserves typed-looking strings")
+  func documentStreamWriterPreservesTypedLookingStrings() async throws {
+    let documents = [
+      YAMLValueDocument(value: [
+        "empty": "",
+        "null": "null",
+        "bool": "true",
+        "number": "1",
+      ])
+    ]
+
+    let sink = DataSink()
+    let writer = YAMLDocumentStreamWriter(sink: sink, options: .default)
+    for document in documents {
+      try await writer.write(document)
+    }
+    try await writer.finish()
+
+    let reader = try YAMLDocumentReader(data: sink.data)
+    let writtenDocuments = try reader.readAll()
+    #expect(writtenDocuments == documents)
+  }
+
+  @Test("Document stream writer preserves scalar edge strings")
+  func documentStreamWriterPreservesScalarEdgeStrings() async throws {
+    let documents = [
+      YAMLValueDocument(value: [
+        "empty": "",
+        "null": "null",
+        "tilde": "~",
+        "true": "true",
+        "false": "false",
+        "integer": "1",
+        "signed": "+12",
+        "decimal": "12.5",
+        "exponent": "1e9",
+        "hex": "0x10",
+        "binary": "0b1010",
+        "ordinary": "MICROSCOPIC AEROSOL BUBBLES OF LIQUID OXYGEN",
+        "colon": "They follow, snapping at his heel:",
+        "comment": "left # right",
+        "separator": "left: right",
+        "marker": "---",
+      ])
+    ]
+
+    let sink = DataSink()
+    let writer = YAMLDocumentStreamWriter(sink: sink, options: .default)
+    for document in documents {
+      try await writer.write(document)
+    }
+    try await writer.finish()
+
+    let reader = try YAMLDocumentReader(data: sink.data)
+    let writtenDocuments = try reader.readAll()
+    #expect(writtenDocuments == documents)
+  }
+
+  @Test("Document stream writer rejects overlapping writes", .timeLimit(.minutes(1)))
+  func documentStreamWriterRejectsOverlappingWrites() async throws {
+    let sink = BlockingYAMLDocumentSink()
+    let writer = YAMLDocumentStreamWriter(sink: sink, options: .default)
+
+    async let firstWrite: Void = writer.write(.init(value: ["first": 1]))
+    await sink.waitUntilWriteStarted()
+
+    await #expect(throws: FormatStreamDriverError.operationInProgress) {
+      try await writer.write(.init(value: ["second": 2]))
+    }
+
+    await sink.releaseWrites()
+    try await firstWrite
+    try await writer.finish()
+  }
+
   @Test("Error locations", arguments: errorCases)
   func errorLocations(_ testCase: ErrorCase) throws {
     let error =
@@ -250,7 +551,7 @@ struct YAMLTests {
 
 }
 
-private func emitEvents(from value: Value, into events: inout [ValueEvent]) {
+private func emitEvents(from value: Value, into events: inout [EmitEvent]) {
   switch value {
   case .tagged(let tags, let value):
     for tag in tags {
@@ -266,11 +567,64 @@ private func emitEvents(from value: Value, into events: inout [ValueEvent]) {
   case .object(let object):
     events.append(.beginObject(count: nil))
     for (key, val) in object {
-      events.append(.key(key))
+      events.append(.scalar(key))
       emitEvents(from: val, into: &events)
     }
     events.append(.endObject)
   default:
     events.append(.scalar(value))
+  }
+}
+
+private actor BlockingYAMLDocumentSink: Sink {
+
+  private var storage = Data()
+  private var writeStarted = false
+  private var writeReleased = false
+  private var writeStartedContinuations: [CheckedContinuation<Void, Never>] = []
+  private var writeReleaseContinuations: [CheckedContinuation<Void, Never>] = []
+
+  var bytesWritten: Int {
+    get async throws { storage.count }
+  }
+
+  func write(data: Data) async throws {
+    writeStarted = true
+    resumeWriteStartedContinuations()
+
+    if !writeReleased {
+      await withCheckedContinuation { continuation in
+        writeReleaseContinuations.append(continuation)
+      }
+    }
+
+    storage.append(data)
+  }
+
+  func waitUntilWriteStarted() async {
+    guard !writeStarted else { return }
+
+    await withCheckedContinuation { continuation in
+      writeStartedContinuations.append(continuation)
+    }
+  }
+
+  func releaseWrites() {
+    writeReleased = true
+    let continuations = writeReleaseContinuations
+    writeReleaseContinuations.removeAll()
+    for continuation in continuations {
+      continuation.resume()
+    }
+  }
+
+  func close() async throws {}
+
+  private func resumeWriteStartedContinuations() {
+    let continuations = writeStartedContinuations
+    writeStartedContinuations.removeAll()
+    for continuation in continuations {
+      continuation.resume()
+    }
   }
 }

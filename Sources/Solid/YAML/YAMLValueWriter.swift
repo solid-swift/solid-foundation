@@ -36,8 +36,8 @@ public struct YAMLValueWriter: FormatWriter {
           writer: YAMLEventWriter(options: .init(indent: options.indent, allowImplicitTyping: false))
         )
       },
-      encodeValue: { value in
-        ValueEventEncoder().encode(value)
+      emitValue: { value, emit in
+        try EmitEventEncoder().emit(value, to: emit)
       }
     )
   }

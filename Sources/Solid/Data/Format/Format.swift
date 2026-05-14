@@ -5,7 +5,7 @@
 //  Created by Kevin Wooten on 1/10/26.
 //
 
-public protocol Format {
+public protocol Format: Sendable {
 
   /// Kind of the format (`text` or `binary`).
   var kind: FormatKind { get }

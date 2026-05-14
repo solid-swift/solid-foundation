@@ -13,7 +13,7 @@ func jsonExample() throws {
   let value = try reader.read()
 
   // Write Value to JSON
-  let output = JSONValueWriter.write(value)
+  let output = try JSONValueWriter.write(value)
   // snippet.hide
   _ = output
 }

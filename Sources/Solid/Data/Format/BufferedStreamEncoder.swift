@@ -30,7 +30,7 @@ public struct BufferedStreamEncoder<Writer: FormatEventWriter>: FormatStreamEnco
   public var format: Format { writer.format }
 
   public mutating func encode(
-    _ event: ValueEvent,
+    _ event: EmitEvent,
     output: inout OutputSpan<UInt8>
   ) throws -> FormatStreamEncodeStatus {
     if pendingEvent {

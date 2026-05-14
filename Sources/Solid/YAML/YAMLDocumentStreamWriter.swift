@@ -8,9 +8,10 @@
 import Foundation
 import SolidData
 import SolidIO
+import Synchronization
 
 /// Async YAML writer that emits full document streams.
-public final class YAMLDocumentStreamWriter {
+public final class YAMLDocumentStreamWriter: @unchecked Sendable {
 
   public struct Options: Sendable {
     public static let `default` = Self()
@@ -24,8 +25,11 @@ public final class YAMLDocumentStreamWriter {
   private let sink: any Sink
   private let bufferSize: Int
   private let options: Options
+  private let operationInProgress = Mutex(false)
   private var wroteDocument = false
   private var atLineStart = true
+  private var finished = false
+  private var closeAttempted = false
 
   public init(sink: any Sink, bufferSize: Int = BufferedSink.segmentSize, options: Options = .default) {
     self.sink = sink
@@ -34,6 +38,13 @@ public final class YAMLDocumentStreamWriter {
   }
 
   public func write(_ document: YAMLValueDocument) async throws {
+    try beginOperation()
+    defer { endOperation() }
+
+    guard !finished, !closeAttempted else {
+      throw IOError.streamClosed
+    }
+
     let needsStart = document.explicitStart || wroteDocument
     if needsStart {
       try await writeMarkerLine("---")
@@ -46,14 +57,11 @@ public final class YAMLDocumentStreamWriter {
       bufferSize: bufferSize,
       options: .init(
         indent: options.indent,
+        allowImplicitTyping: false,
         allowDocumentMarkerPrefix: !needsStart
       )
     )
-    let encoder = ValueEventEncoder()
-    let events = encoder.encode(document.value)
-    for event in events {
-      try await writer.write(event)
-    }
+    try await writer.writeValue(document.value)
     try await writer.finish()
     atLineStart = false
 
@@ -64,14 +72,37 @@ public final class YAMLDocumentStreamWriter {
   }
 
   public func finish() async throws {
-    if !atLineStart {
-      try await appendString("\n")
+    try beginOperation()
+    defer { endOperation() }
+
+    guard !closeAttempted else {
+      throw IOError.streamClosed
     }
+
+    try await finishImpl()
   }
 
   public func close() async throws {
-    try await finish()
+    try beginOperation()
+    defer { endOperation() }
+
+    guard !closeAttempted else {
+      throw IOError.streamClosed
+    }
+
+    try await finishImpl()
+    closeAttempted = true
     try await sink.close()
+  }
+
+  private func finishImpl() async throws {
+    guard !finished else {
+      return
+    }
+    if !atLineStart {
+      try await appendString("\n")
+    }
+    finished = true
   }
 
   private func writeMarkerLine(_ marker: String) async throws {
@@ -84,8 +115,24 @@ public final class YAMLDocumentStreamWriter {
   }
 
   private func appendString(_ string: String) async throws {
-    let data = Data(string.utf8)
+    guard !string.isEmpty else { return }
+    var data = Data()
+    data.reserveCapacity(string.utf8.count)
+    data.append(contentsOf: string.utf8)
     try await sink.write(data: data)
-    atLineStart = string.hasSuffix("\n")
+    atLineStart = string.utf8.last == 0x0A
+  }
+
+  private func beginOperation() throws {
+    let began = operationInProgress.withLock { operationInProgress in
+      guard !operationInProgress else { return false }
+      operationInProgress = true
+      return true
+    }
+    guard began else { throw FormatStreamDriverError.operationInProgress }
+  }
+
+  private func endOperation() {
+    operationInProgress.withLock { $0 = false }
   }
 }

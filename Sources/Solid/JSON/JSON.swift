@@ -15,7 +15,7 @@ public enum JSON {
   /// fatal and represent corrupted data; no recovery is
   /// possible
   public enum Error: FormatError {
-    /// End of data stream unexpectedly encounteredd during deserialization
+    /// End of data stream unexpectedly encountered during deserialization
     case unexpectedEndOfStream
     /// An invalid UTF-8 `string` sequence was encountered during deserialization
     case invalidUTF8String
@@ -24,16 +24,25 @@ public enum JSON {
     /// JSON tags must be a string. Passing any other value
     /// will result in this error.
     case invalidTagType
+    /// An invalid token was encountered during parsing
+    case invalidToken
+    /// An invalid string was encountered (e.g., unescaped control character)
+    case invalidString
+    /// An invalid number was encountered during parsing
+    case invalidNumber
+    /// An invalid escape sequence was encountered in a string
+    case invalidEscapeSequence
+    /// A structural error in the JSON (e.g., mismatched brackets, extra data)
+    case invalidStructure(String)
   }
 
   public enum Format: SolidData.Format, Sendable {
     case instance
 
-    public var kind: FormatKind { .binary }
+    public var kind: FormatKind { .text }
 
     public func supports(type: ValueType) -> Bool {
-      guard case .bytes = type else { return true }
-      return true
+      type != .bytes
     }
   }
 

@@ -250,7 +250,7 @@ let benchmarks: @Sendable () -> Void = {
     for _ in benchmark.scaledIterations {
       let sink = DataSink()
       let writer = YAMLStreamWriter(sink: sink)
-      let events = ValueEventEncoder().encode(smallMap)
+      let events = EmitEventEncoder().encode(smallMap)
       for event in events {
         try? await writer.write(event)
       }
@@ -264,7 +264,7 @@ let benchmarks: @Sendable () -> Void = {
     for _ in benchmark.scaledIterations {
       let sink = DataSink()
       let writer = YAMLStreamWriter(sink: sink, options: .init(forceBlockCollections: true))
-      let events = ValueEventEncoder().encode(smallMap)
+      let events = EmitEventEncoder().encode(smallMap)
       for event in events {
         try? await writer.write(event)
       }
@@ -282,7 +282,7 @@ let benchmarks: @Sendable () -> Void = {
       let source = DataSource(data: smallMapYaml)
       let reader = YAMLStreamReader()
       let driver = FormatStreamReaderDriver(reader: reader, source: source, bufferSize: 64)
-      var decoder = ValueEventDecoder()
+      var decoder = ParseEventDecoder(resolver: YAMLScalarResolver())
       while let event = try? await driver.next() {
         try? decoder.append(event)
       }
@@ -298,7 +298,7 @@ let benchmarks: @Sendable () -> Void = {
       let source = ChunkedSource(data: smallMapYaml, chunkSizes: [1, 2, 3, 1, 4])
       let reader = YAMLStreamReader()
       let driver = FormatStreamReaderDriver(reader: reader, source: source, bufferSize: 64)
-      var decoder = ValueEventDecoder()
+      var decoder = ParseEventDecoder(resolver: YAMLScalarResolver())
       while let event = try? await driver.next() {
         try? decoder.append(event)
       }

@@ -50,7 +50,7 @@ struct YAMLDocument: Sendable {
   let explicitEnd: Bool
 }
 
-struct YAMLScalarResolver {
+struct YAMLTagResolver {
 
   func resolve(_ scalar: YAMLScalar, explicitTag: String?, wrapTag: Bool = true) -> Value {
     let resolved: Value
@@ -89,7 +89,7 @@ struct YAMLScalarResolver {
       }
       return .string(scalar.text)
     default:
-      return .tagged(tags: [.string(tag)], value: resolveImplicit(scalar))
+      return resolveImplicit(scalar)
     }
   }
 
@@ -258,7 +258,7 @@ struct YAMLScalarResolver {
 extension YAMLNode {
 
   func toValue(
-    resolver: YAMLScalarResolver = YAMLScalarResolver(),
+    resolver: YAMLTagResolver = YAMLTagResolver(),
     anchors: inout [String: Value],
     wrapTag: Bool = true
   ) throws -> Value {

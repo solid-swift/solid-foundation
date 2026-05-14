@@ -5,14 +5,21 @@
 //  Created by Kevin Wooten on 2/14/26.
 //
 
-/// Streaming representation of a ``Value``.
+/// Streaming event for writing ``Value`` data to a format encoder.
 ///
 /// Event streams describe a single value using begin/end container events.
 /// Tags are emitted as one or more `.tag` events that apply to the next value
 /// (scalar or container). For stacked tags, the first tag event is the
 /// outermost tag. Anchors apply to the next value event and aliases reference
 /// a previously anchored node (YAML-only).
-public enum ValueEvent: Sendable, Equatable {
+///
+/// After ``beginObject(count:)``, scalars alternate implicitly between keys and
+/// values — the first scalar is a key, the next is its value, and so on until
+/// ``endObject``. No explicit key event is needed.
+///
+/// For reading/parsing, see ``ParseEvent`` which carries ``ScalarRef`` for
+/// lazy/zero-copy scalar access.
+public enum EmitEvent: Sendable, Equatable {
 
   /// A style hint that applies to the next value event.
   case style(ValueStyle)
@@ -44,9 +51,9 @@ public enum ValueEvent: Sendable, Equatable {
   case beginObject(count: Int?)
   /// End of an object.
   case endObject
-
-  /// A key for an object entry.
-  ///
-  /// - Note: Tags can be applied to keys by emitting `.tag` events before `.key`.
-  case key(Value)
 }
+
+/// Backward-compatibility aliases.
+public typealias ValueEvent = EmitEvent
+public typealias ValueEventDecoder = EmitEventDecoder
+public typealias ValueEventEncoder = EmitEventEncoder

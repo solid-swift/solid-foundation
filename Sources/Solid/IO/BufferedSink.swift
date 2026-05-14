@@ -25,7 +25,41 @@ public class BufferedSink: Sink, Flushable, @unchecked Sendable {
   /// Number of bytes written to this stream.
   @AtomicCounter public var bytesWritten: Int
   @AtomicFlag private var closed: Bool
-  private let bufferedData = Mutex(Data())
+  private struct BufferState {
+    var data = Data()
+    var flushOffset = 0
+
+    var availableCount: Int {
+      data.count - flushOffset
+    }
+
+    mutating func append(_ newData: Data) {
+      if flushOffset == data.count {
+        data.removeAll(keepingCapacity: true)
+        flushOffset = 0
+      }
+      data.append(newData)
+    }
+
+    mutating func nextChunk(retiring processedCount: Int?, keeping minimumRemaining: Int, segmentSize: Int) -> Data? {
+      if let processedCount {
+        flushOffset += processedCount
+        if flushOffset == data.count {
+          data.removeAll(keepingCapacity: true)
+          flushOffset = 0
+        }
+      }
+
+      guard availableCount > minimumRemaining else {
+        return nil
+      }
+
+      let count = min(segmentSize, availableCount)
+      return data[flushOffset..<(flushOffset + count)]
+    }
+  }
+
+  private let bufferedData = Mutex(BufferState())
 
   /// Initializes instance to write data to `sink` with a minimum
   /// buffer size of `segmentSize`.
@@ -47,12 +81,12 @@ public class BufferedSink: Sink, Flushable, @unchecked Sendable {
     _bytesWritten.add(data.count)
 
     let available =
-      self.bufferedData.withLock { bufferedData in
-        bufferedData.append(data)
-        return bufferedData.count
+      self.bufferedData.withLock { state in
+        state.append(data)
+        return state.availableCount
       }
     if available > segmentSize {
-      try await flush(size: available)
+      try await flush(size: segmentSize)
     }
   }
 
@@ -67,17 +101,8 @@ public class BufferedSink: Sink, Flushable, @unchecked Sendable {
   private func flush(size: Int) async throws {
 
     func availableData(processedCount: Int?) throws -> Data? {
-      bufferedData.withLock { bufferedData in
-
-        if let processedCount {
-          bufferedData = bufferedData.dropFirst(processedCount)
-        }
-
-        return if bufferedData.count > size {
-          bufferedData.prefix(segmentSize)
-        } else {
-          nil
-        }
+      bufferedData.withLock { state in
+        state.nextChunk(retiring: processedCount, keeping: size, segmentSize: segmentSize)
       }
     }
 

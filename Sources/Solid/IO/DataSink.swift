@@ -59,6 +59,7 @@ public final class DataSource: Source, @unchecked Sendable {
 
   struct State {
     var data: Data
+    var readOffset: Int
     var bytesRead: Int
     var closed: Bool
   }
@@ -66,7 +67,11 @@ public final class DataSource: Source, @unchecked Sendable {
   private let state: Mutex<State>
 
   /// Data buffer source is reading from.
-  public var data: Data { state.withLock(\.data) }
+  public var data: Data {
+    state.withLock { state in
+      state.data[state.readOffset..<state.data.count]
+    }
+  }
   @AtomicCounter public var bytesRead: Int
 
   /// Initialize the stream with a specified source `data` buffer.
@@ -74,20 +79,25 @@ public final class DataSource: Source, @unchecked Sendable {
   /// - Parameter data: Data buffer to read from.
   ///
   public init(data: Data) {
-    self.state = Mutex(State(data: data, bytesRead: 0, closed: false))
+    self.state = Mutex(State(data: data, readOffset: 0, bytesRead: 0, closed: false))
   }
 
   public func read(max maxLength: Int) throws -> Data? {
     return try state.withLock { state in
       guard !state.closed else { throw IOError.streamClosed }
 
-      guard !state.data.isEmpty else {
+      guard state.readOffset < state.data.count else {
         return nil
       }
 
-      let result = state.data.prefix(maxLength)
+      let end = min(state.readOffset + maxLength, state.data.count)
+      let result = state.data[state.readOffset..<end]
+      state.readOffset = end
 
-      state.data.removeSubrange(0..<result.count)
+      if state.readOffset == state.data.count {
+        state.data.removeAll(keepingCapacity: true)
+        state.readOffset = 0
+      }
 
       state.bytesRead += result.count
 
