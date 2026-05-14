@@ -33,6 +33,53 @@ struct YAMLRawScalar: Sendable {
   let region: ParseBuffer.Region
 }
 
+private func validatedYAMLUTF8String(
+  _ bytes: UnsafeBufferPointer<UInt8>,
+  in range: Range<Int>
+) -> String? {
+  String(bytes: UnsafeBufferPointer(rebasing: bytes[range]), encoding: .utf8)
+}
+
+private func decodeYAMLTagSuffix(
+  _ text: String,
+  location: YAML.ParseError.Location
+) throws -> String {
+  guard text.contains("%") else {
+    return text
+  }
+
+  var output = ContiguousArray<UInt8>()
+  output.reserveCapacity(text.utf8.count)
+
+  var index = text.startIndex
+  while index < text.endIndex {
+    let char = text[index]
+    if char == "%" {
+      let next1 = text.index(after: index)
+      guard next1 < text.endIndex else {
+        throw YAML.ParseError.invalidSyntax("Invalid tag", location: location)
+      }
+      let next2 = text.index(after: next1)
+      guard next2 < text.endIndex,
+        let hi = text[next1].hexDigitValue,
+        let lo = text[next2].hexDigitValue
+      else {
+        throw YAML.ParseError.invalidSyntax("Invalid tag", location: location)
+      }
+      output.append(UInt8((hi << 4) | lo))
+      index = text.index(after: next2)
+      continue
+    }
+    output.append(contentsOf: String(char).utf8)
+    index = text.index(after: index)
+  }
+
+  guard let decoded = String(bytes: output, encoding: .utf8) else {
+    throw YAML.ParseError.invalidSyntax("Invalid tag", location: location)
+  }
+  return decoded
+}
+
 /// Incremental byte-level tokenizer for YAML.
 ///
 /// The tokenizer scans retained byte regions from `ParseBuffer`, emits
@@ -2645,31 +2692,7 @@ struct YAMLTokenizer: ~Copyable, Sendable {
     _ text: String,
     location: YAML.ParseError.Location
   ) throws -> String {
-    var output = ""
-    var index = text.startIndex
-    while index < text.endIndex {
-      let char = text[index]
-      if char == "%" {
-        let next1 = text.index(after: index)
-        guard next1 < text.endIndex else {
-          throw YAML.ParseError.invalidSyntax("Invalid tag", location: location)
-        }
-        let next2 = text.index(after: next1)
-        guard next2 < text.endIndex,
-          let hi = text[next1].hexDigitValue,
-          let lo = text[next2].hexDigitValue
-        else {
-          throw YAML.ParseError.invalidSyntax("Invalid tag", location: location)
-        }
-        let byte = UInt8((hi << 4) | lo)
-        output.append(String(decoding: [byte], as: UTF8.self))
-        index = text.index(after: next2)
-        continue
-      }
-      output.append(char)
-      index = text.index(after: index)
-    }
-    return output
+    try decodeYAMLTagSuffix(text, location: location)
   }
 
   private func parseSingleQuoted(_ text: String, location: YAML.ParseError.Location) throws -> String {
@@ -3629,12 +3652,17 @@ private struct YAMLFlowLexer: ~Copyable, Sendable {
         index += 1
       }
       guard index < bytes.count else { return nil }
-      return (String(decoding: bytes[contentStart..<index], as: UTF8.self), index + 1)
+      guard let tag = validatedYAMLUTF8String(bytes, in: contentStart..<index) else {
+        return nil
+      }
+      return (tag, index + 1)
     }
     while index < bytes.count, isDecoratorByte(bytes[index]) {
       index += 1
     }
-    let token = String(decoding: bytes[start..<index], as: UTF8.self)
+    guard let token = validatedYAMLUTF8String(bytes, in: start..<index) else {
+      return nil
+    }
     return (try? resolveTagToken(token)) .map { ($0, index) }
   }
 
@@ -3646,7 +3674,10 @@ private struct YAMLFlowLexer: ~Copyable, Sendable {
     guard index > start else {
       return nil
     }
-    return (String(decoding: bytes[start..<index], as: UTF8.self), index)
+    guard let name = validatedYAMLUTF8String(bytes, in: start..<index) else {
+      return nil
+    }
+    return (name, index)
   }
 
   private func colonIsMappingSeparator(bytes: UnsafeBufferPointer<UInt8>, at index: Int) -> Bool {
@@ -3727,30 +3758,7 @@ private struct YAMLFlowLexer: ~Copyable, Sendable {
   }
 
   private func decodeTagSuffix(_ text: String) throws -> String {
-    var output = ""
-    var index = text.startIndex
-    while index < text.endIndex {
-      let char = text[index]
-      if char == "%" {
-        let next1 = text.index(after: index)
-        guard next1 < text.endIndex else {
-          throw YAML.ParseError.invalidSyntax("Invalid tag", location: location)
-        }
-        let next2 = text.index(after: next1)
-        guard next2 < text.endIndex,
-          let hi = text[next1].hexDigitValue,
-          let lo = text[next2].hexDigitValue
-        else {
-          throw YAML.ParseError.invalidSyntax("Invalid tag", location: location)
-        }
-        output.append(String(decoding: [UInt8((hi << 4) | lo)], as: UTF8.self))
-        index = text.index(after: next2)
-        continue
-      }
-      output.append(char)
-      index = text.index(after: index)
-    }
-    return output
+    try decodeYAMLTagSuffix(text, location: location)
   }
 
   private func appendDoubleQuotedEscape(

@@ -542,6 +542,12 @@ private let floatCases: [CBORValueWriterTests.EncodeCase] = [
   .init(id: "float-inf", value: .number(Float32.infinity), expected: [0xFA, 0x7F, 0x80, 0x00, 0x00], deterministic: false),
   .init(id: "float--inf", value: .number(-Float32.infinity), expected: [0xFA, 0xFF, 0x80, 0x00, 0x00], deterministic: false),
   .init(
+    id: "half-noncanonical-nan",
+    value: .number(Float16(bitPattern: 0x7E01)),
+    expected: [0xF9, 0x7E, 0x01],
+    deterministic: false
+  ),
+  .init(
     id: "double-inf",
     value: .number(Double.infinity),
     expected: [0xFB, 0x7F, 0xF0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
@@ -609,6 +615,12 @@ private let deterministicFloatCases: [CBORValueWriterTests.EncodeCase] = [
     id: "det-half-1.23",
     value: .number(Float16(1.23)),
     expected: [0xF9, 0x3C, 0xEC],
+    deterministic: true
+  ),
+  .init(
+    id: "det-half-noncanonical-nan",
+    value: .number(Float16(bitPattern: 0x7E01)),
+    expected: [0xF9, 0x7E, 0x00],
     deterministic: true
   ),
 ]

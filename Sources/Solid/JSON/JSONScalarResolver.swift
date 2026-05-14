@@ -305,7 +305,9 @@ public struct JSONScalarResolver: ScalarMetadataResolver {
 
   /// Fallback number parsing via TextNumber/BigDecimal.
   private func resolveNumber(_ data: Data) throws -> Value {
-    let text = String(decoding: data, as: UTF8.self)
+    guard let text = String(data: data, encoding: .utf8) else {
+      throw JSON.Error.invalidNumber
+    }
     guard let textNumber = Value.TextNumber(text: text) else {
       throw JSON.Error.invalidNumber
     }
@@ -313,8 +315,11 @@ public struct JSONScalarResolver: ScalarMetadataResolver {
   }
 
   private func resolveNumber(_ region: ParseBuffer.Region) throws -> Value {
-    let text = region.withUnsafeBytes { rawBuffer in
-      String(decoding: rawBuffer.bindMemory(to: UInt8.self), as: UTF8.self)
+    let text = try region.withUnsafeBytes { rawBuffer in
+      guard let string = String(bytes: rawBuffer.bindMemory(to: UInt8.self), encoding: .utf8) else {
+        throw JSON.Error.invalidNumber
+      }
+      return string
     }
     guard let textNumber = Value.TextNumber(text: text) else {
       throw JSON.Error.invalidNumber

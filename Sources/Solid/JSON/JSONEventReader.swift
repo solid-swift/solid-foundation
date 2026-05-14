@@ -309,11 +309,12 @@ public struct JSONEventReader: ~Copyable, FormatEventReader, Sendable {
 
   // MARK: - String scanning (zero-copy)
 
-  /// Scan for the closing `"` without processing escape sequences.
+  /// Scan for the closing `"` without unescaping string contents.
   ///
   /// Tracks `\` state to skip escaped characters. The raw bytes between the opening
   /// and closing quotes (with escape sequences still present) are captured as a
   /// zero-copy ``ParseBuffer/Region`` for deferred unescaping by ``JSONScalarResolver``.
+  /// Escape grammar and raw UTF-8 validity are checked before the scalar event is emitted.
   private mutating func continueString(_ state: inout StringScanState) throws -> ParseEvent? {
     while true {
       let action = buffer.withContiguousReadableBytes { bytes -> StringScanAction in
@@ -363,6 +364,7 @@ public struct JSONEventReader: ~Copyable, FormatEventReader, Sendable {
         }
         // End of string — slice from markOffset to offset (exclusive)
         let region = buffer.region(from: state.mark, to: buffer.mark())
+        try Self.validateStringRegion(region)
         try buffer.advanceInCurrentSegment(count: 1) // consume closing "
         let ref = ScalarRef(
           kind: .string,
@@ -381,6 +383,117 @@ public struct JSONEventReader: ~Copyable, FormatEventReader, Sendable {
         return nil
       }
     }
+  }
+
+  private static func validateStringRegion(_ region: ParseBuffer.Region) throws {
+    try region.withUnsafeBytes { rawBuffer in
+      guard isValidUTF8(rawBuffer) else {
+        throw JSON.Error.invalidUTF8String
+      }
+
+      let data = rawBuffer.bindMemory(to: UInt8.self)
+      var i = data.startIndex
+
+      while i < data.endIndex {
+        if data[i] != JSONStructure.escape {
+          i += 1
+          continue
+        }
+
+        i += 1
+        guard i < data.endIndex else {
+          throw JSON.Error.invalidEscapeSequence
+        }
+
+        let escaped = data[i]
+        i += 1
+
+        switch escaped {
+        case JSONStructure.quotationMark,
+             JSONStructure.escape,
+             UInt8(ascii: "/"),
+             UInt8(ascii: "b"),
+             UInt8(ascii: "f"),
+             UInt8(ascii: "n"),
+             UInt8(ascii: "r"),
+             UInt8(ascii: "t"):
+          continue
+
+        case UInt8(ascii: "u"):
+          let codeUnit = try parseHex4(data, at: &i)
+          if isHighSurrogate(codeUnit) {
+            guard i + 1 < data.endIndex,
+                  data[i] == JSONStructure.escape,
+                  data[i + 1] == UInt8(ascii: "u")
+            else {
+              throw JSON.Error.invalidEscapeSequence
+            }
+            i += 2
+            let lowUnit = try parseHex4(data, at: &i)
+            guard isLowSurrogate(lowUnit) else {
+              throw JSON.Error.invalidEscapeSequence
+            }
+          } else if isLowSurrogate(codeUnit) || UnicodeScalar(codeUnit) == nil {
+            throw JSON.Error.invalidEscapeSequence
+          }
+
+        default:
+          throw JSON.Error.invalidEscapeSequence
+        }
+      }
+    }
+  }
+
+  private static func isValidUTF8(_ rawBuffer: UnsafeRawBufferPointer) -> Bool {
+    var parser = Unicode.UTF8.ForwardParser()
+    var iterator = rawBuffer.bindMemory(to: UInt8.self).makeIterator()
+
+    while true {
+      switch parser.parseScalar(from: &iterator) {
+      case .valid:
+        continue
+      case .emptyInput:
+        return true
+      case .error:
+        return false
+      }
+    }
+  }
+
+  private static func parseHex4(_ data: UnsafeBufferPointer<UInt8>, at i: inout Int) throws -> UInt16 {
+    var value: UInt16 = 0
+    for _ in 0..<4 {
+      guard i < data.endIndex else {
+        throw JSON.Error.invalidEscapeSequence
+      }
+      guard let digit = hexValue(data[i]) else {
+        throw JSON.Error.invalidEscapeSequence
+      }
+      value = (value << 4) | digit
+      i += 1
+    }
+    return value
+  }
+
+  private static func hexValue(_ byte: UInt8) -> UInt16? {
+    switch byte {
+    case UInt8(ascii: "0")...UInt8(ascii: "9"):
+      return UInt16(byte - UInt8(ascii: "0"))
+    case UInt8(ascii: "a")...UInt8(ascii: "f"):
+      return UInt16(byte - UInt8(ascii: "a") + 10)
+    case UInt8(ascii: "A")...UInt8(ascii: "F"):
+      return UInt16(byte - UInt8(ascii: "A") + 10)
+    default:
+      return nil
+    }
+  }
+
+  private static func isHighSurrogate(_ codeUnit: UInt16) -> Bool {
+    (0xD800...0xDBFF).contains(codeUnit)
+  }
+
+  private static func isLowSurrogate(_ codeUnit: UInt16) -> Bool {
+    (0xDC00...0xDFFF).contains(codeUnit)
   }
 
   // MARK: - Number scanning (zero-copy)

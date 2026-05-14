@@ -15,7 +15,7 @@ public struct YAMLValueReader: ~Copyable, FormatReader {
   private let data: Data
 
   public init(data: Data) throws {
-    guard String(data: data, encoding: .utf8) != nil else {
+    guard Self.isValidUTF8(data) else {
       throw YAML.DataError.invalidEncoding(.utf8)
     }
     self.data = data
@@ -41,6 +41,23 @@ public struct YAMLValueReader: ~Copyable, FormatReader {
       return first.value
     } catch YAML.ParseError.incompleteInput(let location) {
       throw YAML.ParseError.invalidSyntax("Unexpected end of document", location: location)
+    }
+  }
+
+  private static func isValidUTF8(_ data: Data) -> Bool {
+    data.withUnsafeBytes { rawBuffer in
+      var parser = Unicode.UTF8.ForwardParser()
+      var iterator = rawBuffer.bindMemory(to: UInt8.self).makeIterator()
+      while true {
+        switch parser.parseScalar(from: &iterator) {
+        case .valid:
+          continue
+        case .emptyInput:
+          return true
+        case .error:
+          return false
+        }
+      }
     }
   }
 }

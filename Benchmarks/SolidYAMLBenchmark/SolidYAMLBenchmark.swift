@@ -282,7 +282,7 @@ let benchmarks: @Sendable () -> Void = {
       let source = DataSource(data: smallMapYaml)
       let reader = YAMLStreamReader()
       let driver = FormatStreamReaderDriver(reader: reader, source: source, bufferSize: 64)
-      var decoder = ParseEventDecoder()
+      var decoder = ParseEventDecoder(resolver: YAMLScalarResolver())
       while let event = try? await driver.next() {
         try? decoder.append(event)
       }
@@ -298,7 +298,7 @@ let benchmarks: @Sendable () -> Void = {
       let source = ChunkedSource(data: smallMapYaml, chunkSizes: [1, 2, 3, 1, 4])
       let reader = YAMLStreamReader()
       let driver = FormatStreamReaderDriver(reader: reader, source: source, bufferSize: 64)
-      var decoder = ParseEventDecoder()
+      var decoder = ParseEventDecoder(resolver: YAMLScalarResolver())
       while let event = try? await driver.next() {
         try? decoder.append(event)
       }

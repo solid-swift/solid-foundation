@@ -11,9 +11,21 @@ import Foundation
 /// Synchronous JSON reader that loads into ``Value``.
 public struct JSONValueReader: ~Copyable, FormatReader {
 
+  private final class Storage {
+    let data: Data
+
+    init(data: Data) {
+      self.data = data
+    }
+  }
+
+  // Keep the noncopyable reader first. Release builds have hit bad existential
+  // retention when preserved input storage is laid out before this field.
   private var reader: FormatValueReader<JSONStreamReader>
+  private let storage: Storage
 
   public init(data: Data) {
+    self.storage = Storage(data: data)
     self.reader = FormatValueReader(
       reader: JSONStreamReader(reader: JSONEventReader()),
       data: data,
@@ -34,11 +46,15 @@ public struct JSONValueReader: ~Copyable, FormatReader {
   public var format: Format { reader.format }
 
   public mutating func read() throws -> Value {
-    try reader.read()
+    return try reader.read()
   }
 
   /// Validate that the data contains well-formed JSON without building a ``Value``.
   public mutating func validateValue() throws {
-    _ = try reader.read()
+    var reader = JSONEventReader()
+    reader.feedInput(storage.data, isFinal: true)
+    while !reader.isFinished {
+      _ = try reader.readEvent()
+    }
   }
 }

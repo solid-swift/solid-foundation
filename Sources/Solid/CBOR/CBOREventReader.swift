@@ -348,25 +348,29 @@ public struct CBOREventReader: ~Copyable, FormatEventReader, Sendable {
   /// Decode a decimal fraction (tag 4) or big float (tag 5).
   /// The tagged item must be a 2-element array [exponent, mantissa].
   private mutating func decodeBigNumber(base: BigDecimal) throws -> Value {
+    let (exponent, mantissa) = try readBigNumberOperands()
+    return try assembleBigNumber(exponent: exponent, mantissa: mantissa, base: base)
+  }
+
+  private mutating func readBigNumberOperands() throws -> (exponent: Value, mantissa: Value) {
     let initByte = try readByte()
-    guard (0x82...0x82).contains(initByte) else {
-      // Must be a definite-length array of exactly 2 items
-      if (0x80...0x9B).contains(initByte) {
-        let count = try readLength(initByte, base: 0x80)
-        guard count == 2 else { throw CBOR.Error.invalidItemType }
-      } else {
-        throw CBOR.Error.invalidItemType
-      }
-      // Fall through to read the two items
+    switch initByte {
+    case 0x82:
+      return (try readScalarValue(), try readScalarValue())
+    case 0x80...0x9B:
+      let count = try readLength(initByte, base: 0x80)
+      guard count == 2 else { throw CBOR.Error.invalidItemType }
+      return (try readScalarValue(), try readScalarValue())
+    case 0x9F:
       let exponent = try readScalarValue()
       let mantissa = try readScalarValue()
-      return try assembleBigNumber(exponent: exponent, mantissa: mantissa, base: base)
+      guard try readByte() == 0xFF else {
+        throw CBOR.Error.invalidItemType
+      }
+      return (exponent, mantissa)
+    default:
+      throw CBOR.Error.invalidItemType
     }
-
-    // Fast path: exactly 2-element array (0x82)
-    let exponent = try readScalarValue()
-    let mantissa = try readScalarValue()
-    return try assembleBigNumber(exponent: exponent, mantissa: mantissa, base: base)
   }
 
   private func assembleBigNumber(exponent: Value, mantissa: Value, base: BigDecimal) throws -> Value {

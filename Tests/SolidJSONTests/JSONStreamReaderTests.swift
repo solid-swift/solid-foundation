@@ -132,6 +132,39 @@ struct JSONStreamReaderTests {
     #expect(try reader.read() == .object([.string("a"): .number(1)]))
   }
 
+  @Test("JSON value reader accepts roots ending on event batch boundary")
+  func valueReaderAcceptsRootsEndingOnEventBatchBoundary() throws {
+    let json = "[" + (0..<62).map(String.init).joined(separator: ",") + "]"
+    var reader = JSONValueReader(string: json)
+
+    #expect(try reader.read() == .array((0..<62).map { .number($0) }))
+  }
+
+  @Test("JSON value reader reads pretty printed top-level arrays from data")
+  func valueReaderReadsPrettyPrintedTopLevelArraysFromData() throws {
+    let data = Data("""
+      [
+        {
+          "name": "Mark McGwire",
+          "hr": 65,
+          "avg": 0.278
+        },
+        {
+          "name": "Sammy Sosa",
+          "hr": 63,
+          "avg": 0.288
+        }
+      ]
+      """.utf8)
+    var reader = JSONValueReader(data: data)
+
+    guard case .array(let rows) = try reader.read() else {
+      Issue.record("Expected top-level array")
+      return
+    }
+    #expect(rows.count == 2)
+  }
+
   @Test("JSON validation rejects trailing root data")
   func validationRejectsTrailingRootData() throws {
     var reader = JSONValueReader(string: "true false")
@@ -139,6 +172,44 @@ struct JSONStreamReaderTests {
     #expect(throws: JSON.Error.self) {
       try reader.validateValue()
     }
+  }
+
+  @Test("JSON validation rejects trailing garbage")
+  func validationRejectsTrailingGarbage() throws {
+    var reader = JSONValueReader(string: #"{"a":1} garbage"#)
+
+    #expect(throws: JSON.Error.self) {
+      try reader.validateValue()
+    }
+  }
+
+  @Test("JSON validation rejects invalid string escape before materialization")
+  func validationRejectsInvalidStringEscapeBeforeMaterialization() throws {
+    var reader = JSONValueReader(string: #""\q""#)
+
+    #expect(throws: JSON.Error.self) {
+      try reader.validateValue()
+    }
+  }
+
+  @Test("JSON validation rejects invalid string UTF-8 before materialization")
+  func validationRejectsInvalidStringUTF8BeforeMaterialization() throws {
+    var reader = JSONValueReader(data: Data([0x22, 0xC3, 0x28, 0x22]))
+
+    #expect(throws: JSON.Error.self) {
+      try reader.validateValue()
+    }
+  }
+
+  @Test("JSON validation does not consume subsequent value reads")
+  func validationDoesNotConsumeSubsequentValueReads() throws {
+    var reader = JSONValueReader(string: #"{"a":[1,true,null]}"#)
+
+    try reader.validateValue()
+
+    #expect(try reader.read() == .object([
+      .string("a"): .array([.number(1), .bool(true), .null]),
+    ]))
   }
 
   @Test("JSON stream driver reports trailing data when drained")
@@ -155,6 +226,41 @@ struct JSONStreamReaderTests {
 
     await #expect(throws: JSON.Error.self) {
       _ = try await driver.next()
+    }
+  }
+
+  @Test("JSON event reader rejects invalid string escape before materialization")
+  func eventReaderRejectsInvalidStringEscapeBeforeMaterialization() throws {
+    #expect(throws: JSON.Error.self) {
+      try drainEvents(Data(#""\q""#.utf8))
+    }
+  }
+
+  @Test("JSON event reader rejects invalid unicode escape before materialization")
+  func eventReaderRejectsInvalidUnicodeEscapeBeforeMaterialization() throws {
+    #expect(throws: JSON.Error.self) {
+      try drainEvents(Data(#""\u12g4""#.utf8))
+    }
+  }
+
+  @Test("JSON event reader rejects invalid string UTF-8 before materialization")
+  func eventReaderRejectsInvalidStringUTF8BeforeMaterialization() throws {
+    #expect(throws: JSON.Error.self) {
+      try drainEvents(Data([0x22, 0xC3, 0x28, 0x22]))
+    }
+  }
+
+  @Test("JSON scalar resolver rejects invalid UTF-8 number fallback")
+  func scalarResolverRejectsInvalidUTF8NumberFallback() throws {
+    #expect(throws: JSON.Error.self) {
+      _ = try JSONScalarResolver().resolve(Data([0x31, 0xC3]), kind: .number)
+    }
+  }
+
+  @Test("JSON stream driver rejects invalid split escape before materialization")
+  func streamDriverRejectsInvalidSplitEscapeBeforeMaterialization() async throws {
+    await #expect(throws: JSON.Error.self) {
+      try await drainStreamedEvents(data: Data(#""\q""#.utf8), chunkSizes: [2, 1, 1])
     }
   }
 
@@ -196,6 +302,22 @@ private func parseStreamed(json: String, chunkSizes: [Int]) async throws -> Valu
   }
 
   return try decoder.finish()
+}
+
+private func drainEvents(_ data: Data) throws {
+  var reader = JSONEventReader()
+  reader.feedInput(data, isFinal: true)
+  while !reader.isFinished {
+    _ = try reader.readEvent()
+  }
+}
+
+private func drainStreamedEvents(data: Data, chunkSizes: [Int]) async throws {
+  let source = ChunkedSource(data: data, chunkSizes: chunkSizes)
+  let reader = JSONStreamReader()
+  let driver = FormatStreamReaderDriver(reader: reader, source: source, bufferSize: 1)
+
+  while try await driver.next() != nil {}
 }
 
 private final class ChunkedSource: Source, @unchecked Sendable {

@@ -386,6 +386,24 @@ private let taggedCases: [CBORValueReaderTests.DecodeCase] = [
     expected: .tagged(tags: [.number(UInt64.max)], value: .string("ABC")),
     options: .init()
   ),
+  .init(
+    id: "tag-decimal-fraction-definite-array",
+    bytes: [0xC4, 0x82, 0x20, 0x18, 0x7B],
+    expected: .number("12.3"),
+    options: .init()
+  ),
+  .init(
+    id: "tag-decimal-fraction-indefinite-array",
+    bytes: [0xC4, 0x9F, 0x20, 0x18, 0x7B, 0xFF],
+    expected: .number("12.3"),
+    options: .init()
+  ),
+  .init(
+    id: "tag-bigfloat-indefinite-array",
+    bytes: [0xC5, 0x9F, 0x20, 0x08, 0xFF],
+    expected: .number(4),
+    options: .init()
+  ),
 ]
 
 private let simpleCases: [CBORValueReaderTests.DecodeCase] = [
@@ -449,6 +467,16 @@ private let errorCases: [CBORValueReaderTests.DecodeErrorCase] = [
   .init(
     id: "trailing-break-after-definite-array",
     bytes: [0x98, 3, 0x18, 2, 0x18, 2, 0x79, 0x00, 3, 0x41, 0x42, 0x43, 0xFF],
+    options: .init()
+  ),
+  .init(
+    id: "tag-decimal-fraction-indefinite-array-missing-break",
+    bytes: [0xC4, 0x9F, 0x20, 0x18, 0x7B, 0x00],
+    options: .init()
+  ),
+  .init(
+    id: "tag-decimal-fraction-indefinite-array-too-few-operands",
+    bytes: [0xC4, 0x9F, 0x20, 0xFF],
     options: .init()
   ),
 ]

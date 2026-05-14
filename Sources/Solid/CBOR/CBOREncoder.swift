@@ -573,7 +573,7 @@ struct CBOREncoder: FormatEventWriter {
 
   private mutating func writeHalf(_ val: Float16) {
     buffer.append(0xF9)
-    appendBigEndian(val.bitPattern)
+    appendBigEndian(options.deterministic && val.isNaN ? 0x7E00 : val.bitPattern)
   }
 
   private mutating func writeFloat(_ val: Float32) {

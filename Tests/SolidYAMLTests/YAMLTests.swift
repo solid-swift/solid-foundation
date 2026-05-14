@@ -163,6 +163,71 @@ struct YAMLTests {
     }
   }
 
+  @Test("Value reader rejects invalid UTF-8 byte")
+  func valueReaderRejectsInvalidUTF8Byte() {
+    #expect(throws: YAML.DataError.self) {
+      _ = try YAMLValueReader(data: Data([0x80]))
+    }
+  }
+
+  @Test("Value reader rejects truncated UTF-8 sequence")
+  func valueReaderRejectsTruncatedUTF8Sequence() {
+    #expect(throws: YAML.DataError.self) {
+      _ = try YAMLValueReader(data: Data([0x66, 0x6F, 0xC3]))
+    }
+  }
+
+  @Test("Value reader accepts valid non-ASCII UTF-8 bytes")
+  func valueReaderAcceptsValidNonASCIIUTF8Bytes() throws {
+    let data = Data([0x6E, 0x61, 0x6D, 0x65, 0x3A, 0x20, 0x63, 0x61, 0x66, 0xC3, 0xA9, 0x0A])
+    var reader = try YAMLValueReader(data: data)
+
+    #expect(try reader.read() == ["name": "caf\u{00E9}"])
+  }
+
+  @Test("Value reader rejects invalid percent-encoded tag UTF-8")
+  func valueReaderRejectsInvalidPercentEncodedTagUTF8() throws {
+    var reader = try YAMLValueReader(data: Data("!!%80 value\n".utf8))
+
+    #expect(throws: Error.self) {
+      _ = try reader.read()
+    }
+  }
+
+  @Test("Value reader decodes multibyte percent-encoded tag suffix")
+  func valueReaderDecodesMultibytePercentEncodedTagSuffix() throws {
+    var reader = try YAMLValueReader(data: Data("!!caf%C3%A9 value\n".utf8))
+
+    #expect(try reader.read() == .tagged(
+      tags: ["tag:yaml.org,2002:caf\u{00E9}"],
+      value: "value"
+    ))
+  }
+
+  @Test("Document reader rejects invalid UTF-8 in flow tag")
+  func documentReaderRejectsInvalidUTF8InFlowTag() throws {
+    let data = Data([
+      UInt8(ascii: "["),
+      UInt8(ascii: "!"),
+      UInt8(ascii: "<"),
+      0x80,
+      UInt8(ascii: ">"),
+      UInt8(ascii: " "),
+      UInt8(ascii: "v"),
+      UInt8(ascii: "a"),
+      UInt8(ascii: "l"),
+      UInt8(ascii: "u"),
+      UInt8(ascii: "e"),
+      UInt8(ascii: "]"),
+      UInt8(ascii: "\n"),
+    ])
+    let reader = try YAMLDocumentReader(data: data)
+
+    #expect(throws: Error.self) {
+      _ = try reader.readAll()
+    }
+  }
+
   @Test("Compact sequence mapping value can be nested block mapping")
   func compactSequenceMappingValueCanBeNestedBlockMapping() throws {
     let yaml = """

@@ -42,11 +42,6 @@ let benchmarks: @Sendable () -> Void = {
     .string("a"): .number(2),
   ])
 
-  let sortedMap: Value = .object([
-    .string("a"): .number(2),
-    .string("b"): .number(1),
-  ])
-
   let smallMapData = try? CBORValueWriter.write(smallMap)
   let smallArrayData = try? CBORValueWriter.write(smallArray)
   let largeArrayData = try? CBORValueWriter.write(largeArray)
@@ -205,22 +200,8 @@ let benchmarks: @Sendable () -> Void = {
     benchmark.startMeasurement()
     for _ in benchmark.scaledIterations {
       let sink = DataSink()
-      let writer = CBORStreamWriter(sink: sink, options: .init(deterministicMode: .buffered()))
+      let writer = CBORStreamWriter(sink: sink, options: .init(deterministic: true))
       let events = EmitEventEncoder().encode(deterministicMap)
-      for event in events {
-        try? await writer.write(event)
-      }
-      try? await writer.finish()
-      blackHole(sink.data)
-    }
-  }
-
-  Benchmark("CBOR Stream Writer Assume Sorted", configuration: config) { benchmark in
-    benchmark.startMeasurement()
-    for _ in benchmark.scaledIterations {
-      let sink = DataSink()
-      let writer = CBORStreamWriter(sink: sink, options: .init(deterministicMode: .assumeSortedKeys))
-      let events = EmitEventEncoder().encode(sortedMap)
       for event in events {
         try? await writer.write(event)
       }
