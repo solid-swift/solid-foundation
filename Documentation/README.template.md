@@ -138,6 +138,8 @@ JSON serialization that plays nicely with the `Value` type. Nothing fancy, just 
 
 YAML parsing and writing for token streams, document streams, node trees, and `Value` instances. SolidYAML is useful when you need human-editable structured data without converting everything through JSON first.
 
+<!-- snippet: SolidYAMLExample -->
+
 **Standout Features:**
 
 The YAML implementation includes tokenizer, event reader/writer, document reader/writer, node builder, scalar analysis, scalar resolution, and `Value` adapters. It is covered by the YAML test suite fixtures checked into `Tests/SolidYAMLTests`.

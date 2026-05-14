@@ -228,6 +228,26 @@ import Foundation
 
 YAML parsing and writing for token streams, document streams, node trees, and `Value` instances. SolidYAML is useful when you need human-editable structured data without converting everything through JSON first.
 
+```swift
+import SolidYAML
+import SolidData
+import Foundation
+
+  // Parse YAML to Value
+  let yaml = """
+  name: Casey
+  scores:
+    - 95
+    - 87
+    - 92
+  """
+  var reader = YAMLValueReader(string: yaml)
+  let value = try reader.read()
+
+  // Write Value to YAML
+  let output = try YAMLValueWriter.write(value)
+```
+
 **Standout Features:**
 
 The YAML implementation includes tokenizer, event reader/writer, document reader/writer, node builder, scalar analysis, scalar resolution, and `Value` adapters. It is covered by the YAML test suite fixtures checked into `Tests/SolidYAMLTests`.
