@@ -19,6 +19,7 @@ let package = Package(
     .library(name: "SolidTempo", targets: ["SolidTempo"]),
     .library(name: "SolidURI", targets: ["SolidURI"]),
     .library(name: "SolidNet", targets: ["SolidNet"]),
+    .library(name: "SolidHTTP", targets: ["SolidHTTP"]),
     .library(name: "SolidID", targets: ["SolidID"]),
     .library(name: "SolidData", targets: ["SolidData"]),
     .library(name: "SolidSchema", targets: ["SolidSchema"]),
@@ -31,6 +32,7 @@ let package = Package(
     .package(url: "https://github.com/apple/swift-collections.git", .upToNextMinor(from: "1.3.0")),
     .package(url: "https://github.com/apple/swift-crypto.git", .upToNextMajor(from: "4.2.0")),
     .package(url: "https://github.com/apple/swift-log.git", .upToNextMajor(from: "1.8.0")),
+    .package(url: "https://github.com/apple/swift-http-types.git", .upToNextMinor(from: "1.5.1")),
     .package(url: "https://github.com/apple/swift-argument-parser.git", from: "1.7.0"),
     .package(url: "https://github.com/StarLard/SwiftFormatPlugins.git", from: "1.1.1"),
     .package(url: "https://github.com/swiftlang/swift-markdown.git", from: "0.7.3"),
@@ -45,6 +47,8 @@ let package = Package(
         "SolidIO",
         "SolidID",
         "SolidURI",
+        "SolidNet",
+        "SolidHTTP",
         "SolidTempo",
         "SolidData",
         "SolidSchema",
@@ -90,6 +94,16 @@ let package = Package(
         "SolidNet",
       ],
       path: "Sources/Solid/URI",
+      plugins: lintPlugins
+    ),
+    .target(
+      name: "SolidHTTP",
+      dependencies: [
+        "SolidCore",
+        "SolidNet",
+        .product(name: "HTTPTypes", package: "swift-http-types"),
+      ],
+      path: "Sources/Solid/HTTP",
       plugins: lintPlugins
     ),
     .target(
@@ -208,6 +222,13 @@ let package = Package(
       name: "SolidNetTests",
       dependencies: [
         "SolidNet"
+      ],
+      plugins: lintPlugins
+    ),
+    .testTarget(
+      name: "SolidHTTPTests",
+      dependencies: [
+        "SolidHTTP"
       ],
       plugins: lintPlugins
     ),
