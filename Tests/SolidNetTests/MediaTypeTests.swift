@@ -30,9 +30,30 @@ struct MediaTypeTests {
   @Test("Preserves case-sensitive parameter values")
   func preservesCaseSensitiveParameterValues() throws {
     let mediaType = try #require(MediaType("multipart/form-data; boundary=\"AaB03x,Still;Boundary\""))
+    let reparsed = try #require(MediaType(mediaType.serialized))
 
     #expect(mediaType.parameter("boundary") == "AaB03x,Still;Boundary")
-    #expect(mediaType.serialized == "multipart/form-data;boundary=AaB03x,Still;Boundary")
+    #expect(mediaType.serialized == "multipart/form-data;boundary=\"AaB03x,Still;Boundary\"")
+    #expect(reparsed == mediaType)
+  }
+
+  @Test("Serializes constructed parameter values safely")
+  func serializesConstructedParameterValuesSafely() throws {
+    let mediaType = MediaType.multipartFormData.with(parameter: "boundary", value: "AaB03x,Still;Boundary")
+    let reparsed = try #require(MediaType(mediaType.serialized))
+
+    #expect(mediaType.serialized == "multipart/form-data;boundary=\"AaB03x,Still;Boundary\"")
+    #expect(reparsed == mediaType)
+  }
+
+  @Test("Escapes quoted parameter values")
+  func escapesQuotedParameterValues() throws {
+    let mediaType = MediaType.plainText.with(parameter: "note", value: #"quoted "value" \ marker"#)
+    let reparsed = try #require(MediaType(mediaType.serialized))
+
+    #expect(mediaType.serialized == #"text/plain;note="quoted \"value\" \\ marker""#)
+    #expect(reparsed.parameter("note") == #"quoted "value" \ marker"#)
+    #expect(reparsed == mediaType)
   }
 
   @Test("Rejects invalid media types")

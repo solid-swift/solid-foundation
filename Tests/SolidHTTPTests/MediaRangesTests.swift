@@ -25,7 +25,9 @@ struct MediaRangesTests {
     #expect(ranges[1].quality == 0.8)
     #expect(ranges[2].mediaType == .any)
     #expect(ranges[2].quality == 0.1)
-    #expect(ranges[2].acceptExtensions == ["ext": "\"A,B\""])
+    #expect(ranges[2].acceptExtensions == ["ext": "A,B"])
+    #expect(ranges.serialized() == "application/json,text/*;q=0.8,*/*;q=0.1;ext=\"A,B\"")
+    #expect(try MediaRanges.parse(ranges.serialized()) == ranges)
   }
 
   @Test("Negotiates by quality, specificity, and order")
@@ -52,10 +54,11 @@ struct MediaRangesTests {
     let ranges = MediaRanges([
       MediaRange(.json),
       MediaRange(.anyText, quality: 0.8),
-      MediaRange(.any, quality: 0.1, acceptExtensions: ["ext": "value"]),
+      MediaRange(.any, quality: 0.1, acceptExtensions: ["ext": "A,B"]),
     ])
 
-    #expect(ranges.serialized() == "application/json,text/*;q=0.8,*/*;q=0.1;ext=value")
+    #expect(ranges.serialized() == "application/json,text/*;q=0.8,*/*;q=0.1;ext=\"A,B\"")
+    #expect(try MediaRanges.parse(ranges.serialized()) == ranges)
   }
 
   @Test("Provides format family ranges")

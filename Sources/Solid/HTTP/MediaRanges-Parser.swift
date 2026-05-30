@@ -61,7 +61,10 @@ struct MediaRangesParser {
         foundQuality = true
       }
       else if foundQuality {
-        acceptExtensions[name] = value
+        guard let parsedValue = MediaRange.parseParameterValue(value) else {
+          throw MediaRange.Error.invalid(source)
+        }
+        acceptExtensions[name] = parsedValue
       }
       else {
         mediaParameters.append(segment)

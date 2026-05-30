@@ -29,7 +29,7 @@ struct MediaTypeParser {
 
     guard
       let type = MediaType.Kind(rawValue: typeName),
-      isToken(typeName),
+      MediaType.isToken(typeName),
       !subtypeName.isEmpty
     else {
       throw MediaType.Error.invalid(source)
@@ -51,10 +51,14 @@ struct MediaTypeParser {
 
       let name = pair[0].trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
       let value = pair[1].trimmingCharacters(in: .whitespacesAndNewlines)
-      guard name != "q", isToken(name), isParameterValue(value) else {
+      guard
+        name != "q",
+        MediaType.isToken(name),
+        let parsedValue = MediaType.parseParameterValue(value)
+      else {
         throw MediaType.Error.invalid(source)
       }
-      parameters[name] = unquoted(value)
+      parameters[name] = parsedValue
     }
 
     return MediaType(
@@ -74,7 +78,7 @@ struct MediaTypeParser {
 
     let fullSubtype = String(suffixParts[0])
     let suffix = suffixParts.count == 2 ? String(suffixParts[1]) : nil
-    guard !fullSubtype.isEmpty, suffix.map({ !$0.isEmpty && isToken($0) }) ?? true else {
+    guard !fullSubtype.isEmpty, suffix.map({ !$0.isEmpty && MediaType.isToken($0) }) ?? true else {
       throw MediaType.Error.invalid(self.source)
     }
 
@@ -105,24 +109,10 @@ struct MediaTypeParser {
       subtype = fullSubtype
     }
 
-    guard !subtype.isEmpty, subtype == "*" || isToken(subtype) else {
+    guard !subtype.isEmpty, subtype == "*" || MediaType.isToken(subtype) else {
       throw MediaType.Error.invalid(self.source)
     }
     return (tree, subtype, suffix)
-  }
-
-  private func isParameterValue(_ value: String) -> Bool {
-    if value.hasPrefix("\""), value.hasSuffix("\""), value.count >= 2 {
-      return true
-    }
-    return isToken(value)
-  }
-
-  private func unquoted(_ value: String) -> String {
-    if value.hasPrefix("\""), value.hasSuffix("\""), value.count >= 2 {
-      return String(value.dropFirst().dropLast())
-    }
-    return value
   }
 
   private func splitOutsideQuotes(_ value: String, separator: Character) -> [String] {
@@ -149,21 +139,4 @@ struct MediaTypeParser {
     return parts
   }
 
-  private func isToken(_ value: String) -> Bool {
-    guard !value.isEmpty else {
-      return false
-    }
-    return value.utf8.allSatisfy(isTokenByte)
-  }
-
-  private func isTokenByte(_ byte: UInt8) -> Bool {
-    switch byte {
-    case 0x30 ... 0x39, 0x41 ... 0x5A, 0x61 ... 0x7A:
-      true
-    case 0x21, 0x23 ... 0x27, 0x2A, 0x2B, 0x2D, 0x2E, 0x5E, 0x5F, 0x60, 0x7C, 0x7E:
-      true
-    default:
-      false
-    }
-  }
 }
