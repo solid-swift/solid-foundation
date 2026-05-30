@@ -58,6 +58,16 @@ struct MediaRangesTests {
     #expect(ranges.serialized() == "application/json,text/*;q=0.8,*/*;q=0.1;ext=value")
   }
 
+  @Test("Provides format family ranges")
+  func providesFormatFamilyRanges() {
+    #expect(MediaRanges.json.serialized() == "application/json,*/*+json")
+    #expect(MediaRanges.xml.serialized() == "application/xml,*/*+xml")
+    #expect(MediaRanges.cbor.serialized() == "application/cbor,*/*+cbor")
+    #expect(MediaRanges.json.bestMatch(in: [.problemJSON]) == .problemJSON)
+    #expect(MediaRanges.json.bestMatch(in: [.json, .problemJSON]) == .json)
+    #expect(MediaRanges.json.bestMatch(in: [.octetStream]) == nil)
+  }
+
   @Test("Integrates with HTTPFields")
   func integratesWithHTTPFields() throws {
     var fields = HTTPFields()

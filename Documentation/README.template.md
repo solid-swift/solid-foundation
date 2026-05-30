@@ -203,7 +203,7 @@ HTTP helpers for representation metadata and content negotiation, built on Apple
 
 **Standout Features:**
 
-SolidHTTP keeps HTTP `Accept` negotiation separate from the reusable `MediaType` value. It adds typed parsing and serialization around `HTTPFields` without replacing Swift HTTP Types' request and response models.
+SolidHTTP keeps HTTP `Accept` negotiation separate from the reusable `MediaType` value. It adds typed parsing, serialization, format-family ranges like `MediaRanges.json`, and header helpers around `HTTPFields` without replacing Swift HTTP Types' request and response models.
 
 ---
 

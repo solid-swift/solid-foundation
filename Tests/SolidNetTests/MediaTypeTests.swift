@@ -48,7 +48,7 @@ struct MediaTypeTests {
   @Test("Matches compatible media types")
   func matchesCompatibleMediaTypes() throws {
     let problem = try #require(MediaType("application/problem+json;charset=utf-8"))
-    let jsonStructured = MediaType.anyJSON
+    let jsonStructured = MediaType.anyStructuredJSON
     let jsonWithCharset = MediaType.json.with(parameter: "charset", value: "utf-8")
     let jsonWithOtherCharset = MediaType.json.with(parameter: "charset", value: "utf-16")
 
@@ -59,7 +59,9 @@ struct MediaTypeTests {
     #expect(jsonWithCharset.matches(.json))
     #expect(jsonWithCharset.matches(MediaType.json.with(parameter: "charset", value: "UTF-8")))
     #expect(!jsonWithCharset.matches(jsonWithOtherCharset))
-    #expect(!MediaType.anyXML.matches(problem))
+    #expect(!MediaType.anyStructuredJSON.matches(.json))
+    #expect(!MediaType.anyStructuredJSON.matches(.octetStream))
+    #expect(!MediaType.anyStructuredXML.matches(problem))
   }
 
   @Test("Codable round trips as serialized string")
@@ -89,6 +91,8 @@ struct MediaTypeTests {
     #expect(MediaType.gltfBinary.serialized == "model/gltf-binary")
     #expect(MediaType.pkcs8Encrypted.serialized == "application/pkcs8-encrypted")
     #expect(MediaType.x509CACertificate.serialized == "application/x-x509-ca-cert")
+    #expect(MediaType.anyStructuredJSON.serialized == "*/*+json")
+    #expect(MediaType.anyStructuredCBOR.serialized == "*/*+cbor")
   }
 
 }

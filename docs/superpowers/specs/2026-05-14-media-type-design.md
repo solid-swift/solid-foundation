@@ -256,10 +256,10 @@ public static let anyVideo: MediaType
 public static let anyFont: MediaType
 public static let anyModel: MediaType
 public static let anyMultipart: MediaType
-public static let anyJSON: MediaType
-public static let anyXML: MediaType
-public static let anyCBOR: MediaType
-public static let anyCBORSequence: MediaType
+public static let anyStructuredJSON: MediaType
+public static let anyStructuredXML: MediaType
+public static let anyStructuredCBOR: MediaType
+public static let anyStructuredCBORSequence: MediaType
 ```
 
 Constants that represent registered obsolete or `x-` types should preserve their registered spelling

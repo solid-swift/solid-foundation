@@ -134,8 +134,21 @@ public struct MediaType {
     if subtype != "*", other.subtype != "*", subtype != other.subtype {
       return false
     }
-    if let suffix, let otherSuffix = other.suffix, suffix != otherSuffix {
-      return false
+    switch (suffix, other.suffix) {
+    case let (suffix?, otherSuffix?):
+      if suffix != otherSuffix {
+        return false
+      }
+    case (.some, nil):
+      if other.subtype != "*" {
+        return false
+      }
+    case (nil, .some):
+      if subtype != "*" {
+        return false
+      }
+    case (nil, nil):
+      break
     }
     return Set(parameters.keys).intersection(other.parameters.keys)
       .allSatisfy { parameters[$0] == other.parameters[$0] }

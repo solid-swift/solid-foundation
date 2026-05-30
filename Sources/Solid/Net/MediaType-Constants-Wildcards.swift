@@ -24,11 +24,11 @@ public extension MediaType {
   /// `multipart/*`.
   static let anyMultipart = MediaType(type: .multipart, subtype: "*")
   /// `*/*+json`.
-  static let anyJSON = MediaType(type: .any, subtype: "*", suffix: "json")
+  static let anyStructuredJSON = MediaType(type: .any, subtype: "*", suffix: "json")
   /// `*/*+xml`.
-  static let anyXML = MediaType(type: .any, subtype: "*", suffix: "xml")
+  static let anyStructuredXML = MediaType(type: .any, subtype: "*", suffix: "xml")
   /// `*/*+cbor`.
-  static let anyCBOR = MediaType(type: .any, subtype: "*", suffix: "cbor")
+  static let anyStructuredCBOR = MediaType(type: .any, subtype: "*", suffix: "cbor")
   /// `*/*+cbor-seq`.
-  static let anyCBORSequence = MediaType(type: .any, subtype: "*", suffix: "cbor-seq")
+  static let anyStructuredCBORSequence = MediaType(type: .any, subtype: "*", suffix: "cbor-seq")
 }
