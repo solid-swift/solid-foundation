@@ -58,6 +58,9 @@ struct MediaTypeParser {
       else {
         throw MediaType.Error.invalid(source)
       }
+      guard parameters[name] == nil else {
+        throw MediaType.Error.invalid(source)
+      }
       parameters[name] = parsedValue
     }
 

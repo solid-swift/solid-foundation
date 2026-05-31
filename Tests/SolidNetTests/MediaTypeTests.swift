@@ -102,6 +102,7 @@ struct MediaTypeTests {
     #expect(MediaType("application/vnd.*") == nil)
     #expect(MediaType("application/json;charset =utf-8") == nil)
     #expect(MediaType("application/json;charset= utf-8") == nil)
+    #expect(MediaType("application/json;charset=utf-8;CHARSET=ascii") == nil)
     #expect(MediaType("application/foo;note=\"line\rbreak\"") == nil)
     #expect(MediaType("application/foo;note=\"bad\\\rpair\"") == nil)
     #expect(MediaType("application/foo;note=\"emoji\u{1F600}\"") == nil)

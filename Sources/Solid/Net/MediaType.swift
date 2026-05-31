@@ -172,6 +172,13 @@ public struct MediaType {
       },
       "Media type parameter names must be tokens and cannot be q"
     )
+    var normalizedParameterNames = Set<String>()
+    precondition(
+      parameters.keys.allSatisfy { name in
+        normalizedParameterNames.insert(name.lowercased()).inserted
+      },
+      "Media type parameter names must be unique (case-insensitive)"
+    )
     precondition(
       parameters.values.allSatisfy(MediaTypeTokens.canSerializeParameterValue),
       "Media type parameter values must be serializable as tokens or quoted strings"
