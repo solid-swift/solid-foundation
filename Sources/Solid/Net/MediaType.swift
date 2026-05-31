@@ -40,7 +40,6 @@ public struct MediaType {
     case personal = "prs."
     case unregistered = "x."
     case obsolete = "x-"
-    case any = "*"
   }
 
   /// The standard `charset` media type parameter name.
@@ -128,7 +127,7 @@ public struct MediaType {
     if type != .any, other.type != .any, type != other.type {
       return false
     }
-    if subtype != "*", other.subtype != "*", tree != .any, other.tree != .any, tree != other.tree {
+    if subtype != "*", other.subtype != "*", tree != other.tree {
       return false
     }
     if subtype != "*", other.subtype != "*", subtype != other.subtype {

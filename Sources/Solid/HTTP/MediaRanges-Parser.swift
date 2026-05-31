@@ -86,10 +86,36 @@ struct MediaRangesParser {
   }
 
   private func parseQuality(_ value: String) throws -> Double {
-    guard let quality = Double(value), (0.0 ... 1.0).contains(quality) else {
+    guard Self.isQualityValue(value), let quality = Double(value) else {
       throw MediaRange.Error.invalidQuality(value)
     }
     return quality
+  }
+
+  private static func isQualityValue(_ value: String) -> Bool {
+    guard let first = value.first, first == "0" || first == "1" else {
+      return false
+    }
+    guard value.count == 1 || value.dropFirst().first == "." else {
+      return false
+    }
+
+    let fraction = value.dropFirst(2)
+    guard fraction.count <= 3 else {
+      return false
+    }
+
+    if first == "1" {
+      return fraction.allSatisfy { $0 == "0" }
+    }
+    return fraction.allSatisfy(Self.isDigit)
+  }
+
+  private static func isDigit(_ character: Character) -> Bool {
+    guard character.unicodeScalars.count == 1, let scalar = character.unicodeScalars.first else {
+      return false
+    }
+    return (48 ... 57).contains(scalar.value)
   }
 
 }

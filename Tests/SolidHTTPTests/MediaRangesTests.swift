@@ -56,12 +56,32 @@ struct MediaRangesTests {
 
   @Test("Rejects invalid quality values")
   func rejectsInvalidQualityValues() {
-    #expect(throws: MediaRange.Error.self) {
-      try MediaRanges.parse("application/json;q=1.5")
+    let invalidValues = [
+      "1.5",
+      "bad",
+      "1e0",
+      "+0.5",
+      ".5",
+      "01",
+      "0.1234",
+      "1.001",
+    ]
+
+    for value in invalidValues {
+      #expect(throws: MediaRange.Error.self) {
+        try MediaRanges.parse("application/json;q=\(value)")
+      }
     }
-    #expect(throws: MediaRange.Error.self) {
-      try MediaRanges.parse("application/json;q=bad")
-    }
+  }
+
+  @Test("Parses RFC quality value forms")
+  func parsesRFCQualityValueForms() throws {
+    #expect(try MediaRanges.parse("application/json;q=0").first?.quality == 0.0)
+    #expect(try MediaRanges.parse("application/json;q=0.").first?.quality == 0.0)
+    #expect(try MediaRanges.parse("application/json;q=0.123").first?.quality == 0.123)
+    #expect(try MediaRanges.parse("application/json;q=1").first?.quality == 1.0)
+    #expect(try MediaRanges.parse("application/json;q=1.").first?.quality == 1.0)
+    #expect(try MediaRanges.parse("application/json;q=1.000").first?.quality == 1.0)
   }
 
   @Test("Serializes media ranges")
