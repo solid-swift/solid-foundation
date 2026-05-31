@@ -380,9 +380,6 @@ import SolidNet
   // IP addresses
   let ipv4 = IPv4Address.parse(string: "192.168.1.1")
   let ipv6 = IPv6Address.parse(string: "2001:db8::1")
-
-  // Media types
-  let contentType = MediaType.problemJSON.with(parameter: "charset", value: "utf-8")
 ```
 
 **Standout Features:**
@@ -396,8 +393,7 @@ SolidNet keeps network identifier parsing separate from transport concerns. It g
 HTTP helpers for representation metadata and content negotiation, built on Apple's Swift HTTP Types package.
 
 ```swift
-import HTTPTypes
-import SolidHTTP
+import Solid
 
   var fields = HTTPFields()
   fields.setContentType(.json)

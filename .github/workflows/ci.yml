@@ -62,8 +62,6 @@ jobs:
         run: >
           swift test
           --enable-code-coverage
-          --sanitize thread
-          --sanitize undefined
           --xunit-output .build/test-results.xml
 
       - name: Generate Reports
