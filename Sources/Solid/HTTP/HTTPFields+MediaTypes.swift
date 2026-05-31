@@ -12,6 +12,12 @@ import SolidNet
 /// HTTP field helpers for Solid media type values.
 public extension HTTPFields {
 
+  /// An error that can occur while using typed HTTP media field helpers.
+  enum MediaTypeError: Swift.Error, Equatable, Sendable {
+    /// A required `Content-Type` header is missing.
+    case missingContentType
+  }
+
   /// Sets the `Content-Type` header field.
   mutating func setContentType(_ mediaType: MediaType) {
     self[.contentType] = mediaType.serialized
@@ -28,7 +34,7 @@ public extension HTTPFields {
   /// Returns the parsed `Content-Type` header field or throws when it is missing.
   func requireContentType() throws -> MediaType {
     guard let contentType = try contentType() else {
-      throw MediaRange.Error.missingContentType
+      throw MediaTypeError.missingContentType
     }
     return contentType
   }

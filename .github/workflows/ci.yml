@@ -48,8 +48,6 @@ jobs:
         run: >
           swift build
           --enable-code-coverage
-          --sanitize thread
-          --sanitize undefined
 
       - name: Save SPM cache
         if: steps.cache-spm.outputs.cache-hit != 'true'
@@ -86,6 +84,48 @@ jobs:
           name: test-reports-macos
           path: test-reports-macos
           retention-days: 30
+
+  sanitize-macos:
+    name: Sanitizer Build (macOS)
+    runs-on: macos-26
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      - name: Setup Swift
+        uses: swift-actions/setup-swift@v3
+        with:
+          swift-version: "6.2.3"
+
+      - name: Install zstd
+        run: brew install zstd
+
+      - name: Cache Homebrew packages
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/Library/Caches/Homebrew
+            /opt/homebrew/Cellar/jemalloc
+          key: homebrew-${{ runner.os }}-jemalloc-v1
+
+      - name: Install JEMalloc
+        run: brew install jemalloc
+
+      - name: Restore SPM cache
+        uses: actions/cache/restore@v4
+        with:
+          path: .build
+          key: spm-sanitize-${{ runner.os }}-${{ hashFiles('Package.resolved') }}
+          restore-keys: |
+            spm-${{ runner.os }}-
+
+      - name: Build with sanitizers
+        run: >
+          swift build
+          --sanitize thread
+          --sanitize undefined
 
   test-linux:
     name: Test (Linux)

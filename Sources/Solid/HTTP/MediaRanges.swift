@@ -34,20 +34,40 @@ public struct MediaRanges {
   public func bestMatch(in available: some Sequence<MediaType>) -> MediaType? {
     var best: Match?
     for (availableOrder, mediaType) in available.enumerated() {
-      for range in ranges where range.quality > 0 && range.mediaType.matches(mediaType) {
-        let match = Match(
-          mediaType: mediaType,
-          quality: range.quality,
-          specificity: specificity(of: range.mediaType),
-          rangeOrder: range.order,
-          availableOrder: availableOrder
-        )
-        if best.map({ match.isBetter(than: $0) }) ?? true {
-          best = match
-        }
+      guard let range = preferredRange(for: mediaType), range.quality > 0 else {
+        continue
+      }
+
+      let match = Match(
+        mediaType: mediaType,
+        quality: range.quality,
+        specificity: specificity(of: range.mediaType),
+        rangeOrder: range.order,
+        availableOrder: availableOrder
+      )
+      if best.map({ match.isBetter(than: $0) }) ?? true {
+        best = match
       }
     }
     return best?.mediaType
+  }
+
+  private func preferredRange(for mediaType: MediaType) -> MediaRange? {
+    var preferred: MediaRange?
+    for range in ranges where range.mediaType.matches(mediaType) {
+      guard let current = preferred else {
+        preferred = range
+        continue
+      }
+
+      let rangeSpecificity = specificity(of: range.mediaType)
+      let currentSpecificity = specificity(of: current.mediaType)
+      if rangeSpecificity > currentSpecificity ||
+        (rangeSpecificity == currentSpecificity && range.order < current.order) {
+        preferred = range
+      }
+    }
+    return preferred
   }
 
   private func specificity(of mediaType: MediaType) -> Int {

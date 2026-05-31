@@ -39,6 +39,21 @@ struct MediaRangesTests {
     #expect(ranges.bestMatch(in: [.cbor]) == nil)
   }
 
+  @Test("Uses the most specific matching range quality")
+  func usesMostSpecificMatchingRangeQuality() throws {
+    let ranges = try MediaRanges.parse("application/*;q=1, application/json;q=0.5, text/html;q=0.7")
+
+    #expect(ranges.bestMatch(in: [.json, .html]) == .html)
+  }
+
+  @Test("Rejects a media type with zero quality in its most specific range")
+  func rejectsZeroQualityMostSpecificRange() throws {
+    let ranges = try MediaRanges.parse("*/*;q=0.5, application/json;q=0")
+
+    #expect(ranges.bestMatch(in: [.json]) == nil)
+    #expect(ranges.bestMatch(in: [.json, .html]) == .html)
+  }
+
   @Test("Rejects invalid quality values")
   func rejectsInvalidQualityValues() {
     #expect(throws: MediaRange.Error.self) {
@@ -51,12 +66,14 @@ struct MediaRangesTests {
 
   @Test("Serializes media ranges")
   func serializesMediaRanges() throws {
+    let wildcard = MediaRange(.any, quality: 0.1, acceptExtensions: ["ext": "A,B"])
     let ranges = MediaRanges([
       MediaRange(.json),
       MediaRange(.anyText, quality: 0.8),
-      MediaRange(.any, quality: 0.1, acceptExtensions: ["ext": "A,B"]),
+      wildcard,
     ])
 
+    #expect(wildcard.serialized == "*/*;q=0.1;ext=\"A,B\"")
     #expect(ranges.serialized() == "application/json,text/*;q=0.8,*/*;q=0.1;ext=\"A,B\"")
     #expect(try MediaRanges.parse(ranges.serialized()) == ranges)
   }
@@ -90,6 +107,15 @@ struct MediaRangesTests {
     fields[.contentType] = "application/json;q=0.5"
 
     #expect(throws: MediaType.Error.self) {
+      try fields.requireContentType()
+    }
+  }
+
+  @Test("Require Content-Type reports missing header")
+  func requireContentTypeReportsMissingHeader() {
+    let fields = HTTPFields()
+
+    #expect(throws: HTTPFields.MediaTypeError.missingContentType) {
       try fields.requireContentType()
     }
   }
