@@ -67,8 +67,8 @@ public extension MediaType {
   static let gzip = MediaType(type: .application, subtype: "gzip")
   /// `application/x-tar`.
   static let tar = MediaType(type: .application, tree: .obsolete, subtype: "tar")
-  /// `application/x-br`.
-  static let brotli = MediaType(type: .application, tree: .obsolete, subtype: "br")
+  /// `application/x-brotli`.
+  static let brotli = MediaType(type: .application, tree: .obsolete, subtype: "brotli")
   /// `application/zstd`.
   static let zstandard = MediaType(type: .application, subtype: "zstd")
   /// `application/x-7z-compressed`.
@@ -78,4 +78,3 @@ public extension MediaType {
   /// `application/octet-stream`.
   static let octetStream = MediaType(type: .application, subtype: "octet-stream")
 }
-

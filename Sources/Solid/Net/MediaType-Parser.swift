@@ -49,8 +49,8 @@ struct MediaTypeParser {
         throw MediaType.Error.invalid(source)
       }
 
-      let name = pair[0].trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-      let value = pair[1].trimmingCharacters(in: .whitespacesAndNewlines)
+      let name = String(pair[0]).lowercased()
+      let value = String(pair[1])
       guard
         name != "q",
         MediaType.isToken(name),
@@ -59,6 +59,10 @@ struct MediaTypeParser {
         throw MediaType.Error.invalid(source)
       }
       parameters[name] = parsedValue
+    }
+
+    guard type != .any || (subtypeComponents.tree == .standard && subtypeComponents.subtype == "*") else {
+      throw MediaType.Error.invalid(source)
     }
 
     return MediaType(
@@ -70,11 +74,17 @@ struct MediaTypeParser {
     )
   }
 
-  private func parseSubtype(_ source: String) throws -> (tree: MediaType.Tree, subtype: String, suffix: String?) {
-    let suffixParts = source.split(separator: "+", maxSplits: 1, omittingEmptySubsequences: false)
-    let fullSubtype = String(suffixParts[0])
-    let suffix = suffixParts.count == 2 ? String(suffixParts[1]) : nil
-    guard !fullSubtype.isEmpty, suffix.map({ !$0.isEmpty && MediaType.isToken($0) }) ?? true else {
+  private func parseSubtype(_ source: String) throws -> (tree: MediaType.Tree, subtype: String, suffix: MediaType.Suffix?) {
+    let suffixStart = source.lastIndex(of: "+")
+    let fullSubtype = suffixStart.map { String(source[..<$0]) } ?? source
+    let suffix = try suffixStart.map { index -> MediaType.Suffix in
+      let suffix = String(source[source.index(after: index)...])
+      guard let parsedSuffix = MediaType.Suffix(rawValue: suffix) else {
+        throw MediaType.Error.invalid(self.source)
+      }
+      return parsedSuffix
+    }
+    guard !fullSubtype.isEmpty else {
       throw MediaType.Error.invalid(self.source)
     }
 
@@ -100,12 +110,24 @@ struct MediaTypeParser {
       tree = .obsolete
       subtype = String(fullSubtype.dropFirst(MediaType.Tree.obsolete.rawValue.count))
     }
+    else if let firstDot = fullSubtype.firstIndex(of: ".") {
+      let treePrefix = String(fullSubtype[...firstDot])
+      guard let parsedTree = MediaType.Tree(rawValue: treePrefix) else {
+        throw MediaType.Error.invalid(self.source)
+      }
+      tree = parsedTree
+      subtype = String(fullSubtype[fullSubtype.index(after: firstDot)...])
+    }
     else {
       tree = .standard
       subtype = fullSubtype
     }
 
-    guard !subtype.isEmpty, subtype == "*" || MediaType.isToken(subtype) else {
+    guard
+      !subtype.isEmpty,
+      subtype == "*" || MediaType.isToken(subtype),
+      tree == .standard || subtype != "*"
+    else {
       throw MediaType.Error.invalid(self.source)
     }
     return (tree, subtype, suffix)

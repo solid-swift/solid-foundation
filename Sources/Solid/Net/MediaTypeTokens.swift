@@ -16,6 +16,9 @@ package enum MediaTypeTokens {
     var isEscaped = false
     for character in value.dropFirst().dropLast() {
       if isEscaped {
+        guard isQuotedPairCharacter(character) else {
+          return nil
+        }
         result.append(character)
         isEscaped = false
       }
@@ -23,6 +26,9 @@ package enum MediaTypeTokens {
         isEscaped = true
       }
       else if character == "\"" {
+        return nil
+      }
+      else if !isQuotedTextCharacter(character) {
         return nil
       }
       else {
@@ -37,6 +43,8 @@ package enum MediaTypeTokens {
       return value
     }
 
+    precondition(canSerializeParameterValue(value), "Parameter value cannot be serialized as an HTTP quoted string")
+
     var result = "\""
     for character in value {
       if character == "\\" || character == "\"" {
@@ -46,6 +54,12 @@ package enum MediaTypeTokens {
     }
     result.append("\"")
     return result
+  }
+
+  package static func canSerializeParameterValue(_ value: String) -> Bool {
+    isToken(value) || value.allSatisfy { character in
+      isQuotedTextCharacter(character) || character == "\"" || character == "\\"
+    }
   }
 
   package static func isToken(_ value: String) -> Bool {
@@ -87,6 +101,30 @@ package enum MediaTypeTokens {
       true
     default:
       false
+    }
+  }
+
+  private static func isQuotedTextCharacter(_ character: Character) -> Bool {
+    guard character.unicodeScalars.count == 1, let scalar = character.unicodeScalars.first else {
+      return false
+    }
+    switch scalar.value {
+    case 0x09, 0x20, 0x21, 0x23 ... 0x5B, 0x5D ... 0x7E, 0x80 ... 0xFF:
+      return true
+    default:
+      return false
+    }
+  }
+
+  private static func isQuotedPairCharacter(_ character: Character) -> Bool {
+    guard character.unicodeScalars.count == 1, let scalar = character.unicodeScalars.first else {
+      return false
+    }
+    switch scalar.value {
+    case 0x09, 0x20, 0x21 ... 0x7E, 0x80 ... 0xFF:
+      return true
+    default:
+      return false
     }
   }
 }

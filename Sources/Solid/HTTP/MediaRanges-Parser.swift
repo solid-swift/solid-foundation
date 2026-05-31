@@ -53,10 +53,17 @@ struct MediaRangesParser {
         throw MediaRange.Error.invalid(source)
       }
 
-      let name = pair[0].trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-      let value = pair[1].trimmingCharacters(in: .whitespacesAndNewlines)
+      let name = String(pair[0]).lowercased()
+      let value = String(pair[1])
 
-      if name == "q", !foundQuality {
+      guard MediaTypeTokens.isToken(name) else {
+        throw MediaRange.Error.invalid(source)
+      }
+
+      if name == "q" {
+        guard !foundQuality else {
+          throw MediaRange.Error.invalidQuality(value)
+        }
         quality = try parseQuality(value)
         foundQuality = true
       }

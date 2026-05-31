@@ -72,6 +72,15 @@ struct MediaRangesTests {
         try MediaRanges.parse("application/json;q=\(value)")
       }
     }
+    #expect(throws: MediaRange.Error.self) {
+      try MediaRanges.parse("application/json;q=0.8;q=0.5")
+    }
+    #expect(throws: MediaRange.Error.self) {
+      try MediaRanges.parse("application/json;q =0.8")
+    }
+    #expect(throws: MediaRange.Error.self) {
+      try MediaRanges.parse("application/json;q= 0.8")
+    }
   }
 
   @Test("Parses RFC quality value forms")
@@ -99,11 +108,14 @@ struct MediaRangesTests {
   }
 
   @Test("Provides format family ranges")
-  func providesFormatFamilyRanges() {
+  func providesFormatFamilyRanges() throws {
+    let unknownTreeJSON = try #require(MediaType("application/foo.bar+json"))
+
     #expect(MediaRanges.json.serialized == "application/json,*/*+json")
     #expect(MediaRanges.xml.serialized == "application/xml,*/*+xml")
     #expect(MediaRanges.cbor.serialized == "application/cbor,*/*+cbor")
     #expect(MediaRanges.json.bestMatch(in: [.jsonAPI]) == .jsonAPI)
+    #expect(MediaRanges.json.bestMatch(in: [unknownTreeJSON]) == unknownTreeJSON)
     #expect(MediaRanges.json.bestMatch(in: [.problemJSON]) == .problemJSON)
     #expect(MediaRanges.json.bestMatch(in: [.json, .problemJSON]) == .json)
     #expect(MediaRanges.json.bestMatch(in: [.octetStream]) == nil)

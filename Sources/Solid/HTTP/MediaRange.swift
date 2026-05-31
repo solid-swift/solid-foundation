@@ -40,6 +40,17 @@ public struct MediaRange {
     acceptExtensions: [String: String] = [:]
   ) {
     precondition((0.0 ... 1.0).contains(quality), "Media range quality must be in 0...1")
+    precondition(
+      acceptExtensions.keys.allSatisfy { name in
+        MediaTypeTokens.isToken(name) && name.lowercased() != "q"
+      },
+      "Accept extension names must be tokens and cannot be q"
+    )
+    precondition(
+      acceptExtensions.values.allSatisfy(MediaTypeTokens.canSerializeParameterValue),
+      "Accept extension values must be serializable as tokens or quoted strings"
+    )
+
     self.mediaType = mediaType
     self.quality = quality
     self.order = order
