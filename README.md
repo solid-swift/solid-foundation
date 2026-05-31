@@ -25,6 +25,7 @@ This isn't a framework that tries to do everything. It's the foundation that let
 | [SolidSchema](#solidschema) | JSON Schema validation for any format, not just JSON |
 | [SolidURI](#soliduri) | RFC 3986 URI and IRI parsing, resolution, and manipulation |
 | [SolidNet](#solidnet) | Email, hostname, and IP address parsing with IDN support |
+| [SolidHTTP](#solidhttp) | HTTP media ranges and typed header helpers for Swift HTTP Types |
 | [SolidID](#solidid) | Unique identifiers from local counters to global UUIDs |
 
 ## Getting Started
@@ -49,6 +50,7 @@ Then add the modules you need to your target:
         // Or import modules directly:
         .product(name: "SolidIO", package: "solid-foundation"),
         .product(name: "SolidNet", package: "solid-foundation"),
+        .product(name: "SolidHTTP", package: "solid-foundation"),
         .product(name: "SolidNumeric", package: "solid-foundation"),
         .product(name: "SolidTempo", package: "solid-foundation"),
         .product(name: "SolidSchema", package: "solid-foundation"),
@@ -56,7 +58,7 @@ Then add the modules you need to your target:
 )
 ```
 
-The `Solid` product provides a convenience surface for common APIs, but direct product dependencies are the canonical way to use a specific module such as `SolidIO`, `SolidNet`, `SolidJSON`, `SolidYAML`, or `SolidCBOR`.
+The `Solid` product provides a convenience surface for common APIs, but direct product dependencies are the canonical way to use a specific module such as `SolidIO`, `SolidNet`, `SolidHTTP`, `SolidJSON`, `SolidYAML`, or `SolidCBOR`.
 
 ## Requirements
 
@@ -361,7 +363,7 @@ import SolidURI
 
 ### SolidNet
 
-Network identifier parsing and validation: email addresses, hostnames, IPv4, IPv6, with full internationalized domain name (IDN) support.
+Network identifier parsing and validation: email addresses, hostnames, IPv4, IPv6, media types, with full internationalized domain name (IDN) support.
 
 ```swift
 import SolidNet
@@ -382,7 +384,28 @@ import SolidNet
 
 **Standout Features:**
 
-SolidNet keeps network identifier parsing separate from transport concerns. It gives SolidURI, SolidID, and SolidSchema shared validation primitives for hostnames, email addresses, IP addresses, and IDN-aware formats.
+SolidNet keeps network identifier parsing separate from transport concerns. It gives SolidURI, SolidID, SolidHTTP, and SolidSchema shared validation primitives for hostnames, email addresses, IP addresses, media types, and IDN-aware formats.
+
+---
+
+### SolidHTTP
+
+HTTP helpers for representation metadata and content negotiation, built on Apple's Swift HTTP Types package.
+
+```swift
+import Solid
+
+  var fields = HTTPFields()
+  fields.setContentType(.json)
+  fields.setAccept(.json)
+
+  let accepted = try fields.acceptMediaRanges()
+  let selected = accepted.bestMatch(in: [MediaType.problemJSON, .cbor])
+```
+
+**Standout Features:**
+
+SolidHTTP keeps HTTP `Accept` negotiation separate from the reusable `MediaType` value. It adds typed parsing, serialization, format-family ranges like `MediaRanges.json`, and header helpers around `HTTPFields` without replacing Swift HTTP Types' request and response models.
 
 ---
 
