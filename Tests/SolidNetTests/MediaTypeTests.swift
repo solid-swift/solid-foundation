@@ -69,12 +69,18 @@ struct MediaTypeTests {
   @Test("Matches compatible media types")
   func matchesCompatibleMediaTypes() throws {
     let problem = try #require(MediaType("application/problem+json;charset=utf-8"))
+    let vendorText = MediaType(type: .text, tree: .vendor, subtype: "example")
     let jsonStructured = MediaType.anyStructuredJSON
     let jsonWithCharset = MediaType.json.with(parameter: "charset", value: "utf-8")
     let jsonWithOtherCharset = MediaType.json.with(parameter: "charset", value: "utf-16")
 
     #expect(problem.matches(jsonStructured))
     #expect(jsonStructured.matches(problem))
+    #expect(MediaType.any.matches(.jsonAPI))
+    #expect(MediaType.jsonAPI.matches(.any))
+    #expect(jsonStructured.matches(.jsonAPI))
+    #expect(MediaType.jsonAPI.matches(jsonStructured))
+    #expect(MediaType.anyText.matches(vendorText))
     #expect(MediaType.any.matches(problem))
     #expect(MediaType.anyText.matches(.html))
     #expect(jsonWithCharset.matches(.json))

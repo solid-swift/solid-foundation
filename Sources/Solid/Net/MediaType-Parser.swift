@@ -72,10 +72,6 @@ struct MediaTypeParser {
 
   private func parseSubtype(_ source: String) throws -> (tree: MediaType.Tree, subtype: String, suffix: String?) {
     let suffixParts = source.split(separator: "+", maxSplits: 1, omittingEmptySubsequences: false)
-    guard suffixParts.count <= 2 else {
-      throw MediaType.Error.invalid(self.source)
-    }
-
     let fullSubtype = String(suffixParts[0])
     let suffix = suffixParts.count == 2 ? String(suffixParts[1]) : nil
     guard !fullSubtype.isEmpty, suffix.map({ !$0.isEmpty && MediaType.isToken($0) }) ?? true else {

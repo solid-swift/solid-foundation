@@ -128,7 +128,7 @@ public struct MediaType {
     if type != .any, other.type != .any, type != other.type {
       return false
     }
-    if tree != .any, other.tree != .any, tree != other.tree {
+    if subtype != "*", other.subtype != "*", tree != .any, other.tree != .any, tree != other.tree {
       return false
     }
     if subtype != "*", other.subtype != "*", subtype != other.subtype {
