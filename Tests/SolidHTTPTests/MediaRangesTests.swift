@@ -81,6 +81,9 @@ struct MediaRangesTests {
     #expect(throws: MediaRange.Error.self) {
       try MediaRanges.parse("application/json;q= 0.8")
     }
+    #expect(throws: MediaRange.Error.self) {
+      try MediaRanges.parse("application/json;q=0.8;ext=A;EXT=B")
+    }
   }
 
   @Test("Parses RFC quality value forms")

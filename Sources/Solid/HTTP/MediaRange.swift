@@ -46,6 +46,13 @@ public struct MediaRange {
       },
       "Accept extension names must be tokens and cannot be q"
     )
+    var normalizedAcceptExtensionNames = Set<String>()
+    precondition(
+      acceptExtensions.keys.allSatisfy { name in
+        normalizedAcceptExtensionNames.insert(name.lowercased()).inserted
+      },
+      "Accept extension names must be unique (case-insensitive)"
+    )
     precondition(
       acceptExtensions.values.allSatisfy(MediaTypeTokens.canSerializeParameterValue),
       "Accept extension values must be serializable as tokens or quoted strings"

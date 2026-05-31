@@ -71,6 +71,9 @@ struct MediaRangesParser {
         guard let parsedValue = MediaRange.parseParameterValue(value) else {
           throw MediaRange.Error.invalid(source)
         }
+        guard acceptExtensions[name] == nil else {
+          throw MediaRange.Error.invalid(source)
+        }
         acceptExtensions[name] = parsedValue
       }
       else {
