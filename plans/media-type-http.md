@@ -123,7 +123,7 @@ Rules:
 Implement `MediaRanges` as an ordered collection with:
 
 - `parse(_:) throws`
-- `serialized()`
+- `serialized`
 - `bestMatch(in:)`
 
 Selection order:

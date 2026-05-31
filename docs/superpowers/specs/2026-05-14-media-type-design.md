@@ -293,7 +293,7 @@ separator are media type parameters. Parameters after `q` are accept extensions.
 ```swift
 public struct MediaRanges: Equatable, Sendable, Collection {
   public static func parse(_ fieldValue: String) throws -> MediaRanges
-  public func serialized() -> String
+  public var serialized: String
   public func bestMatch(in available: some Sequence<MediaType>) -> MediaType?
 }
 ```
@@ -327,7 +327,7 @@ extension HTTPFields {
 ```
 
 Throwing reads keep malformed header behavior visible. Write helpers serialize through
-`MediaType.serialized` and `MediaRanges.serialized()`.
+`MediaType.serialized` and `MediaRanges.serialized`.
 
 `Content-Type` parsing must reject range-only syntax such as `q` metadata. `Accept` parsing must
 interpret `q` as HTTP range quality metadata and not as a media type parameter.

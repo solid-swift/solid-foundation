@@ -26,8 +26,8 @@ struct MediaRangesTests {
     #expect(ranges[2].mediaType == .any)
     #expect(ranges[2].quality == 0.1)
     #expect(ranges[2].acceptExtensions == ["ext": "A,B"])
-    #expect(ranges.serialized() == "application/json,text/*;q=0.8,*/*;q=0.1;ext=\"A,B\"")
-    #expect(try MediaRanges.parse(ranges.serialized()) == ranges)
+    #expect(ranges.serialized == "application/json,text/*;q=0.8,*/*;q=0.1;ext=\"A,B\"")
+    #expect(try MediaRanges.parse(ranges.serialized) == ranges)
   }
 
   @Test("Negotiates by quality, specificity, and order")
@@ -74,15 +74,15 @@ struct MediaRangesTests {
     ])
 
     #expect(wildcard.serialized == "*/*;q=0.1;ext=\"A,B\"")
-    #expect(ranges.serialized() == "application/json,text/*;q=0.8,*/*;q=0.1;ext=\"A,B\"")
-    #expect(try MediaRanges.parse(ranges.serialized()) == ranges)
+    #expect(ranges.serialized == "application/json,text/*;q=0.8,*/*;q=0.1;ext=\"A,B\"")
+    #expect(try MediaRanges.parse(ranges.serialized) == ranges)
   }
 
   @Test("Provides format family ranges")
   func providesFormatFamilyRanges() {
-    #expect(MediaRanges.json.serialized() == "application/json,*/*+json")
-    #expect(MediaRanges.xml.serialized() == "application/xml,*/*+xml")
-    #expect(MediaRanges.cbor.serialized() == "application/cbor,*/*+cbor")
+    #expect(MediaRanges.json.serialized == "application/json,*/*+json")
+    #expect(MediaRanges.xml.serialized == "application/xml,*/*+xml")
+    #expect(MediaRanges.cbor.serialized == "application/cbor,*/*+cbor")
     #expect(MediaRanges.json.bestMatch(in: [.problemJSON]) == .problemJSON)
     #expect(MediaRanges.json.bestMatch(in: [.json, .problemJSON]) == .json)
     #expect(MediaRanges.json.bestMatch(in: [.octetStream]) == nil)

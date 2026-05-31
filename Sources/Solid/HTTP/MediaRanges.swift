@@ -26,7 +26,7 @@ public struct MediaRanges {
   }
 
   /// Serializes the ranges as an HTTP `Accept` field value.
-  public func serialized() -> String {
+  public var serialized: String {
     ranges.map(\.serialized).joined(separator: ",")
   }
 

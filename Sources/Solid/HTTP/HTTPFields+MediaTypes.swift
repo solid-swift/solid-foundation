@@ -41,7 +41,7 @@ public extension HTTPFields {
 
   /// Sets the `Accept` header field.
   mutating func setAccept(_ ranges: MediaRanges) {
-    self[.accept] = ranges.serialized()
+    self[.accept] = ranges.serialized
   }
 
   /// Returns the parsed `Accept` header media ranges.
