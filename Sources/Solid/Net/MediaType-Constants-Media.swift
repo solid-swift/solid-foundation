@@ -47,8 +47,6 @@ public extension MediaType {
   static let mp3 = MediaType(type: .audio, subtype: "mpeg")
   /// `audio/mp4`.
   static let mp4Audio = MediaType(type: .audio, subtype: "mp4")
-  /// `audio/mpeg`.
-  static let mpegAudio = MediaType(type: .audio, subtype: "mpeg")
   /// `audio/ogg`.
   static let oggAudio = MediaType(type: .audio, subtype: "ogg")
   /// `audio/opus`.

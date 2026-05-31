@@ -18,7 +18,7 @@ struct MediaRangesParser {
   }
 
   func parse() throws -> MediaRanges {
-    let parts = splitOutsideQuotes(source, separator: ",")
+    let parts = MediaTypeTokens.splitOutsideQuotes(source, separator: ",")
     var ranges: [MediaRange] = []
     ranges.reserveCapacity(parts.count)
 
@@ -31,7 +31,7 @@ struct MediaRangesParser {
   }
 
   private func parseRange(_ source: String, order: Int) throws -> MediaRange {
-    let segments = splitOutsideQuotes(source, separator: ";").map {
+    let segments = MediaTypeTokens.splitOutsideQuotes(source, separator: ";").map {
       $0.trimmingCharacters(in: .whitespacesAndNewlines)
     }
     guard let typeSegment = segments.first, !typeSegment.isEmpty else {
@@ -92,27 +92,4 @@ struct MediaRangesParser {
     return quality
   }
 
-  private func splitOutsideQuotes(_ value: String, separator: Character) -> [String] {
-    var parts: [String] = []
-    var current = ""
-    var isQuoted = false
-    var isEscaped = false
-
-    for character in value {
-      if character == separator, !isQuoted {
-        parts.append(current)
-        current = ""
-      }
-      else {
-        current.append(character)
-        if character == "\"" && !isEscaped {
-          isQuoted.toggle()
-        }
-        isEscaped = character == "\\" && !isEscaped
-      }
-    }
-
-    parts.append(current)
-    return parts
-  }
 }

@@ -14,7 +14,7 @@ struct MediaTypeParser {
   }
 
   func parse() throws -> MediaType {
-    let parts = splitOutsideQuotes(source, separator: ";")
+    let parts = MediaTypeTokens.splitOutsideQuotes(source, separator: ";")
     guard let name = parts.first?.trimmingCharacters(in: .whitespacesAndNewlines), !name.isEmpty else {
       throw MediaType.Error.invalid(source)
     }
@@ -113,30 +113,6 @@ struct MediaTypeParser {
       throw MediaType.Error.invalid(self.source)
     }
     return (tree, subtype, suffix)
-  }
-
-  private func splitOutsideQuotes(_ value: String, separator: Character) -> [String] {
-    var parts: [String] = []
-    var current = ""
-    var isQuoted = false
-    var isEscaped = false
-
-    for character in value {
-      if character == separator, !isQuoted {
-        parts.append(current)
-        current = ""
-      }
-      else {
-        current.append(character)
-        if character == "\"" && !isEscaped {
-          isQuoted.toggle()
-        }
-        isEscaped = character == "\\" && !isEscaped
-      }
-    }
-
-    parts.append(current)
-    return parts
   }
 
 }

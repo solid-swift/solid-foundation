@@ -55,6 +55,30 @@ package enum MediaTypeTokens {
     return value.utf8.allSatisfy(isTokenByte)
   }
 
+  package static func splitOutsideQuotes(_ value: String, separator: Character) -> [String] {
+    var parts: [String] = []
+    var current = ""
+    var isQuoted = false
+    var isEscaped = false
+
+    for character in value {
+      if character == separator, !isQuoted {
+        parts.append(current)
+        current = ""
+      }
+      else {
+        current.append(character)
+        if character == "\"" && !isEscaped {
+          isQuoted.toggle()
+        }
+        isEscaped = character == "\\" && !isEscaped
+      }
+    }
+
+    parts.append(current)
+    return parts
+  }
+
   private static func isTokenByte(_ byte: UInt8) -> Bool {
     switch byte {
     case 0x30 ... 0x39, 0x41 ... 0x5A, 0x61 ... 0x7A:
