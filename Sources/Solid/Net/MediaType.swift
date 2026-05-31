@@ -290,7 +290,10 @@ extension MediaType: Codable {
   public init(from decoder: Decoder) throws {
     let container = try decoder.singleValueContainer()
     let value = try container.decode(String.self)
-    self = try Self.parse(value)
+    guard let mediaType = Self(value) else {
+      throw DecodingError.dataCorruptedError(in: container, debugDescription: "Invalid media type: \(value)")
+    }
+    self = mediaType
   }
 
   /// Encodes the media type as its serialized string form.

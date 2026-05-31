@@ -228,7 +228,9 @@ let package = Package(
     .testTarget(
       name: "SolidHTTPTests",
       dependencies: [
-        "SolidHTTP"
+        "SolidHTTP",
+        "SolidNet",
+        .product(name: "HTTPTypes", package: "swift-http-types"),
       ],
       plugins: lintPlugins
     ),

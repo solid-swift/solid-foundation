@@ -167,6 +167,9 @@ struct MediaTypeTests {
 
     #expect(encodedString == "application/problem+json;charset=utf-8")
     #expect(decoded == mediaType)
+    #expect(throws: DecodingError.self) {
+      try JSONDecoder().decode(MediaType.self, from: Data(#""application/json;q=0.5""#.utf8))
+    }
   }
 
   @Test("Curated constants serialize to registered values")
