@@ -1,0 +1,44 @@
+//
+//  DCTFilterTests.swift
+//  SolidIOTests
+//
+//  Created by Codex on 8/15/26.
+//
+
+import Foundation
+@testable import SolidIO
+import Testing
+
+@Suite
+struct DCTFilterTests {
+
+  @Test
+  func rgbRoundTripAndTrailingInput() throws {
+    let byteCount = 16 * 12 * 3
+    let bytes: [UInt8] = (0..<byteCount).map { UInt8(($0 * 11) & 0xFF) }
+    let source = Data(bytes)
+    let encoder = DCTEncoder(options: try DCTEncodeOptions(columns: 16, rows: 12, colors: 3))
+    _ = try encoder.process(input: source)
+    let final = try encoder.finish()
+    let jpeg = try #require(final)
+    #expect(jpeg.starts(with: [0xFF, 0xD8]))
+    #expect(jpeg.suffix(2) == Data([0xFF, 0xD9]))
+
+    let decoder = DCTDecoder(options: try DCTDecodeOptions(columns: 16, rows: 12, colors: 3))
+    let result = try decoder.process(input: jpeg + Data("tail".utf8))
+    #expect(result.output.count == source.count)
+    #expect(result.consumedInput == jpeg.count)
+    #expect(result.progress == .finished)
+  }
+
+  @Test
+  func unavailableImageIOModesFailExplicitly() throws {
+    let options = try DCTEncodeOptions(columns: 1, rows: 1, colors: 2)
+    let encoder = DCTEncoder(options: options)
+    _ = try encoder.process(input: Data([0, 0]))
+    #expect(throws: StreamCodecError.unsupportedOperation) {
+      try encoder.finish()
+    }
+  }
+
+}

@@ -129,11 +129,19 @@ let package = Package(
     .target(
       name: "SolidIO",
       dependencies: [
+        "CZlib",
         "SolidCore",
         "SwiftCompression",
       ],
       path: "Sources/Solid/IO",
       plugins: lintPlugins
+    ),
+    .systemLibrary(
+      name: "CZlib",
+      providers: [
+        .brew(["zlib"]),
+        .apt(["zlib1g-dev"]),
+      ]
     ),
     .target(
       name: "SolidData",
