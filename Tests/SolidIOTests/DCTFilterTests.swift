@@ -18,9 +18,9 @@ struct DCTFilterTests {
     let bytes: [UInt8] = (0..<byteCount).map { UInt8(($0 * 11) & 0xFF) }
     let source = Data(bytes)
     let encoder = DCTEncoder(options: try DCTEncodeOptions(columns: 16, rows: 12, colors: 3))
-    _ = try encoder.process(input: source)
-    let final = try encoder.finish()
-    let jpeg = try #require(final)
+    let encoded = try encoder.process(input: source)
+    #expect(encoded.progress == .finished)
+    let jpeg = encoded.output
     #expect(jpeg.starts(with: [0xFF, 0xD8]))
     #expect(jpeg.suffix(2) == Data([0xFF, 0xD9]))
 
@@ -35,9 +35,23 @@ struct DCTFilterTests {
   func unavailableImageIOModesFailExplicitly() throws {
     let options = try DCTEncodeOptions(columns: 1, rows: 1, colors: 2)
     let encoder = DCTEncoder(options: options)
-    _ = try encoder.process(input: Data([0, 0]))
     #expect(throws: StreamCodecError.unsupportedOperation) {
-      try encoder.finish()
+      try encoder.process(input: Data([0, 0]))
+    }
+  }
+
+  @Test
+  func encoderEnforcesExactSampleCount() throws {
+    let options = try DCTEncodeOptions(columns: 2, rows: 1, colors: 1)
+    let short = DCTEncoder(options: options)
+    _ = try short.process(input: Data([0]))
+    #expect(throws: StreamCodecError.truncatedData) {
+      try short.finish()
+    }
+
+    let long = DCTEncoder(options: options)
+    #expect(throws: StreamCodecError.invalidData) {
+      try long.process(input: Data([0, 1, 2]))
     }
   }
 

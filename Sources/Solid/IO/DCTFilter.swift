@@ -81,6 +81,9 @@ public struct DCTEncodeOptions: Equatable, Sendable {
     guard columns > 0 else { throw StreamCodecError.invalidOption("columns") }
     guard rows > 0 else { throw StreamCodecError.invalidOption("rows") }
     guard (1...4).contains(colors) else { throw StreamCodecError.invalidOption("colors") }
+    let (pixels, pixelOverflow) = columns.multipliedReportingOverflow(by: rows)
+    let (_, sampleOverflow) = pixels.multipliedReportingOverflow(by: colors)
+    guard !pixelOverflow, !sampleOverflow else { throw StreamCodecError.invalidOption("dimensions") }
     let horizontalSamples = horizontalSamples.isEmpty
       ? Array(repeating: 1, count: colors)
       : horizontalSamples
@@ -118,6 +121,10 @@ public struct DCTEncodeOptions: Equatable, Sendable {
     self.quantizationFactor = quantizationFactor
     self.huffmanTables = huffmanTables
     self.colorTransform = colorTransform
+  }
+
+  var sampleCount: Int {
+    columns * rows * colors
   }
 
 }
@@ -208,11 +215,24 @@ public final class DCTEncoder: IncrementalFilter {
   public func process(input: Data) throws -> IncrementalFilterResult {
     try state.withLock { state in
       guard !state.finished else { throw StreamCodecError.invalidData }
+      let expected = options.sampleCount
+      guard state.input.count + input.count <= expected else {
+        throw StreamCodecError.invalidData
+      }
       state.input.append(input)
+      guard state.input.count == expected else {
+        return IncrementalFilterResult(
+          output: Data(),
+          consumedInput: input.count,
+          progress: .needsInput
+        )
+      }
+      state.finished = true
+      defer { state.input.removeAll() }
       return IncrementalFilterResult(
-        output: Data(),
+        output: try DCTImageIO.encode(state.input, options: options),
         consumedInput: input.count,
-        progress: .needsInput
+        progress: .finished
       )
     }
   }
@@ -223,6 +243,8 @@ public final class DCTEncoder: IncrementalFilter {
       guard !state.finished else { return nil }
       state.finished = true
       defer { state.input.removeAll() }
+      let expected = options.sampleCount
+      guard state.input.count == expected else { throw StreamCodecError.truncatedData }
       return try DCTImageIO.encode(state.input, options: options)
     }
   }
