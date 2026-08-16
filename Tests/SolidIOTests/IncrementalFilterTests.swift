@@ -23,6 +23,30 @@ struct IncrementalFilterTests {
     #expect(filter.trailingInput == Data("trailing".utf8))
   }
 
+  @Test
+  func sharedCodecSerializesConcurrentCalls() async throws {
+    let filter = ASCIIHexEncoder()
+
+    let consumed = try await withThrowingTaskGroup(of: Int.self, returning: Int.self) { group in
+      for value in UInt8(0)..<64 {
+        group.addTask {
+          let result = try filter.process(input: Data(repeating: value, count: 16))
+          #expect(result.progress == .needsInput)
+          return result.consumedInput
+        }
+      }
+
+      var total = 0
+      for try await count in group {
+        total += count
+      }
+      return total
+    }
+
+    #expect(consumed == 1_024)
+    #expect(try filter.finish() == Data([0x3E]))
+  }
+
 }
 
 private final class SentinelFilter: IncrementalFilter {
