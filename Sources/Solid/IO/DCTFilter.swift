@@ -8,12 +8,6 @@
 import Foundation
 import Synchronization
 
-#if canImport(CoreGraphics) && canImport(ImageIO) && canImport(UniformTypeIdentifiers)
-  import CoreGraphics
-  import ImageIO
-  import UniformTypeIdentifiers
-#endif
-
 /// A JPEG Huffman table supplied to DCT encoding.
 public struct DCTHuffmanTable: Equatable, Sendable {
 
@@ -156,6 +150,9 @@ public struct DCTDecodeOptions: Equatable, Sendable {
   /// Huffman tables supplied for an abbreviated stream.
   public var huffmanTables: [DCTHuffmanTable]
 
+  /// Maximum decoded bytes the codec may materialize.
+  public var maximumDecodedBytes: Int
+
   /// Creates baseline JPEG/DCT decoding options.
   public init(
     columns: Int = 0,
@@ -165,13 +162,17 @@ public struct DCTDecodeOptions: Equatable, Sendable {
     horizontalSamples: [Int] = [],
     verticalSamples: [Int] = [],
     quantizationTables: [Data] = [],
-    huffmanTables: [DCTHuffmanTable] = []
+    huffmanTables: [DCTHuffmanTable] = [],
+    maximumDecodedBytes: Int = .max
   ) throws {
     guard columns >= 0 else { throw StreamCodecError.invalidOption("columns") }
     guard rows >= 0 else { throw StreamCodecError.invalidOption("rows") }
     guard (0...4).contains(colors) else { throw StreamCodecError.invalidOption("colors") }
     guard colorTransform == nil || colorTransform == 0 || colorTransform == 1 else {
       throw StreamCodecError.invalidOption("colorTransform")
+    }
+    guard maximumDecodedBytes >= 0 else {
+      throw StreamCodecError.invalidOption("maximumDecodedBytes")
     }
     guard horizontalSamples.allSatisfy({ (1...4).contains($0) }),
           verticalSamples.allSatisfy({ (1...4).contains($0) }),
@@ -191,6 +192,7 @@ public struct DCTDecodeOptions: Equatable, Sendable {
     self.verticalSamples = verticalSamples
     self.quantizationTables = quantizationTables
     self.huffmanTables = huffmanTables
+    self.maximumDecodedBytes = maximumDecodedBytes
   }
 
 }
@@ -198,54 +200,90 @@ public struct DCTDecodeOptions: Equatable, Sendable {
 /// An incremental baseline JPEG/DCT encoder.
 public final class DCTEncoder: IncrementalFilter {
 
-  private struct State: Sendable {
-    var input = Data()
-    var finished = false
+  private enum State: Sendable {
+    case collecting(Data)
+    case processing
+    case finished
   }
 
   private let options: DCTEncodeOptions
-  private let state = Mutex(State())
+  private let backend: any DCTCodecBackend
+  private let state = Mutex<State>(.collecting(Data()))
 
   /// Creates a DCT encoder.
   public init(options: DCTEncodeOptions) {
     self.options = options
+    backend = DCTCodecBackends.platform
+  }
+
+  init(options: DCTEncodeOptions, backend: any DCTCodecBackend) {
+    self.options = options
+    self.backend = backend
   }
 
   /// Buffers image samples for final JPEG encoding.
   public func process(input: Data) throws -> IncrementalFilterResult {
-    try state.withLock { state in
-      guard !state.finished else { throw StreamCodecError.invalidData }
+    let payload: Data? = try state.withLock { state in
+      guard case .collecting(var buffered) = state else { throw StreamCodecError.invalidData }
       let expected = options.sampleCount
-      guard state.input.count + input.count <= expected else {
+      guard buffered.count + input.count <= expected else {
         throw StreamCodecError.invalidData
       }
-      state.input.append(input)
-      guard state.input.count == expected else {
-        return IncrementalFilterResult(
-          output: Data(),
-          consumedInput: input.count,
-          progress: .needsInput
-        )
+      buffered.append(input)
+      guard buffered.count == expected else {
+        state = .collecting(buffered)
+        return nil
       }
-      state.finished = true
-      defer { state.input.removeAll() }
+      state = .processing
+      return buffered
+    }
+    guard let payload else {
       return IncrementalFilterResult(
-        output: try DCTImageIO.encode(state.input, options: options),
+        output: Data(),
+        consumedInput: input.count,
+        progress: .needsInput
+      )
+    }
+
+    do {
+      let output = try backend.encode(payload, options: options)
+      state.withLock { $0 = .finished }
+      return IncrementalFilterResult(
+        output: output,
         consumedInput: input.count,
         progress: .finished
       )
+    } catch {
+      state.withLock { $0 = .finished }
+      throw error
     }
   }
 
   /// Encodes the buffered image as a baseline JPEG stream.
   public func finish() throws -> Data? {
-    try state.withLock { state in
-      guard !state.finished else { return nil }
-      state.finished = true
-      defer { state.input.removeAll() }
-      let expected = options.sampleCount
-      guard state.input.count == expected else { throw StreamCodecError.truncatedData }
-      return try DCTImageIO.encode(state.input, options: options)
+    let payload: Data? = try state.withLock { state in
+      switch state {
+      case .collecting(let buffered):
+        guard buffered.count == options.sampleCount else {
+          state = .finished
+          throw StreamCodecError.truncatedData
+        }
+        state = .processing
+        return buffered
+      case .processing:
+        throw StreamCodecError.invalidData
+      case .finished:
+        return nil
+      }
+    }
+    guard let payload else { return nil }
+    do {
+      let output = try backend.encode(payload, options: options)
+      state.withLock { $0 = .finished }
+      return output
+    } catch {
+      state.withLock { $0 = .finished }
+      throw error
     }
   }
 
@@ -254,208 +292,156 @@ public final class DCTEncoder: IncrementalFilter {
 /// An incremental baseline JPEG/DCT decoder.
 public final class DCTDecoder: IncrementalFilter {
 
-  private struct State: Sendable {
-    var input = Data()
-    var finished = false
+  private enum State: Sendable {
+    case collecting(Data)
+    case processing
+    case finished
   }
 
   private let options: DCTDecodeOptions
-  private let state = Mutex(State())
+  private let backend: any DCTCodecBackend
+  private let state = Mutex<State>(.collecting(Data()))
 
   /// Creates a DCT decoder.
   public init(options: DCTDecodeOptions = try! DCTDecodeOptions()) {
     self.options = options
+    backend = DCTCodecBackends.platform
+  }
+
+  init(options: DCTDecodeOptions, backend: any DCTCodecBackend) {
+    self.options = options
+    self.backend = backend
   }
 
   /// Decodes once a complete JPEG end-of-image marker is available.
   public func process(input: Data) throws -> IncrementalFilterResult {
-    try state.withLock { state in
-      guard !state.finished else {
+    let work: (jpeg: Data, metadata: JPEGMetadata, components: Int, consumed: Int)? = try state
+      .withLock { state in
+        switch state {
+        case .finished:
+          return nil
+        case .processing:
+          throw StreamCodecError.invalidData
+        case .collecting(let buffered):
+          let previousCount = buffered.count
+          var combined = buffered
+          combined.append(input)
+          guard let metadata = try JPEGMetadataParser.parse(combined) else {
+            state = .collecting(combined)
+            return nil
+          }
+          let outputComponents = try validate(metadata: metadata)
+          guard let end = metadata.endOffset else {
+            state = .collecting(combined)
+            return nil
+          }
+          state = .processing
+          return (
+            Data(combined.prefix(end)),
+            metadata,
+            outputComponents,
+            max(0, end - previousCount)
+          )
+        }
+      }
+    guard let work else {
+      let isFinished = state.withLock {
+        if case .finished = $0 { return true }
+        return false
+      }
+      if isFinished {
         return IncrementalFilterResult(output: Data(), consumedInput: 0, progress: .finished)
       }
-      let previousCount = state.input.count
-      var combined = state.input
-      combined.append(input)
-      guard let end = try JPEGFraming.endOffset(in: combined) else {
-        state.input = combined
-        return IncrementalFilterResult(
-          output: Data(),
-          consumedInput: input.count,
-          progress: .needsInput
-        )
-      }
-      let jpeg = Data(combined.prefix(end))
-      let output = try DCTImageIO.decode(jpeg, options: options)
-      state.finished = true
-      state.input.removeAll()
+      return IncrementalFilterResult(
+        output: Data(),
+        consumedInput: input.count,
+        progress: .needsInput
+      )
+    }
+
+    do {
+      let output = try backend.decode(
+        work.jpeg,
+        metadata: work.metadata,
+        outputComponents: work.components
+      )
+      let expected = work.metadata.width * work.metadata.height * work.components
+      guard output.count == expected else { throw StreamCodecError.invalidData }
+      state.withLock { $0 = .finished }
       return IncrementalFilterResult(
         output: output,
-        consumedInput: max(0, end - previousCount),
+        consumedInput: work.consumed,
         progress: .finished
       )
+    } catch {
+      state.withLock { $0 = .finished }
+      throw error
     }
   }
 
   /// Rejects a physical source end before JPEG end-of-image.
   public func finish() throws -> Data? {
     try state.withLock { state in
-      guard !state.finished else { return nil }
-      throw StreamCodecError.truncatedData
+      switch state {
+      case .collecting:
+        state = .finished
+        throw StreamCodecError.truncatedData
+      case .processing:
+        throw StreamCodecError.invalidData
+      case .finished:
+        return nil
+      }
     }
   }
 
-}
-
-private enum JPEGFraming {
-
-  static func endOffset(in data: Data) throws -> Int? {
-    guard data.count >= 2 else { return nil }
-    guard data[0] == 0xFF && data[1] == 0xD8 else { throw StreamCodecError.invalidData }
-    var index = 2
-    var inScan = false
-
-    while index < data.count {
-      guard data[index] == 0xFF else {
-        if inScan {
-          index += 1
-          continue
-        }
-        throw StreamCodecError.invalidData
-      }
-      while index < data.count && data[index] == 0xFF { index += 1 }
-      guard index < data.count else { return nil }
-      let marker = data[index]
-      index += 1
-      if marker == 0x00 && inScan { continue }
-      if marker == 0xD9 { return index }
-      if marker == 0xD8 || (0xD0...0xD7).contains(marker) { continue }
-      guard index + 2 <= data.count else { return nil }
-      let length = Int(data[index]) << 8 | Int(data[index + 1])
-      guard length >= 2 else { throw StreamCodecError.invalidData }
-      guard index + length <= data.count else { return nil }
-      inScan = marker == 0xDA
-      index += length
+  private func validate(metadata: JPEGMetadata) throws -> Int {
+    guard options.horizontalSamples.isEmpty,
+          options.verticalSamples.isEmpty,
+          options.quantizationTables.isEmpty,
+          options.huffmanTables.isEmpty
+    else {
+      throw StreamCodecError.unsupportedOperation
     }
-    return nil
-  }
+    guard metadata.components.count != 2 else { throw StreamCodecError.unsupportedOperation }
+    guard options.columns == 0 || options.columns == metadata.width,
+          options.rows == 0 || options.rows == metadata.height,
+          options.colors == 0 || options.colors == metadata.components.count
+    else {
+      throw StreamCodecError.invalidData
+    }
 
-}
-
-private enum DCTImageIO {
-
-  static func encode(_ data: Data, options: DCTEncodeOptions) throws -> Data {
-    #if canImport(CoreGraphics) && canImport(ImageIO) && canImport(UniformTypeIdentifiers)
-      guard options.colors != 2 else { throw StreamCodecError.unsupportedOperation }
-      guard options.quantizationTables.isEmpty, options.huffmanTables.isEmpty else {
-        throw StreamCodecError.unsupportedOperation
-      }
-      guard options.horizontalSamples.allSatisfy({ $0 == 1 }),
-            options.verticalSamples.allSatisfy({ $0 == 1 })
-      else {
-        throw StreamCodecError.unsupportedOperation
-      }
-      let expected = options.columns * options.rows * options.colors
-      guard data.count == expected else { throw StreamCodecError.truncatedData }
-      let colorSpace: CGColorSpace
-      switch options.colors {
-      case 1: colorSpace = CGColorSpaceCreateDeviceGray()
-      case 3: colorSpace = CGColorSpaceCreateDeviceRGB()
-      default: colorSpace = CGColorSpaceCreateDeviceCMYK()
-      }
-      guard let provider = CGDataProvider(data: data as CFData),
-            let image = CGImage(
-              width: options.columns,
-              height: options.rows,
-              bitsPerComponent: 8,
-              bitsPerPixel: options.colors * 8,
-              bytesPerRow: options.columns * options.colors,
-              space: colorSpace,
-              bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.none.rawValue),
-              provider: provider,
-              decode: nil,
-              shouldInterpolate: false,
-              intent: .defaultIntent
-            )
-      else {
-        throw StreamCodecError.invalidData
-      }
-      let output = NSMutableData()
-      guard let destination = CGImageDestinationCreateWithData(
-        output,
-        UTType.jpeg.identifier as CFString,
-        1,
-        nil
-      ) else {
-        throw StreamCodecError.unsupportedOperation
-      }
-      let quality = min(1, max(0, 0.75 / options.quantizationFactor))
-      CGImageDestinationAddImage(
-        destination,
-        image,
-        [kCGImageDestinationLossyCompressionQuality: quality] as CFDictionary
-      )
-      guard CGImageDestinationFinalize(destination) else { throw StreamCodecError.invalidData }
-      return output as Data
-    #else
-      throw StreamCodecError.unsupportedOperation
-    #endif
-  }
-
-  static func decode(_ data: Data, options: DCTDecodeOptions) throws -> Data {
-    #if canImport(CoreGraphics) && canImport(ImageIO)
-      guard let source = CGImageSourceCreateWithData(data as CFData, nil),
-            let image = CGImageSourceCreateImageAtIndex(source, 0, nil)
-      else {
-        throw StreamCodecError.invalidData
-      }
-      guard options.columns == 0 || options.columns == image.width,
-            options.rows == 0 || options.rows == image.height
-      else {
-        throw StreamCodecError.invalidData
-      }
-      let inferredColors: Int
-      switch image.colorSpace?.model {
-      case .monochrome: inferredColors = 1
-      case .cmyk: inferredColors = 4
-      default: inferredColors = 3
-      }
-      let colors = options.colors == 0 ? inferredColors : options.colors
-      guard colors != 2 else { throw StreamCodecError.unsupportedOperation }
-      let colorSpace: CGColorSpace
-      switch colors {
-      case 1: colorSpace = CGColorSpaceCreateDeviceGray()
-      case 3: colorSpace = CGColorSpaceCreateDeviceRGB()
-      default: colorSpace = CGColorSpaceCreateDeviceCMYK()
-      }
-      let contextColors = colors == 3 ? 4 : colors
-      var rendered = [UInt8](repeating: 0, count: image.width * image.height * contextColors)
-      let bitmapInfo = colors == 3
-        ? CGImageAlphaInfo.noneSkipLast.rawValue
-        : CGImageAlphaInfo.none.rawValue
-      let created = rendered.withUnsafeMutableBytes { buffer in
-        CGContext(
-          data: buffer.baseAddress,
-          width: image.width,
-          height: image.height,
-          bitsPerComponent: 8,
-          bytesPerRow: image.width * contextColors,
-          space: colorSpace,
-          bitmapInfo: bitmapInfo
-        )
-      }
-      guard let context = created else { throw StreamCodecError.unsupportedOperation }
-      context.draw(image, in: CGRect(x: 0, y: 0, width: image.width, height: image.height))
-      if colors == 3 {
-        var output = Data(capacity: image.width * image.height * 3)
-        for index in stride(from: 0, to: rendered.count, by: 4) {
-          output.append(contentsOf: rendered[index..<(index + 3)])
+    let components = options.colors == 0 ? metadata.components.count : options.colors
+    let effectiveTransform = metadata.adobeColorTransform
+      ?? options.colorTransform
+      ?? (components == 3 ? 1 : 0)
+    switch components {
+    case 1:
+      break
+    case 3:
+      if metadata.adobeColorTransform == nil {
+        guard effectiveTransform == 1 else { throw StreamCodecError.unsupportedOperation }
+      } else {
+        guard effectiveTransform == 0 || effectiveTransform == 1 else {
+          throw StreamCodecError.unsupportedOperation
         }
-        return output
       }
-      return Data(rendered)
-    #else
+    case 4:
+      guard metadata.adobeColorTransform != nil,
+            effectiveTransform == 0 || effectiveTransform == 2
+      else {
+        throw StreamCodecError.unsupportedOperation
+      }
+    default:
       throw StreamCodecError.unsupportedOperation
-    #endif
+    }
+
+    let (pixels, pixelOverflow) = metadata.width.multipliedReportingOverflow(by: metadata.height)
+    let (decodedBytes, byteOverflow) = pixels.multipliedReportingOverflow(by: components)
+    guard !pixelOverflow, !byteOverflow else { throw StreamCodecError.invalidData }
+    guard decodedBytes <= options.maximumDecodedBytes else {
+      throw StreamCodecError.limitExceeded
+    }
+    return components
   }
 
 }

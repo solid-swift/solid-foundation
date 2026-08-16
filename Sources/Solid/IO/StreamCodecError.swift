@@ -17,6 +17,9 @@ public enum StreamCodecError: Error, Equatable, Sendable {
   /// A codec option is outside the supported format range.
   case invalidOption(String)
 
+  /// Decoding would exceed the caller-supplied resource budget.
+  case limitExceeded
+
   /// The codec is not available on the current platform.
   case unsupportedOperation
 

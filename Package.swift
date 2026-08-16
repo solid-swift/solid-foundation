@@ -224,6 +224,9 @@ let package = Package(
         "SolidIO",
         "SolidTesting",
       ],
+      resources: [
+        .copy("Resources")
+      ],
       plugins: lintPlugins
     ),
     .testTarget(
