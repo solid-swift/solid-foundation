@@ -53,6 +53,11 @@ public protocol IncrementalFilter: Filter, Sendable {
 
   /// Processes as much of `input` as the filter can consume.
   ///
+  /// `consumedInput` must identify the exact prefix incorporated into the
+  /// filter state. A decoder that reaches end-of-data must report `.finished`
+  /// without inspecting a byte following the end marker, leaving every
+  /// unconsumed byte available to the surrounding stream.
+  ///
   /// - Parameter input: The next input bytes.
   /// - Returns: Produced output, input consumption, and end-of-data state.
   func process(input: Data) throws -> IncrementalFilterResult

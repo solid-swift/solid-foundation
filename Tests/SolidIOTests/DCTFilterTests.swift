@@ -41,4 +41,44 @@ struct DCTFilterTests {
     }
   }
 
+  @Test
+  func decodeOptionsAcceptAbbreviatedStreamTables() throws {
+    let huffman = try DCTHuffmanTable(
+      codeCounts: Data([1] + Array(repeating: 0, count: 15)),
+      symbols: Data([0])
+    )
+    let options = try DCTDecodeOptions(
+      colors: 1,
+      horizontalSamples: [1],
+      verticalSamples: [1],
+      quantizationTables: [Data(repeating: 1, count: 64)],
+      huffmanTables: [huffman]
+    )
+    #expect(options.horizontalSamples == [1])
+    #expect(options.huffmanTables == [huffman])
+  }
+
+  @Test
+  func encodeOptionsUsePLRMQualityAndSamplingRanges() throws {
+    #expect(throws: Never.self) {
+      try DCTEncodeOptions(
+        columns: 1,
+        rows: 1,
+        colors: 3,
+        horizontalSamples: [4, 2, 2],
+        verticalSamples: [1, 1, 1],
+        quantizationFactor: 0
+      )
+    }
+    #expect(throws: StreamCodecError.self) {
+      try DCTEncodeOptions(
+        columns: 1,
+        rows: 1,
+        colors: 3,
+        horizontalSamples: [4, 4, 4],
+        verticalSamples: [1, 1, 1]
+      )
+    }
+  }
+
 }

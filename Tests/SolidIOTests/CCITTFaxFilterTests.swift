@@ -43,4 +43,13 @@ struct CCITTFaxFilterTests {
     #expect(try decoder.finish() == source)
   }
 
+  @Test
+  func encoderDerivesRowsFromCompleteInput() throws {
+    let options = try CCITTFaxOptions(k: 0, columns: 16)
+    let encoder = CCITTFaxEncoder(options: options)
+    _ = try encoder.process(input: Data([0xAA, 0x55, 0xF0, 0x0F]))
+    let encoded = try #require(try encoder.finish())
+    #expect(encoded.isEmpty == false)
+  }
+
 }

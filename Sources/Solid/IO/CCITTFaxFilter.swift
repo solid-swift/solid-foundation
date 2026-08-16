@@ -162,10 +162,11 @@ private enum CCITTImageIO {
 
   static func encode(_ data: Data, options: CCITTFaxOptions) throws -> Data {
     #if canImport(CoreGraphics) && canImport(ImageIO) && canImport(UniformTypeIdentifiers)
-      guard options.rows > 0 else { throw StreamCodecError.invalidOption("rows") }
       guard options.endOfBlock else { throw StreamCodecError.unsupportedOperation }
       let rowBytes = (options.columns + 7) / 8
-      guard data.count == rowBytes * options.rows else { throw StreamCodecError.truncatedData }
+      guard data.count.isMultiple(of: rowBytes) else { throw StreamCodecError.truncatedData }
+      let rows = data.count / rowBytes
+      guard rows > 0 else { throw StreamCodecError.truncatedData }
       var pixels = data
       if options.blackIs1 {
         for index in pixels.indices { pixels[index] ^= 0xFF }
@@ -173,7 +174,7 @@ private enum CCITTImageIO {
       guard let provider = CGDataProvider(data: pixels as CFData),
             let image = CGImage(
               width: options.columns,
-              height: options.rows,
+              height: rows,
               bitsPerComponent: 1,
               bitsPerPixel: 1,
               bytesPerRow: rowBytes,

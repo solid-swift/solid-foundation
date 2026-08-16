@@ -90,7 +90,8 @@ public struct DCTEncodeOptions: Equatable, Sendable {
     guard horizontalSamples.count == colors,
           verticalSamples.count == colors,
           horizontalSamples.allSatisfy({ (1...4).contains($0) }),
-          verticalSamples.allSatisfy({ (1...4).contains($0) })
+          verticalSamples.allSatisfy({ (1...4).contains($0) }),
+          zip(horizontalSamples, verticalSamples).reduce(0, { $0 + $1.0 * $1.1 }) <= 10
     else {
       throw StreamCodecError.invalidOption("samples")
     }
@@ -99,7 +100,7 @@ public struct DCTEncodeOptions: Equatable, Sendable {
     else {
       throw StreamCodecError.invalidOption("quantizationTables")
     }
-    guard quantizationFactor > 0 else {
+    guard (0...1_000_000).contains(quantizationFactor) else {
       throw StreamCodecError.invalidOption("quantizationFactor")
     }
     guard huffmanTables.count <= 8 else {
@@ -136,18 +137,53 @@ public struct DCTDecodeOptions: Equatable, Sendable {
   /// Optional color conversion selector.
   public var colorTransform: Int?
 
+  /// Horizontal sampling factors supplied for an abbreviated stream.
+  public var horizontalSamples: [Int]
+
+  /// Vertical sampling factors supplied for an abbreviated stream.
+  public var verticalSamples: [Int]
+
+  /// Quantization tables supplied for an abbreviated stream.
+  public var quantizationTables: [Data]
+
+  /// Huffman tables supplied for an abbreviated stream.
+  public var huffmanTables: [DCTHuffmanTable]
+
   /// Creates baseline JPEG/DCT decoding options.
-  public init(columns: Int = 0, rows: Int = 0, colors: Int = 0, colorTransform: Int? = nil) throws {
+  public init(
+    columns: Int = 0,
+    rows: Int = 0,
+    colors: Int = 0,
+    colorTransform: Int? = nil,
+    horizontalSamples: [Int] = [],
+    verticalSamples: [Int] = [],
+    quantizationTables: [Data] = [],
+    huffmanTables: [DCTHuffmanTable] = []
+  ) throws {
     guard columns >= 0 else { throw StreamCodecError.invalidOption("columns") }
     guard rows >= 0 else { throw StreamCodecError.invalidOption("rows") }
     guard (0...4).contains(colors) else { throw StreamCodecError.invalidOption("colors") }
     guard colorTransform == nil || colorTransform == 0 || colorTransform == 1 else {
       throw StreamCodecError.invalidOption("colorTransform")
     }
+    guard horizontalSamples.allSatisfy({ (1...4).contains($0) }),
+          verticalSamples.allSatisfy({ (1...4).contains($0) }),
+          horizontalSamples.isEmpty || colors == 0 || horizontalSamples.count == colors,
+          verticalSamples.isEmpty || colors == 0 || verticalSamples.count == colors,
+          quantizationTables.count <= 4,
+          quantizationTables.allSatisfy({ $0.count == 64 }),
+          huffmanTables.count <= 8
+    else {
+      throw StreamCodecError.invalidOption("tables")
+    }
     self.columns = columns
     self.rows = rows
     self.colors = colors
     self.colorTransform = colorTransform
+    self.horizontalSamples = horizontalSamples
+    self.verticalSamples = verticalSamples
+    self.quantizationTables = quantizationTables
+    self.huffmanTables = huffmanTables
   }
 
 }
