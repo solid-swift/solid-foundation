@@ -11,6 +11,7 @@ public enum Tempo {
 
   public typealias Instant = SolidTempo.Instant
   public typealias Duration = SolidTempo.Duration
+  public typealias Stopwatch = SolidTempo.Stopwatch
 
   public typealias Clock = SolidTempo.Clock
   public typealias SystemClock = SolidTempo.SystemClock
