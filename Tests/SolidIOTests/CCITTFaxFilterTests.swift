@@ -25,8 +25,8 @@ struct CCITTFaxFilterTests {
     #expect(!encoded.isEmpty)
 
     let decoder = CCITTFaxDecoder(options: options)
-    _ = try decoder.process(input: encoded)
-    let decoded = try decoder.finish()
+    let result = try decoder.process(input: encoded)
+    let decoded = result.progress == .finished ? result.output : try decoder.finish()
     #expect(decoded == source)
   }
 
@@ -39,8 +39,9 @@ struct CCITTFaxFilterTests {
     let final = try encoder.finish()
     let encoded = try #require(final)
     let decoder = CCITTFaxDecoder(options: options)
-    _ = try decoder.process(input: encoded)
-    #expect(try decoder.finish() == source)
+    let result = try decoder.process(input: encoded)
+    let decoded = result.progress == .finished ? result.output : try decoder.finish()
+    #expect(decoded == source)
   }
 
   @Test
@@ -50,6 +51,21 @@ struct CCITTFaxFilterTests {
     _ = try encoder.process(input: Data([0xAA, 0x55, 0xF0, 0x0F]))
     let encoded = try #require(try encoder.finish())
     #expect(encoded.isEmpty == false)
+  }
+
+  @Test(arguments: [-1, 0])
+  func decoderStopsAtEndOfBlockBeforeTrailingInput(_ k: Int) throws {
+    let options = try CCITTFaxOptions(k: k, columns: 16, rows: 2)
+    let source = Data([0xAA, 0x55, 0xF0, 0x0F])
+    let encoder = CCITTFaxEncoder(options: options)
+    _ = try encoder.process(input: source)
+    let encoded = try #require(try encoder.finish())
+
+    let decoder = CCITTFaxDecoder(options: options)
+    let result = try decoder.process(input: encoded + Data("tail".utf8))
+    #expect(result.output == source)
+    #expect(result.consumedInput == encoded.count)
+    #expect(result.progress == .finished)
   }
 
 }

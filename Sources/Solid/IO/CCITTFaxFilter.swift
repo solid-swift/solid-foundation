@@ -133,11 +133,27 @@ public final class CCITTFaxDecoder: IncrementalFilter {
 
   /// Buffers encoded scan lines until the physical source is finished.
   public func process(input: Data) throws -> IncrementalFilterResult {
-    state.withLock { state in
+    try state.withLock { state in
       guard !state.finished else {
         return IncrementalFilterResult(output: Data(), consumedInput: 0, progress: .finished)
       }
-      state.input.append(input)
+      let previousCount = state.input.count
+      var combined = state.input
+      combined.append(input)
+      if options.endOfBlock,
+         options.rows > 0,
+         let end = CCITTEndOfData.endOffset(in: combined, k: options.k)
+      {
+        let output = try CCITTImageIO.decode(Data(combined.prefix(end)), options: options)
+        state.finished = true
+        state.input.removeAll()
+        return IncrementalFilterResult(
+          output: output,
+          consumedInput: max(0, end - previousCount),
+          progress: .finished
+        )
+      }
+      state.input = combined
       return IncrementalFilterResult(
         output: Data(),
         consumedInput: input.count,
@@ -154,6 +170,36 @@ public final class CCITTFaxDecoder: IncrementalFilter {
       defer { state.input.removeAll() }
       return try CCITTImageIO.decode(state.input, options: options)
     }
+  }
+
+}
+
+private enum CCITTEndOfData {
+
+  static func endOffset(in data: Data, k: Int) -> Int? {
+    let requiredCodes = k < 0 ? 2 : 6
+    var zeroRun = 0
+    var consecutiveCodes = 0
+
+    for bitOffset in 0..<(data.count * 8) {
+      let byte = data[data.index(data.startIndex, offsetBy: bitOffset / 8)]
+      let bit = (byte >> (7 - bitOffset % 8)) & 1
+      if bit == 0 {
+        zeroRun += 1
+        continue
+      }
+
+      if zeroRun >= 11 {
+        consecutiveCodes += 1
+        if consecutiveCodes == requiredCodes {
+          return (bitOffset + 8) / 8
+        }
+      } else {
+        consecutiveCodes = 0
+      }
+      zeroRun = 0
+    }
+    return nil
   }
 
 }
@@ -205,7 +251,15 @@ private enum CCITTImageIO {
       ]
       CGImageDestinationAddImage(destination, image, properties as CFDictionary)
       guard CGImageDestinationFinalize(destination) else { throw StreamCodecError.invalidData }
-      return try TIFFFaxContainer.extractStrips(from: tiff as Data)
+      var encoded = try TIFFFaxContainer.extractStrips(from: tiff as Data)
+      if CCITTEndOfData.endOffset(in: encoded, k: options.k) == nil {
+        if options.k < 0 {
+          encoded.append(contentsOf: [0x00, 0x10, 0x01])
+        } else {
+          encoded.append(contentsOf: [0x00, 0x10, 0x01, 0x00, 0x10, 0x01, 0x00, 0x10, 0x01])
+        }
+      }
+      return encoded
     #else
       throw StreamCodecError.unsupportedOperation
     #endif
