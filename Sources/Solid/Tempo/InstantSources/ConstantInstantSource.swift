@@ -5,7 +5,7 @@
 //  Created by Kevin Wooten on 12/24/25.
 //
 
-public struct ConstantInstantSource: InstantSource {
+public struct ConstantInstantSource: MonotonicInstantSource {
 
   public var instant: Instant
 
