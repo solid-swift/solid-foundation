@@ -29,7 +29,7 @@ struct DCTFilterTests {
     )
     let encoded = try encoder.process(input: source)
     #expect(encoded.progress == .finished)
-    let jpeg = encoded.output
+    let jpeg = encoded.output + (try #require(try encoder.finish()))
     #expect(jpeg.starts(with: [0xFF, 0xD8]))
     #expect(jpeg.suffix(2) == Data([0xFF, 0xD9]))
     let parsedMetadata = try JPEGMetadataParser.parse(jpeg)
@@ -46,12 +46,12 @@ struct DCTFilterTests {
   }
 
   @Test
-  func unavailableImageIOModesFailExplicitly() throws {
+  func portableBackendSupportsTwoComponents() throws {
     let options = try DCTEncodeOptions(columns: 1, rows: 1, colors: 2)
     let encoder = DCTEncoder(options: options)
-    #expect(throws: StreamCodecError.unsupportedOperation) {
-      try encoder.process(input: Data([0, 0]))
-    }
+    let result = try encoder.process(input: Data([0, 0]))
+    #expect(result.progress == .finished)
+    #expect(result.output.starts(with: [0xFF, 0xD8]))
   }
 
   @Test
@@ -175,31 +175,30 @@ struct DCTFilterTests {
     let jpeg = try fixture(named: "rgb-app14-0")
     let decoder = DCTDecoder(options: try DCTDecodeOptions(colors: 3, colorTransform: 1))
     let output = try decoder.process(input: jpeg).output
-    #expect(Array(output.prefix(6)) == [0, 0, 0, 16, 1, 8])
+    #expect(matches(Array(output.prefix(6)), [0, 0, 0, 16, 1, 8], tolerance: 1))
   }
 
   @Test
-  func transformFreeStreamCannotSuppressImageIOColorConversion() throws {
+  func transformFreeStreamUsesRawComponents() throws {
     let jpeg = try fixture(named: "baseline-444")
     let decoder = DCTDecoder(options: try DCTDecodeOptions(colors: 3, colorTransform: 0))
-    #expect(throws: StreamCodecError.unsupportedOperation) {
-      try decoder.process(input: jpeg)
-    }
-  }
-
-  @Test(arguments: ["separate-scans", "progressive"])
-  func deferredJPEGOrganizationsAreRejected(fixtureName: String) throws {
-    let jpeg = try fixture(named: fixtureName)
-    #expect(throws: StreamCodecError.unsupportedOperation) {
-      try DCTDecoder().process(input: jpeg)
-    }
+    let result = try decoder.process(input: jpeg)
+    #expect(result.output.count == 16 * 16 * 3)
   }
 
   @Test
-  func twoComponentJPEGIsRejectedBeforeBackendDecode() throws {
-    #expect(throws: StreamCodecError.unsupportedOperation) {
-      try DCTDecoder().process(input: twoComponentJPEG())
-    }
+  func separateBaselineScansAreDecoded() throws {
+    let jpeg = try fixture(named: "separate-scans")
+    let result = try DCTDecoder().process(input: jpeg)
+    #expect(result.output.count == 16 * 16 * 3)
+    #expect(result.progress == .finished)
+  }
+
+  @Test
+  func twoComponentJPEGUsesPortableDecoder() throws {
+    let result = try DCTDecoder().process(input: twoComponentJPEG())
+    #expect(result.output.count == 2)
+    #expect(result.progress == .finished)
   }
 
   @Test
@@ -214,16 +213,17 @@ struct DCTFilterTests {
   }
 
   @Test
-  func deferredDecodeParametersFailInsteadOfBeingIgnored() throws {
-    let jpeg = try fixture(named: "grayscale")
+  func externalDecodeTablesAreAccepted() throws {
+    let abbreviated = try abbreviatedGrayscaleJPEG(from: fixture(named: "grayscale"))
     let options = try DCTDecodeOptions(
       colors: 1,
-      quantizationTables: [Data(repeating: 1, count: 64)]
+      quantizationTables: [abbreviated.quantization],
+      huffmanTables: [abbreviated.dc, abbreviated.ac]
     )
     let decoder = DCTDecoder(options: options)
-    #expect(throws: StreamCodecError.unsupportedOperation) {
-      try decoder.process(input: jpeg)
-    }
+    let result = try decoder.process(input: abbreviated.data + Data("tail".utf8))
+    #expect(result.output.count == 16 * 16)
+    #expect(result.consumedInput == abbreviated.data.count)
   }
 
   @Test
@@ -264,11 +264,12 @@ struct DCTFilterTests {
   }
 
   @Test
-  func imageIOEncoderDoesNotSilentlyChangeDefaultSampling() throws {
+  func portableEncoderPreservesDefaultSampling() throws {
     let encoder = DCTEncoder(options: try DCTEncodeOptions(columns: 16, rows: 16, colors: 3))
-    #expect(throws: StreamCodecError.unsupportedOperation) {
-      try encoder.process(input: Data(repeating: 127, count: 16 * 16 * 3))
-    }
+    let result = try encoder.process(input: Data(repeating: 127, count: 16 * 16 * 3))
+    let metadata = try #require(try JPEGMetadataParser.parse(result.output))
+    #expect(metadata.components.map(\.horizontalSample) == [1, 1, 1])
+    #expect(metadata.components.map(\.verticalSample) == [1, 1, 1])
   }
 
   @Test(.timeLimit(.minutes(1)))
@@ -337,6 +338,56 @@ struct DCTFilterTests {
       0xFF, 0xD9,
     ])
     return data
+  }
+
+  private func abbreviatedGrayscaleJPEG(
+    from source: Data
+  ) throws -> (data: Data, quantization: Data, dc: DCTHuffmanTable, ac: DCTHuffmanTable) {
+    var output = Data(source.prefix(2))
+    var quantization: Data?
+    var dc: DCTHuffmanTable?
+    var ac: DCTHuffmanTable?
+    var index = 2
+    while index < source.count {
+      guard source[index] == 0xFF, index + 3 < source.count else {
+        throw StreamCodecError.invalidData
+      }
+      let marker = source[index + 1]
+      if marker == 0xDA {
+        output.append(source[index...])
+        break
+      }
+      let length = Int(source[index + 2]) << 8 | Int(source[index + 3])
+      guard length >= 2, index + 2 + length <= source.count else {
+        throw StreamCodecError.invalidData
+      }
+      let payloadStart = index + 4
+      let payloadEnd = index + 2 + length
+      if marker == 0xDB {
+        guard payloadEnd - payloadStart == 65, source[payloadStart] == 0 else {
+          throw StreamCodecError.invalidData
+        }
+        quantization = Data(source[(payloadStart + 1)..<payloadEnd])
+      } else if marker == 0xC4 {
+        guard payloadEnd - payloadStart >= 17 else { throw StreamCodecError.invalidData }
+        let tableClass = source[payloadStart] >> 4
+        let counts = Data(source[(payloadStart + 1)..<(payloadStart + 17)])
+        let symbolCount = counts.reduce(0) { $0 + Int($1) }
+        guard payloadStart + 17 + symbolCount == payloadEnd else {
+          throw StreamCodecError.invalidData
+        }
+        let table = try DCTHuffmanTable(
+          codeCounts: counts,
+          symbols: Data(source[(payloadStart + 17)..<payloadEnd])
+        )
+        if tableClass == 0 { dc = table } else { ac = table }
+      } else {
+        output.append(source[index..<payloadEnd])
+      }
+      index = payloadEnd
+    }
+    try #require(output.suffix(2) == Data([0xFF, 0xD9]))
+    return try (output, #require(quantization), #require(dc), #require(ac))
   }
 
 }

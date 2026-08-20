@@ -15,6 +15,61 @@ import Foundation
 
 struct ImageIODCTCodecBackend: DCTCodecBackend {
 
+  func supportsEncoding(_ options: DCTEncodeOptions) -> Bool {
+    #if canImport(CoreGraphics) && canImport(ImageIO) && canImport(UniformTypeIdentifiers)
+      guard options.quantizationTables.isEmpty,
+            options.huffmanTables.isEmpty,
+            options.quantizationFactor == 1
+      else {
+        return false
+      }
+      switch options.colors {
+      case 1:
+        return options.horizontalSamples == [1] && options.verticalSamples == [1]
+      case 3:
+        return options.colorTransform == 1
+          && options.horizontalSamples == [2, 1, 1]
+          && options.verticalSamples == [2, 1, 1]
+      case 4:
+        return options.colorTransform == 0
+          && options.horizontalSamples == [1, 1, 1, 1]
+          && options.verticalSamples == [1, 1, 1, 1]
+      default:
+        return false
+      }
+    #else
+      return false
+    #endif
+  }
+
+  func supportsDecoding(
+    metadata: JPEGMetadata,
+    outputComponents: Int,
+    options: DCTDecodeOptions?
+  ) -> Bool {
+    #if canImport(CoreGraphics) && canImport(ImageIO)
+      guard options?.quantizationTables.isEmpty != false,
+            options?.huffmanTables.isEmpty != false,
+            options?.horizontalSamples.isEmpty != false,
+            options?.verticalSamples.isEmpty != false
+      else {
+        return false
+      }
+      guard metadata.scanCount == 1,
+            outputComponents != 2,
+            metadata.components.count == outputComponents
+      else {
+        return false
+      }
+      if outputComponents == 3, metadata.adobeColorTransform == nil, options?.colorTransform == 0 {
+        return false
+      }
+      return true
+    #else
+      return false
+    #endif
+  }
+
   func encode(_ data: Data, options: DCTEncodeOptions) throws -> Data {
     #if canImport(CoreGraphics) && canImport(ImageIO) && canImport(UniformTypeIdentifiers)
       guard options.colors != 2,

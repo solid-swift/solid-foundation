@@ -201,6 +201,9 @@ public struct DCTDecodeOptions: Equatable, Sendable {
 public final class DCTEncoder: IncrementalFilter {
 
   private enum State: Sendable {
+    case nativePending
+    case native(SolidJPEGDCTEncoderSession, received: Int)
+    case nativeTail(Data)
     case collecting(Data)
     case processing
     case finished
@@ -208,21 +211,71 @@ public final class DCTEncoder: IncrementalFilter {
 
   private let options: DCTEncodeOptions
   private let backend: any DCTCodecBackend
-  private let state = Mutex<State>(.collecting(Data()))
+  private let state: Mutex<State>
 
   /// Creates a DCT encoder.
   public init(options: DCTEncodeOptions) {
     self.options = options
     backend = DCTCodecBackends.platform
+    state = Mutex<State>(.nativePending)
   }
 
   init(options: DCTEncodeOptions, backend: any DCTCodecBackend) {
     self.options = options
     self.backend = backend
+    state = Mutex<State>(.collecting(Data()))
   }
 
-  /// Buffers image samples for final JPEG encoding.
+  /// Encodes input samples incrementally and emits completed JPEG data.
   public func process(input: Data) throws -> IncrementalFilterResult {
+    if state.withLock({ state in
+      if case .nativePending = state { return true }
+      if case .native = state { return true }
+      if case .nativeTail = state { return true }
+      return false
+    }) {
+      return try state.withLock { state in
+        let session: SolidJPEGDCTEncoderSession
+        let received: Int
+        switch state {
+        case .nativePending:
+          if input.count == options.sampleCount,
+             ImageIODCTCodecBackend().supportsEncoding(options)
+          {
+            let encoded = try backend.encode(input, options: options)
+            guard encoded.suffix(2) == Data([0xFF, 0xD9]) else {
+              state = .finished
+              throw StreamCodecError.invalidData
+            }
+            state = .nativeTail(Data(encoded.suffix(2)))
+            return IncrementalFilterResult(
+              output: Data(encoded.dropLast(2)),
+              consumedInput: input.count,
+              progress: .finished
+            )
+          }
+          session = try SolidJPEGDCTEncoderSession(options: options)
+          received = 0
+        case .native(let current, let currentReceived):
+          session = current
+          received = currentReceived
+        case .nativeTail, .collecting, .processing, .finished:
+          throw StreamCodecError.invalidData
+        }
+        guard input.count <= options.sampleCount - received else {
+          state = .finished
+          throw StreamCodecError.invalidData
+        }
+        let output = try session.process(input)
+        let total = received + input.count
+        state = .native(session, received: total)
+        return IncrementalFilterResult(
+          output: output,
+          consumedInput: input.count,
+          progress: total == options.sampleCount ? .finished : .needsInput
+        )
+      }
+    }
     let payload: Data? = try state.withLock { state in
       guard case .collecting(var buffered) = state else { throw StreamCodecError.invalidData }
       let expected = options.sampleCount
@@ -259,8 +312,39 @@ public final class DCTEncoder: IncrementalFilter {
     }
   }
 
-  /// Encodes the buffered image as a baseline JPEG stream.
+  /// Flushes entropy state and emits the JPEG end-of-image marker.
   public func finish() throws -> Data? {
+    if state.withLock({ state in
+      if case .nativePending = state { return true }
+      if case .native = state { return true }
+      if case .nativeTail = state { return true }
+      return false
+    }) {
+      return try state.withLock { state in
+        let session: SolidJPEGDCTEncoderSession
+        let received: Int
+        switch state {
+        case .nativeTail(let tail):
+          state = .finished
+          return tail
+        case .nativePending:
+          session = try SolidJPEGDCTEncoderSession(options: options)
+          received = 0
+        case .native(let current, let currentReceived):
+          session = current
+          received = currentReceived
+        case .collecting, .processing, .finished:
+          throw StreamCodecError.invalidData
+        }
+        guard received == options.sampleCount else {
+          state = .finished
+          throw StreamCodecError.truncatedData
+        }
+        let output = try session.finish()
+        state = .finished
+        return output
+      }
+    }
     let payload: Data? = try state.withLock { state in
       switch state {
       case .collecting(let buffered):
@@ -274,6 +358,8 @@ public final class DCTEncoder: IncrementalFilter {
         throw StreamCodecError.invalidData
       case .finished:
         return nil
+      case .nativePending, .native, .nativeTail:
+        throw StreamCodecError.invalidData
       }
     }
     guard let payload else { return nil }
@@ -293,6 +379,8 @@ public final class DCTEncoder: IncrementalFilter {
 public final class DCTDecoder: IncrementalFilter {
 
   private enum State: Sendable {
+    case nativeHeader(Data)
+    case native(SolidJPEGDCTDecoderSession)
     case collecting(Data)
     case processing
     case finished
@@ -300,21 +388,98 @@ public final class DCTDecoder: IncrementalFilter {
 
   private let options: DCTDecodeOptions
   private let backend: any DCTCodecBackend
-  private let state = Mutex<State>(.collecting(Data()))
+  private let state: Mutex<State>
 
   /// Creates a DCT decoder.
   public init(options: DCTDecodeOptions = try! DCTDecodeOptions()) {
     self.options = options
     backend = DCTCodecBackends.platform
+    state = Mutex<State>(.nativeHeader(Data()))
   }
 
   init(options: DCTDecodeOptions, backend: any DCTCodecBackend) {
     self.options = options
     self.backend = backend
+    state = Mutex<State>(.collecting(Data()))
   }
 
-  /// Decodes once a complete JPEG end-of-image marker is available.
+  /// Decodes available JPEG data and emits completed image-row bands.
   public func process(input: Data) throws -> IncrementalFilterResult {
+    if state.withLock({ state in
+      if case .nativeHeader = state { return true }
+      if case .native = state { return true }
+      return false
+    }) {
+      return try state.withLock { state in
+        switch state {
+        case .native(let session):
+          let result = try session.process(input)
+          if result.progress == .finished { state = .finished }
+          return result
+        case .nativeHeader(let buffered):
+          let previousCount = buffered.count
+          var combined = buffered
+          combined.append(input)
+          let quantizationTableIDs = Set(0..<options.quantizationTables.count)
+          let externalHuffmanTableCount = min(2, options.huffmanTables.count / 2)
+          let huffmanTableIDs = Set(0..<externalHuffmanTableCount)
+          guard let metadata = try JPEGMetadataParser.parse(
+            combined,
+            externalQuantizationTables: quantizationTableIDs,
+            externalDCTables: huffmanTableIDs,
+            externalACTables: huffmanTableIDs
+          ) else {
+            state = .nativeHeader(combined)
+            return IncrementalFilterResult(
+              output: Data(),
+              consumedInput: input.count,
+              progress: .needsInput
+            )
+          }
+          let outputComponents = try validate(metadata: metadata)
+          if let end = metadata.endOffset,
+             ImageIODCTCodecBackend().supportsDecoding(
+               metadata: metadata,
+               outputComponents: outputComponents,
+               options: options
+             )
+          {
+            let jpeg = Data(combined.prefix(end))
+            let output = try backend.decode(
+              jpeg,
+              metadata: metadata,
+              outputComponents: outputComponents
+            )
+            state = .finished
+            return IncrementalFilterResult(
+              output: output,
+              consumedInput: max(0, end - previousCount),
+              progress: .finished
+            )
+          }
+          let session = try SolidJPEGDCTDecoderSession(
+            options: options,
+            metadata: metadata,
+            outputComponents: outputComponents
+          )
+          let result = try session.process(combined)
+          if result.progress == .finished {
+            state = .finished
+          } else {
+            state = .native(session)
+          }
+          return IncrementalFilterResult(
+            output: result.output,
+            consumedInput: result.progress == .finished
+              ? max(0, result.consumedInput - previousCount)
+              : input.count,
+            progress: result.progress
+          )
+        default:
+          throw StreamCodecError.invalidData
+        }
+      }
+    }
     let work: (jpeg: Data, metadata: JPEGMetadata, components: Int, consumed: Int)? = try state
       .withLock { state in
         switch state {
@@ -326,7 +491,15 @@ public final class DCTDecoder: IncrementalFilter {
           let previousCount = buffered.count
           var combined = buffered
           combined.append(input)
-          guard let metadata = try JPEGMetadataParser.parse(combined) else {
+          let quantizationTableIDs = Set(0..<options.quantizationTables.count)
+          let externalHuffmanTableCount = min(2, options.huffmanTables.count / 2)
+          let huffmanTableIDs = Set(0..<externalHuffmanTableCount)
+          guard let metadata = try JPEGMetadataParser.parse(
+            combined,
+            externalQuantizationTables: quantizationTableIDs,
+            externalDCTables: huffmanTableIDs,
+            externalACTables: huffmanTableIDs
+          ) else {
             state = .collecting(combined)
             return nil
           }
@@ -342,6 +515,8 @@ public final class DCTDecoder: IncrementalFilter {
             outputComponents,
             max(0, end - previousCount)
           )
+        case .nativeHeader, .native:
+          throw StreamCodecError.invalidData
         }
       }
     guard let work else {
@@ -360,11 +535,20 @@ public final class DCTDecoder: IncrementalFilter {
     }
 
     do {
-      let output = try backend.decode(
-        work.jpeg,
-        metadata: work.metadata,
-        outputComponents: work.components
-      )
+      let output = if let backend = backend as? any DCTOptionsCodecBackend {
+        try backend.decode(
+          work.jpeg,
+          metadata: work.metadata,
+          outputComponents: work.components,
+          options: options
+        )
+      } else {
+        try backend.decode(
+          work.jpeg,
+          metadata: work.metadata,
+          outputComponents: work.components
+        )
+      }
       let expected = work.metadata.width * work.metadata.height * work.components
       guard output.count == expected else { throw StreamCodecError.invalidData }
       state.withLock { $0 = .finished }
@@ -383,6 +567,18 @@ public final class DCTDecoder: IncrementalFilter {
   public func finish() throws -> Data? {
     try state.withLock { state in
       switch state {
+      case .nativeHeader:
+        state = .finished
+        throw StreamCodecError.truncatedData
+      case .native(let session):
+        do {
+          let output = try session.finish()
+          state = .finished
+          return output
+        } catch {
+          state = .finished
+          throw error
+        }
       case .collecting:
         state = .finished
         throw StreamCodecError.truncatedData
@@ -395,14 +591,6 @@ public final class DCTDecoder: IncrementalFilter {
   }
 
   private func validate(metadata: JPEGMetadata) throws -> Int {
-    guard options.horizontalSamples.isEmpty,
-          options.verticalSamples.isEmpty,
-          options.quantizationTables.isEmpty,
-          options.huffmanTables.isEmpty
-    else {
-      throw StreamCodecError.unsupportedOperation
-    }
-    guard metadata.components.count != 2 else { throw StreamCodecError.unsupportedOperation }
     guard options.columns == 0 || options.columns == metadata.width,
           options.rows == 0 || options.rows == metadata.height,
           options.colors == 0 || options.colors == metadata.components.count
@@ -416,18 +604,15 @@ public final class DCTDecoder: IncrementalFilter {
       ?? (components == 3 ? 1 : 0)
     switch components {
     case 1:
-      break
+      guard effectiveTransform == 0 else { throw StreamCodecError.unsupportedOperation }
+    case 2:
+      guard effectiveTransform == 0 else { throw StreamCodecError.unsupportedOperation }
     case 3:
-      if metadata.adobeColorTransform == nil {
-        guard effectiveTransform == 1 else { throw StreamCodecError.unsupportedOperation }
-      } else {
-        guard effectiveTransform == 0 || effectiveTransform == 1 else {
-          throw StreamCodecError.unsupportedOperation
-        }
+      guard effectiveTransform == 0 || effectiveTransform == 1 else {
+        throw StreamCodecError.unsupportedOperation
       }
     case 4:
-      guard metadata.adobeColorTransform != nil,
-            effectiveTransform == 0 || effectiveTransform == 2
+      guard effectiveTransform == 0 || effectiveTransform == 1 || effectiveTransform == 2
       else {
         throw StreamCodecError.unsupportedOperation
       }

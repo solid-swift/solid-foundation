@@ -18,6 +18,20 @@ public struct JPEGQuantizationTable: Equatable, Sendable {
 
 }
 
+public extension JPEGQuantizationTable {
+
+  /// The standard luminance quantization table from the JPEG specification.
+  static var standardLuminance: Self {
+    try! JPEGConstants.defaultQuantizationTables()[0]
+  }
+
+  /// The standard chrominance quantization table from the JPEG specification.
+  static var standardChrominance: Self {
+    try! JPEGConstants.defaultQuantizationTables()[1]
+  }
+
+}
+
 /// The coefficient class encoded by a JPEG Huffman table.
 public enum JPEGHuffmanTableClass: UInt8, Equatable, Sendable {
 

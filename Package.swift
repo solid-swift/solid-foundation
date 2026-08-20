@@ -132,6 +132,7 @@ let package = Package(
       dependencies: [
         "CZlib",
         "SolidCore",
+        "SolidJPEG",
         "SwiftCompression",
       ],
       path: "Sources/Solid/IO",
@@ -429,7 +430,7 @@ let benchmarkEnabled =
   }
 if benchmarkEnabled {
   package.dependencies += [
-    .package(url: "https://github.com/ordo-one/package-benchmark", .upToNextMajor(from: "1.29.7")),
+    .package(url: "https://github.com/ordo-one/benchmark", .upToNextMajor(from: "1.29.7")),
   ]
   package.products += [
     .executable(
@@ -437,8 +438,16 @@ if benchmarkEnabled {
       targets: [
         "SolidBench"
       ],
-    )
+    ),
+    .executable(
+      name: "SolidJPEGProfileWorkload",
+      targets: ["SolidJPEGProfileWorkload"]
+    ),
   ]
+  var jpegBenchmarkSupportDependencies: [Target.Dependency] = ["SolidIO", "SolidJPEG"]
+  if jpegOracleEnabled {
+    jpegBenchmarkSupportDependencies.append(.product(name: "JPEG", package: "swift-jpeg"))
+  }
   package.targets += [
     .executableTarget(
       name: "SolidBench",
@@ -451,45 +460,112 @@ if benchmarkEnabled {
       name: "SolidNumericBenchmark",
       dependencies: [
         "Solid",
-        .product(name: "Benchmark", package: "package-benchmark"),
+        .product(name: "Benchmark", package: "benchmark"),
       ],
       path: "Benchmarks/SolidNumericBenchmark",
       plugins: [
-        .plugin(name: "BenchmarkPlugin", package: "package-benchmark")
+        .plugin(name: "BenchmarkPlugin", package: "benchmark")
       ]
+    ),
+    .target(
+      name: "SolidJPEGBenchmarkSupport",
+      dependencies: jpegBenchmarkSupportDependencies,
+      path: "Benchmarks/SolidJPEGBenchmarkSupport"
+    ),
+    .executableTarget(
+      name: "SolidJPEGProfileWorkload",
+      dependencies: ["SolidJPEGBenchmarkSupport"],
+      path: "Benchmarks/SolidJPEGProfileWorkload"
+    ),
+    .executableTarget(
+      name: "SolidJPEGBenchmark",
+      dependencies: [
+        "SolidIO",
+        "SolidJPEG",
+        "SolidJPEGBenchmarkSupport",
+        .product(name: "Benchmark", package: "benchmark"),
+      ],
+      path: "Benchmarks/SolidJPEGBenchmark",
+      plugins: [
+        .plugin(name: "BenchmarkPlugin", package: "benchmark")
+      ]
+    ),
+    .testTarget(
+      name: "SolidJPEGBenchmarkSupportTests",
+      dependencies: ["SolidJPEGBenchmarkSupport"],
+      path: "Tests/SolidJPEGBenchmarkSupportTests",
+      plugins: lintPlugins
     ),
     .executableTarget(
       name: "SolidCBORBenchmark",
       dependencies: [
         "Solid",
-        .product(name: "Benchmark", package: "package-benchmark"),
+        .product(name: "Benchmark", package: "benchmark"),
       ],
       path: "Benchmarks/SolidCBORBenchmark",
       plugins: [
-        .plugin(name: "BenchmarkPlugin", package: "package-benchmark")
+        .plugin(name: "BenchmarkPlugin", package: "benchmark")
       ]
     ),
     .executableTarget(
       name: "SolidYAMLBenchmark",
       dependencies: [
         "Solid",
-        .product(name: "Benchmark", package: "package-benchmark"),
+        .product(name: "Benchmark", package: "benchmark"),
       ],
       path: "Benchmarks/SolidYAMLBenchmark",
       plugins: [
-        .plugin(name: "BenchmarkPlugin", package: "package-benchmark")
+        .plugin(name: "BenchmarkPlugin", package: "benchmark")
       ]
     ),
     .executableTarget(
       name: "SolidJSONBenchmark",
       dependencies: [
         "Solid",
-        .product(name: "Benchmark", package: "package-benchmark"),
+        .product(name: "Benchmark", package: "benchmark"),
       ],
       path: "Benchmarks/SolidJSONBenchmark",
       plugins: [
-        .plugin(name: "BenchmarkPlugin", package: "package-benchmark")
+        .plugin(name: "BenchmarkPlugin", package: "benchmark")
       ]
+    ),
+  ]
+}
+
+// Deterministic sanitizer fuzzing
+let fuzzingEnableEnv = ProcessInfo.processInfo.environment["FUZZING_ENABLE"]?.lowercased()
+let fuzzingEnabled =
+  if let fuzzingEnableEnv,
+     fuzzingEnableEnv == "1" || fuzzingEnableEnv == "true" || fuzzingEnableEnv == "t"
+  {
+    true
+  } else {
+    false
+  }
+if fuzzingEnabled {
+  package.products += [
+    .library(name: "SolidFuzzSupport", targets: ["SolidFuzzSupport"]),
+  ]
+  package.targets += [
+    .target(
+      name: "SolidFuzzSupport",
+      path: "Fuzzing/Support"
+    ),
+    .executableTarget(
+      name: "SolidJPEGFuzz",
+      dependencies: ["SolidFuzzSupport", "SolidJPEG"],
+      path: "Fuzzing/SolidJPEGFuzz"
+    ),
+    .executableTarget(
+      name: "SolidCCITTFaxFuzz",
+      dependencies: ["SolidFuzzSupport", "SolidIO"],
+      path: "Fuzzing/SolidCCITTFaxFuzz"
+    ),
+    .testTarget(
+      name: "SolidFuzzSupportTests",
+      dependencies: ["SolidFuzzSupport"],
+      path: "Tests/SolidFuzzSupportTests",
+      plugins: lintPlugins
     ),
   ]
 }

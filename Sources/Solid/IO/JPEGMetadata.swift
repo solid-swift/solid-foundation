@@ -40,6 +40,7 @@ enum JPEGMetadataParser {
     var adobeColorTransform: Int?
     var hasJFIFMarker = false
     var scanCount = 0
+    var scannedComponents = Set<UInt8>()
     var quantizationTables = Set<Int>()
     var dcHuffmanTables = Set<Int>()
     var acHuffmanTables = Set<Int>()
@@ -47,18 +48,27 @@ enum JPEGMetadataParser {
 
   private struct JPEGFrame {
     let width: Int
-    let height: Int
+    var height: Int
     let precision: Int
     let components: [JPEGMetadata.Component]
   }
 
-  static func parse(_ data: Data) throws -> JPEGMetadata? {
+  static func parse(
+    _ data: Data,
+    externalQuantizationTables: Set<Int> = [],
+    externalDCTables: Set<Int> = [],
+    externalACTables: Set<Int> = []
+  ) throws -> JPEGMetadata? {
     guard data.count >= 2 else { return nil }
     guard data[0] == 0xFF, data[1] == 0xD8 else { throw StreamCodecError.invalidData }
 
     var index = 2
     var inScan = false
-    var state = State()
+    var state = State(
+      quantizationTables: externalQuantizationTables,
+      dcHuffmanTables: externalDCTables,
+      acHuffmanTables: externalACTables
+    )
 
     while index < data.count {
       guard let marker = try nextMarker(in: data, index: &index, inScan: &inScan) else {
@@ -67,7 +77,11 @@ enum JPEGMetadataParser {
 
       switch marker {
       case 0xD9:
-        guard let metadata = metadata(from: state, endOffset: index), state.scanCount == 1 else {
+        guard let metadata = metadata(from: state, endOffset: index),
+              metadata.height > 0,
+              state.scanCount > 0,
+              state.scannedComponents == Set(metadata.components.map(\.identifier))
+        else {
           throw StreamCodecError.invalidData
         }
         return metadata
@@ -149,6 +163,19 @@ enum JPEGMetadataParser {
     case 0xDA:
       try parseScan(payload: payload, data: data, state: &state)
 
+    case 0xDC:
+      guard payload.count == 2,
+            var frame = state.frame,
+            frame.height == 0,
+            state.scanCount > 0
+      else {
+        throw StreamCodecError.invalidData
+      }
+      let height = integer16(data, at: payload.lowerBound)
+      guard height > 0 else { throw StreamCodecError.invalidData }
+      frame.height = height
+      state.frame = frame
+
     case 0xE0:
       state.hasJFIFMarker = state.hasJFIFMarker
         || (payload.count >= 5
@@ -183,7 +210,6 @@ enum JPEGMetadataParser {
     let count = Int(data[payload.lowerBound + 5])
     guard precision == 8,
           width > 0,
-          height > 0,
           (1...4).contains(count),
           payload.count == 6 + count * 3
     else {
@@ -283,11 +309,11 @@ enum JPEGMetadataParser {
   ) throws {
     guard let frame = state.frame, payload.count >= 4 else { throw StreamCodecError.invalidData }
     let componentCount = Int(data[payload.lowerBound])
-    guard componentCount == frame.components.count,
+    guard (1...frame.components.count).contains(componentCount),
           payload.count == 1 + componentCount * 2 + 3,
-          state.scanCount == 0
+          state.scanCount < 64
     else {
-      throw StreamCodecError.unsupportedOperation
+      throw StreamCodecError.invalidData
     }
 
     var identifiers = Set<UInt8>()
@@ -299,6 +325,7 @@ enum JPEGMetadataParser {
       let acTable = Int(tables & 0x0F)
       guard frame.components.contains(where: { $0.identifier == identifier }),
             identifiers.insert(identifier).inserted,
+            !state.scannedComponents.contains(identifier),
             state.dcHuffmanTables.contains(dcTable),
             state.acHuffmanTables.contains(acTable)
       else {
@@ -314,6 +341,7 @@ enum JPEGMetadataParser {
     else {
       throw StreamCodecError.invalidData
     }
+    state.scannedComponents.formUnion(identifiers)
     state.scanCount += 1
   }
 
