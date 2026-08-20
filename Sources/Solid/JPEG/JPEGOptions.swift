@@ -94,6 +94,9 @@ public struct JPEGDecodingOptions: Equatable, Sendable {
   /// Caller-supplied Huffman tables for abbreviated data.
   public let huffmanTables: [JPEGHuffmanTable]
 
+  /// Expected frame components, or an empty array to accept the frame declaration.
+  public let components: [JPEGComponent]
+
   /// Optional transform overriding the implementation default.
   public let colorTransform: JPEGColorTransform?
 
@@ -105,6 +108,7 @@ public struct JPEGDecodingOptions: Equatable, Sendable {
     expectedWidth: Int = 0,
     expectedHeight: Int = 0,
     expectedComponents: Int = 0,
+    components: [JPEGComponent] = [],
     quantizationTables: [JPEGQuantizationTable] = [],
     huffmanTables: [JPEGHuffmanTable] = [],
     colorTransform: JPEGColorTransform? = nil,
@@ -113,6 +117,8 @@ public struct JPEGDecodingOptions: Equatable, Sendable {
     guard expectedWidth >= 0,
           expectedHeight >= 0,
           (0...min(4, limits.maximumComponents)).contains(expectedComponents),
+          components.isEmpty || components.count == expectedComponents || expectedComponents == 0,
+          Set(components.map(\.identifier)).count == components.count,
           quantizationTables.count <= 4,
           huffmanTables.count <= 8
     else {
@@ -121,6 +127,7 @@ public struct JPEGDecodingOptions: Equatable, Sendable {
     self.expectedWidth = expectedWidth
     self.expectedHeight = expectedHeight
     self.expectedComponents = expectedComponents
+    self.components = components
     self.quantizationTables = quantizationTables
     self.huffmanTables = huffmanTables
     self.colorTransform = colorTransform

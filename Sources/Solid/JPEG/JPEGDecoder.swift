@@ -8,40 +8,54 @@ public struct JPEGDecoder: ~Copyable {
   }
 
   private let options: JPEGDecodingOptions
-  private var bytes: [UInt8] = []
+  private var streamingState: NativeJPEGStreamingDecoder
   private var state = State.collecting
 
   /// Creates a decoder with validated options.
   public init(options: JPEGDecodingOptions = try! JPEGDecodingOptions()) {
     self.options = options
+    streamingState = NativeJPEGStreamingDecoder(options: options)
   }
 
   /// Consumes encoded JPEG bytes and emits any complete row bands.
   public mutating func process(_ input: borrowing Span<UInt8>) throws -> JPEGDecodingResult {
     guard case .collecting = state else { throw stateError }
-    guard input.count <= options.limits.maximumInputBytes - bytes.count else {
-      throw JPEGError.limitExceeded
+    let result = try streamingState.process(input)
+    if result.progress == .finished {
+      state = .finished
     }
-    for index in 0..<input.count { bytes.append(input[index]) }
-    return JPEGDecodingResult(
-      metadata: nil,
-      rows: [],
-      consumedBytes: input.count,
-      progress: .needsInput
-    )
+    return result
   }
 
   /// Finishes decoding and consumes the session.
   public consuming func finish() throws -> JPEGDecodingResult {
-    guard case .collecting = state else { throw stateError }
-    return try NativeJPEGCodec.decode(bytes: bytes, options: options)
+    try finalize()
+  }
+
+  package mutating func finalize() throws -> JPEGDecodingResult {
+    switch state {
+    case .collecting:
+      let result = try streamingState.finish()
+      state = .finished
+      return result
+    case .finished:
+      return JPEGDecodingResult(
+        metadata: nil,
+        rows: [],
+        consumedBytes: 0,
+        progress: .finished
+      )
+    case .abandoned:
+      throw JPEGError.abandoned
+    }
   }
 
   /// Abandons buffered state without producing output.
   public mutating func abandon() {
-    bytes.removeAll(keepingCapacity: false)
     state = .abandoned
   }
+
+  var scratchHighWaterMark: Int { streamingState.scratchHighWaterMark }
 
   private var stateError: JPEGError {
     switch state {

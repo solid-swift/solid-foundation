@@ -42,15 +42,29 @@ public struct JPEGDecodedRows: Equatable, Sendable {
   /// Number of interleaved components per pixel.
   public let componentCount: Int
 
+  /// Frame-component identifiers represented by this band.
+  ///
+  /// An empty array denotes every frame component in metadata order. Native
+  /// streaming decoding supplies explicit identifiers so separate scans can
+  /// be delivered without inventing an interleaved representation.
+  public let componentIdentifiers: [UInt8]
+
   /// Interleaved raw component samples.
   public let samples: [UInt8]
 
   /// Creates a decoded row band.
-  public init(firstRow: Int, rowCount: Int, componentCount: Int, samples: [UInt8]) {
+  public init(
+    firstRow: Int,
+    rowCount: Int,
+    componentCount: Int,
+    samples: [UInt8],
+    componentIdentifiers: [UInt8] = []
+  ) {
     self.firstRow = firstRow
     self.rowCount = rowCount
     self.componentCount = componentCount
     self.samples = samples
+    self.componentIdentifiers = componentIdentifiers
   }
 
 }

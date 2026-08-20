@@ -8,24 +8,21 @@ public struct JPEGEncoder: ~Copyable {
   }
 
   private let options: JPEGEncodingOptions
-  private var samples: [UInt8] = []
+  private var streamingState: NativeJPEGEncoder.StreamingState?
   private var state = State.collecting
 
   /// Creates an encoder with validated options.
   public init(options: JPEGEncodingOptions) {
     self.options = options
-    samples.reserveCapacity(options.sampleCount)
   }
 
   /// Consumes an interleaved raw-component sample span.
   public mutating func process(_ input: borrowing Span<UInt8>) throws -> JPEGEncodingResult {
     guard case .collecting = state else { throw stateError }
-    guard input.count <= options.sampleCount - samples.count else {
-      throw JPEGError.invalidData
-    }
-    for index in 0..<input.count { samples.append(input[index]) }
+    if streamingState == nil { streamingState = try NativeJPEGEncoder.StreamingState(options: options) }
+    let bytes = try streamingState!.process(input)
     return JPEGEncodingResult(
-      bytes: [],
+      bytes: bytes,
       consumedSamples: input.count,
       progress: .needsInput
     )
@@ -33,16 +30,24 @@ public struct JPEGEncoder: ~Copyable {
 
   /// Finishes encoding and consumes the session.
   public consuming func finish() throws -> [UInt8] {
+    try finalize()
+  }
+
+  package mutating func finalize() throws -> [UInt8] {
     guard case .collecting = state else { throw stateError }
-    guard samples.count == options.sampleCount else { throw JPEGError.truncatedData }
-    return try NativeJPEGCodec.encode(samples: samples, options: options)
+    if streamingState == nil { streamingState = try NativeJPEGEncoder.StreamingState(options: options) }
+    let output = try streamingState!.finish()
+    state = .finished
+    return output
   }
 
   /// Abandons buffered state without producing output.
   public mutating func abandon() {
-    samples.removeAll(keepingCapacity: false)
+    streamingState = nil
     state = .abandoned
   }
+
+  var scratchHighWaterMark: Int { streamingState?.scratchHighWaterMark ?? 0 }
 
   private var stateError: JPEGError {
     switch state {
