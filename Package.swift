@@ -15,6 +15,7 @@ let package = Package(
     .library(name: "Solid", targets: ["Solid"]),
     .library(name: "SolidCore", targets: ["SolidCore"]),
     .library(name: "SolidIO", targets: ["SolidIO"]),
+    .library(name: "SolidJPEG", targets: ["SolidJPEG"]),
     .library(name: "SolidNumeric", targets: ["SolidNumeric"]),
     .library(name: "SolidTempo", targets: ["SolidTempo"]),
     .library(name: "SolidURI", targets: ["SolidURI"]),
@@ -136,6 +137,11 @@ let package = Package(
       path: "Sources/Solid/IO",
       plugins: lintPlugins
     ),
+    .target(
+      name: "SolidJPEG",
+      path: "Sources/Solid/JPEG",
+      plugins: lintPlugins
+    ),
     .systemLibrary(
       name: "CZlib",
       providers: [
@@ -227,6 +233,11 @@ let package = Package(
       resources: [
         .copy("Resources")
       ],
+      plugins: lintPlugins
+    ),
+    .testTarget(
+      name: "SolidJPEGTests",
+      dependencies: ["SolidJPEG"],
       plugins: lintPlugins
     ),
     .testTarget(
@@ -381,6 +392,32 @@ let lintPlugins: [Target.PluginUsage] =
   lintEnabled
   ? [.plugin(name: "Lint", package: "swiftformatplugins")]
   : []
+
+// JPEG differential oracle
+let jpegOracleEnableEnv = ProcessInfo.processInfo.environment["JPEG_ORACLE_ENABLE"]?.lowercased()
+let jpegOracleEnabled =
+  if let jpegOracleEnableEnv,
+     jpegOracleEnableEnv == "1" || jpegOracleEnableEnv == "true" || jpegOracleEnableEnv == "t"
+  {
+    true
+  } else {
+    false
+  }
+if jpegOracleEnabled {
+  package.dependencies += [
+    .package(url: "https://github.com/tayloraswift/swift-jpeg", exact: "2.1.0"),
+  ]
+  package.targets += [
+    .testTarget(
+      name: "SolidJPEGOracleTests",
+      dependencies: [
+        "SolidJPEG",
+        .product(name: "JPEG", package: "swift-jpeg"),
+      ],
+      plugins: lintPlugins
+    ),
+  ]
+}
 
 // Benchmarking
 let benchmarkEnableEnv = ProcessInfo.processInfo.environment["BENCHMARK_ENABLE"]?.lowercased()
