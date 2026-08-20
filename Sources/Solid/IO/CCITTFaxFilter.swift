@@ -56,8 +56,10 @@ public struct CCITTFaxOptions: Equatable, Sendable {
     blackIs1: Bool = false,
     damagedRowsBeforeError: Int = 0
   ) throws {
-    guard columns > 0 else { throw StreamCodecError.invalidOption("columns") }
-    guard rows >= 0 else { throw StreamCodecError.invalidOption("rows") }
+    guard (1...1_000_000).contains(columns) else {
+      throw StreamCodecError.invalidOption("columns")
+    }
+    guard (0...1_000_000).contains(rows) else { throw StreamCodecError.invalidOption("rows") }
     guard damagedRowsBeforeError >= 0 else {
       throw StreamCodecError.invalidOption("damagedRowsBeforeError")
     }
@@ -109,7 +111,7 @@ public final class CCITTFaxEncoder: IncrementalFilter {
       guard !state.finished else { return nil }
       state.finished = true
       defer { state.input.removeAll() }
-      return try CCITTImageIO.encode(state.input, options: options)
+      return try CCITTFaxCodec.encode(state.input, options: options)
     }
   }
 
@@ -144,12 +146,12 @@ public final class CCITTFaxDecoder: IncrementalFilter {
          options.rows > 0,
          let end = CCITTEndOfData.endOffset(in: combined, k: options.k)
       {
-        let output = try CCITTImageIO.decode(Data(combined.prefix(end)), options: options)
+        let decoded = try CCITTFaxCodec.decode(Data(combined.prefix(end)), options: options)
         state.finished = true
         state.input.removeAll()
         return IncrementalFilterResult(
-          output: output,
-          consumedInput: max(0, end - previousCount),
+          output: decoded.data,
+          consumedInput: max(0, decoded.consumedBytes - previousCount),
           progress: .finished
         )
       }
@@ -168,7 +170,7 @@ public final class CCITTFaxDecoder: IncrementalFilter {
       guard !state.finished else { return nil }
       state.finished = true
       defer { state.input.removeAll() }
-      return try CCITTImageIO.decode(state.input, options: options)
+      return try CCITTFaxCodec.decode(state.input, options: options).data
     }
   }
 

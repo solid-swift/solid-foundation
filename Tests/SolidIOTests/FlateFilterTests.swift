@@ -17,9 +17,8 @@ struct FlateFilterTests {
     let source = Data((0..<8192).map { UInt8(($0 * 29) & 0xFF) })
     let options = try FlateOptions(effort: effort)
     let encoder = FlateEncoder(options: options)
-    _ = try encoder.process(input: source)
-    let final = try encoder.finish()
-    let encoded = try #require(final)
+    var encoded = try encoder.process(input: source).output
+    encoded.append(try #require(try encoder.finish()))
 
     let decoder = FlateDecoder(options: options)
     let result = try decoder.process(input: encoded + Data("tail".utf8))
@@ -34,9 +33,8 @@ struct FlateFilterTests {
     let options = try FlateOptions(predictor: predictorOptions)
     let source = Data((0..<(predictorOptions.rowBytes * 5)).map { UInt8(($0 * 7) & 0xFF) })
     let encoder = FlateEncoder(options: options)
-    _ = try encoder.process(input: source)
-    let final = try encoder.finish()
-    let encoded = try #require(final)
+    var encoded = try encoder.process(input: source).output
+    encoded.append(try #require(try encoder.finish()))
     let decoder = FlateDecoder(options: options)
     #expect(try decoder.process(input: encoded).output == source)
   }
@@ -53,6 +51,30 @@ struct FlateFilterTests {
     #expect(throws: StreamCodecError.truncatedData) {
       try truncated.finish()
     }
+  }
+
+  @Test
+  func predictorPreservesRowsAcrossIrregularChunks() throws {
+    let predictor = try PredictorOptions(predictor: 15, colors: 3, columns: 17)
+    let options = try FlateOptions(predictor: predictor)
+    let source = Data((0..<(predictor.rowBytes * 19)).map { UInt8(($0 * 23) & 0xFF) })
+    let encoder = FlateEncoder(options: options)
+    var encoded = Data()
+    var offset = 0
+    for length in [1, 7, 31, 113, 509] where offset < source.count {
+      let end = min(source.count, offset + length)
+      encoded.append(try encoder.process(input: source[offset..<end]).output)
+      offset = end
+    }
+    if offset < source.count { encoded.append(try encoder.process(input: source[offset...]).output) }
+    encoded.append(try #require(try encoder.finish()))
+
+    let decoder = FlateDecoder(options: options)
+    var decoded = Data()
+    for byte in encoded {
+      decoded.append(try decoder.process(input: Data([byte])).output)
+    }
+    #expect(decoded == source)
   }
 
 }

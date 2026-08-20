@@ -17,9 +17,8 @@ struct LZWAndPredictorTests {
     let source = Data((0..<4096).map { UInt8(($0 * 31) & 0xFF) })
     let options = try LZWOptions(earlyChange: earlyChange)
     let encoder = LZWEncoder(options: options)
-    _ = try encoder.process(input: source)
-    let final = try encoder.finish()
-    let encoded = try #require(final)
+    var encoded = try encoder.process(input: source).output
+    encoded.append(try #require(try encoder.finish()))
 
     let decoder = LZWDecoder(options: options)
     let result = try decoder.process(input: encoded + Data([0xAA]))
@@ -33,12 +32,27 @@ struct LZWAndPredictorTests {
     let source = Data([0b1101_0010, 0b0110_1011, 0b1010_0000])
     let options = try LZWOptions(earlyChange: 0, unitLength: 4, lowBitFirst: true)
     let encoder = LZWEncoder(options: options)
-    _ = try encoder.process(input: source)
-    let final = try encoder.finish()
-    let encoded = try #require(final)
+    var encoded = try encoder.process(input: source).output
+    encoded.append(try #require(try encoder.finish()))
     let decoder = LZWDecoder(options: options)
     let result = try decoder.process(input: encoded)
     #expect(result.output == source)
+  }
+
+  @Test
+  func lzwEncoderStreamsAcrossInputChunks() throws {
+    let source = Data((0..<16_384).map { UInt8(($0 * 19) & 0xFF) })
+    let encoder = LZWEncoder()
+    var encoded = Data()
+    var offset = 0
+    for length in [1, 17, 509, 4096, 8192] where offset < source.count {
+      let end = min(source.count, offset + length)
+      encoded.append(try encoder.process(input: source[offset..<end]).output)
+      offset = end
+    }
+    if offset < source.count { encoded.append(try encoder.process(input: source[offset...]).output) }
+    encoded.append(try #require(try encoder.finish()))
+    #expect(try LZWDecoder().process(input: encoded).output == source)
   }
 
   @Test(arguments: [1, 2, 4, 8])

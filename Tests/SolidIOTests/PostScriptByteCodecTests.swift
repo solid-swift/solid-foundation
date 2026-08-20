@@ -65,9 +65,8 @@ struct PostScriptByteCodecTests {
   func runLengthKnownVectorAndTrailingInput() throws {
     let source = Data("AAAAABBBBCCCCCCCCXYZ".utf8)
     let encoder = try RunLengthEncoder(recordSize: 7)
-    _ = try encoder.process(input: source)
-    let final = try encoder.finish()
-    let encoded = try #require(final)
+    var encoded = try encoder.process(input: source).output
+    encoded.append(try #require(try encoder.finish()))
 
     let decoder = RunLengthDecoder()
     let result = try decoder.process(input: encoded + Data([42]))

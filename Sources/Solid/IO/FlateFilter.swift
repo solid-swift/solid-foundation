@@ -33,25 +33,29 @@ public struct FlateOptions: Equatable, Sendable {
 public final class FlateEncoder: IncrementalFilter {
 
   private struct State: Sendable {
-    var input = Data()
+    var predictor: IncrementalPredictorEncoder
+    var encoder: ZlibStreamEncoder?
     var finished = false
   }
 
   private let options: FlateOptions
-  private let state = Mutex(State())
+  private let state: Mutex<State>
 
   /// Creates a Flate encoder.
   public init(options: FlateOptions = try! FlateOptions()) {
     self.options = options
+    state = Mutex(State(predictor: IncrementalPredictorEncoder(options: options.predictor)))
   }
 
   /// Buffers input for prediction and final compression.
   public func process(input: Data) throws -> IncrementalFilterResult {
     try state.withLock { state in
       guard !state.finished else { throw StreamCodecError.invalidData }
-      state.input.append(input)
+      if state.encoder == nil { state.encoder = try ZlibStreamEncoder(compressionLevel: options.effort) }
+      let predicted = try state.predictor.process(input)
+      let output = try state.encoder!.process(predicted)
       return IncrementalFilterResult(
-        output: Data(),
+        output: output,
         consumedInput: input.count,
         progress: .needsInput
       )
@@ -63,9 +67,11 @@ public final class FlateEncoder: IncrementalFilter {
     try state.withLock { state in
       guard !state.finished else { return nil }
       state.finished = true
-      defer { state.input.removeAll() }
-      let predicted = try PredictorCodec.encode(state.input, options: options.predictor)
-      return try ZlibCodec.encode(predicted, effort: options.effort)
+      if state.encoder == nil { state.encoder = try ZlibStreamEncoder(compressionLevel: options.effort) }
+      let predicted = try state.predictor.finish()
+      var output = try state.encoder!.process(predicted)
+      output.append(try state.encoder!.finish() ?? Data())
+      return output
     }
   }
 
@@ -75,16 +81,18 @@ public final class FlateEncoder: IncrementalFilter {
 public final class FlateDecoder: IncrementalFilter {
 
   private struct State: Sendable {
-    var input = Data()
+    var predictor: IncrementalPredictorDecoder
+    var decoder: ZlibStreamDecoder?
     var finished = false
   }
 
   private let options: FlateOptions
-  private let state = Mutex(State())
+  private let state: Mutex<State>
 
   /// Creates a Flate decoder.
   public init(options: FlateOptions = try! FlateOptions()) {
     self.options = options
+    state = Mutex(State(predictor: IncrementalPredictorDecoder(options: options.predictor)))
   }
 
   /// Decodes when the accumulated input contains a complete zlib stream.
@@ -94,25 +102,17 @@ public final class FlateDecoder: IncrementalFilter {
         return IncrementalFilterResult(output: Data(), consumedInput: 0, progress: .finished)
       }
 
-      let previousCount = state.input.count
-      var combined = state.input
-      combined.append(input)
-      guard let decoded = try ZlibCodec.decode(combined, final: false) else {
-        state.input = combined
-        return IncrementalFilterResult(
-          output: Data(),
-          consumedInput: input.count,
-          progress: .needsInput
-        )
+      if state.decoder == nil { state.decoder = try ZlibStreamDecoder() }
+      let decoded = try state.decoder!.process(input)
+      var output = try state.predictor.process(decoded.output)
+      if decoded.finished {
+        output.append(try state.predictor.finish())
+        state.finished = true
       }
-
-      state.finished = true
-      state.input.removeAll()
-      let output = try PredictorCodec.decode(decoded.output, options: options.predictor)
       return IncrementalFilterResult(
         output: output,
-        consumedInput: max(0, decoded.consumedBytes - previousCount),
-        progress: .finished
+        consumedInput: decoded.consumedInput,
+        progress: decoded.finished ? .finished : .needsInput
       )
     }
   }
@@ -121,12 +121,10 @@ public final class FlateDecoder: IncrementalFilter {
   public func finish() throws -> Data? {
     try state.withLock { state in
       guard !state.finished else { return nil }
-      guard let decoded = try ZlibCodec.decode(state.input, final: true) else {
-        throw StreamCodecError.truncatedData
-      }
+      guard let decoder = state.decoder else { throw StreamCodecError.truncatedData }
+      try decoder.finish()
       state.finished = true
-      state.input.removeAll()
-      return try PredictorCodec.decode(decoded.output, options: options.predictor)
+      return try state.predictor.finish()
     }
   }
 

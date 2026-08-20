@@ -80,7 +80,7 @@ public enum PredictorCodec {
     return try decodePNG(data, options: options)
   }
 
-  private static func encodeTIFF(_ data: Data, options: PredictorOptions) throws -> Data {
+  fileprivate static func encodeTIFF(_ data: Data, options: PredictorOptions) throws -> Data {
     var output = Data()
     for rowStart in stride(from: 0, to: data.count, by: options.rowBytes) {
       let row = Data(data[rowStart..<(rowStart + options.rowBytes)])
@@ -94,7 +94,7 @@ public enum PredictorCodec {
     return output
   }
 
-  private static func decodeTIFF(_ data: Data, options: PredictorOptions) throws -> Data {
+  fileprivate static func decodeTIFF(_ data: Data, options: PredictorOptions) throws -> Data {
     var output = Data()
     for rowStart in stride(from: 0, to: data.count, by: options.rowBytes) {
       let row = Data(data[rowStart..<(rowStart + options.rowBytes)])
@@ -160,7 +160,7 @@ public enum PredictorCodec {
     return output
   }
 
-  private static func filterPNG(
+  fileprivate static func filterPNG(
     _ row: [UInt8],
     previous: [UInt8],
     bytesPerPixel: Int,
@@ -182,7 +182,7 @@ public enum PredictorCodec {
     }
   }
 
-  private static func paeth(_ left: UInt8, _ up: UInt8, _ upperLeft: UInt8) -> UInt8 {
+  fileprivate static func paeth(_ left: UInt8, _ up: UInt8, _ upperLeft: UInt8) -> UInt8 {
     let prediction = Int(left) + Int(up) - Int(upperLeft)
     let leftDistance = abs(prediction - Int(left))
     let upDistance = abs(prediction - Int(up))
@@ -192,7 +192,7 @@ public enum PredictorCodec {
     return upperLeft
   }
 
-  private static func score(_ bytes: [UInt8]) -> Int {
+  fileprivate static func score(_ bytes: [UInt8]) -> Int {
     bytes.reduce(0) { result, byte in
       result + abs(Int(Int8(bitPattern: byte)))
     }
@@ -227,4 +227,113 @@ public enum PredictorCodec {
     return Data(output)
   }
 
+}
+
+final class IncrementalPredictorEncoder: @unchecked Sendable {
+  private let options: PredictorOptions
+  private var pending = Data()
+  private var previous: [UInt8]
+  private var finished = false
+
+  init(options: PredictorOptions) {
+    self.options = options
+    previous = [UInt8](repeating: 0, count: options.rowBytes)
+  }
+
+  func process(_ input: Data) throws -> Data {
+    guard !finished else { throw StreamCodecError.invalidData }
+    guard options.predictor != 1 else { return input }
+    pending.append(input)
+    var output = Data()
+    while pending.count >= options.rowBytes {
+      let row = Data(pending.prefix(options.rowBytes))
+      pending.removeFirst(options.rowBytes)
+      if options.predictor == 2 {
+        output.append(try PredictorCodec.encodeTIFF(row, options: options))
+      } else {
+        let bytes = Array(row)
+        let requested = options.predictor == 15 ? Array(0...4) : [options.predictor - 10]
+        let selected = requested.map { filter in
+          (
+            filter,
+            PredictorCodec.filterPNG(
+              bytes,
+              previous: previous,
+              bytesPerPixel: max(1, (options.colors * options.bitsPerComponent + 7) / 8),
+              filter: filter
+            )
+          )
+        }.min { PredictorCodec.score($0.1) < PredictorCodec.score($1.1) }!
+        output.append(UInt8(selected.0))
+        output.append(contentsOf: selected.1)
+        previous = bytes
+      }
+    }
+    return output
+  }
+
+  func finish() throws -> Data {
+    guard !finished else { return Data() }
+    finished = true
+    guard pending.isEmpty else { throw StreamCodecError.truncatedData }
+    return Data()
+  }
+}
+
+final class IncrementalPredictorDecoder: @unchecked Sendable {
+  private let options: PredictorOptions
+  private let encodedRowBytes: Int
+  private var pending = Data()
+  private var previous: [UInt8]
+  private var finished = false
+
+  init(options: PredictorOptions) {
+    self.options = options
+    encodedRowBytes = options.predictor >= 10 ? options.rowBytes + 1 : options.rowBytes
+    previous = [UInt8](repeating: 0, count: options.rowBytes)
+  }
+
+  func process(_ input: Data) throws -> Data {
+    guard !finished else { throw StreamCodecError.invalidData }
+    guard options.predictor != 1 else { return input }
+    pending.append(input)
+    var output = Data()
+    while pending.count >= encodedRowBytes {
+      let encoded = Data(pending.prefix(encodedRowBytes))
+      pending.removeFirst(encodedRowBytes)
+      if options.predictor == 2 {
+        output.append(try PredictorCodec.decodeTIFF(encoded, options: options))
+      } else {
+        let filter = Int(encoded[0])
+        guard (0...4).contains(filter) else { throw StreamCodecError.invalidData }
+        let bytesPerPixel = max(1, (options.colors * options.bitsPerComponent + 7) / 8)
+        let source = Array(encoded.dropFirst())
+        var row = [UInt8](repeating: 0, count: options.rowBytes)
+        for index in row.indices {
+          let left = index >= bytesPerPixel ? row[index - bytesPerPixel] : 0
+          let up = previous[index]
+          let upperLeft = index >= bytesPerPixel ? previous[index - bytesPerPixel] : 0
+          let prediction: UInt8
+          switch filter {
+          case 0: prediction = 0
+          case 1: prediction = left
+          case 2: prediction = up
+          case 3: prediction = UInt8((Int(left) + Int(up)) / 2)
+          default: prediction = PredictorCodec.paeth(left, up, upperLeft)
+          }
+          row[index] = source[index] &+ prediction
+        }
+        output.append(contentsOf: row)
+        previous = row
+      }
+    }
+    return output
+  }
+
+  func finish() throws -> Data {
+    guard !finished else { return Data() }
+    finished = true
+    guard pending.isEmpty else { throw StreamCodecError.truncatedData }
+    return Data()
+  }
 }

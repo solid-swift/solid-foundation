@@ -32,8 +32,21 @@ public final class RunLengthEncoder: IncrementalFilter {
     try state.withLock { state in
       guard !state.finished else { throw StreamCodecError.invalidData }
       state.input.append(input)
+      var output = Data()
+      if recordSize > 0 {
+        while state.input.count >= recordSize {
+          Self.encodeRecord(Data(state.input.prefix(recordSize)), into: &output)
+          state.input.removeFirst(recordSize)
+        }
+      } else {
+        while state.input.count >= 130 {
+          let consumed = Self.encodeFirstToken(in: state.input, into: &output)
+          state.input.removeFirst(consumed)
+        }
+      }
+      if state.input.isEmpty { state.input = Data() }
       return IncrementalFilterResult(
-        output: Data(),
+        output: output,
         consumedInput: input.count,
         progress: .needsInput
       )
@@ -50,11 +63,13 @@ public final class RunLengthEncoder: IncrementalFilter {
       var start = 0
       while start < state.input.count {
         let end = min(start + size, state.input.count)
-        Self.encodeRecord(Data(state.input[start..<end]), into: &output)
+        let lower = state.input.index(state.input.startIndex, offsetBy: start)
+        let upper = state.input.index(state.input.startIndex, offsetBy: end)
+        Self.encodeRecord(Data(state.input[lower..<upper]), into: &output)
         start = end
       }
       output.append(128)
-      state.input.removeAll()
+      state.input = Data()
       return output
     }
   }
@@ -94,6 +109,37 @@ public final class RunLengthEncoder: IncrementalFilter {
       output.append(UInt8(literalCount - 1))
       output.append(record[literalStart..<index])
     }
+  }
+
+  private static func encodeFirstToken(in record: Data, into output: inout Data) -> Int {
+    func byte(_ offset: Int) -> UInt8 {
+      record[record.index(record.startIndex, offsetBy: offset)]
+    }
+    var runLength = 1
+    while runLength < min(128, record.count), byte(runLength) == byte(0) {
+      runLength += 1
+    }
+    if runLength >= 3 {
+      output.append(UInt8(257 - runLength))
+      output.append(byte(0))
+      return runLength
+    }
+
+    var end = runLength
+    while end < min(128, record.count) {
+      var nextRun = 1
+      while end + nextRun < record.count,
+            nextRun < 3,
+            byte(end + nextRun) == byte(end)
+      {
+        nextRun += 1
+      }
+      if nextRun >= 3 { break }
+      end += nextRun
+    }
+    output.append(UInt8(end - 1))
+    output.append(record.prefix(end))
+    return end
   }
 
 }
