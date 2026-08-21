@@ -129,11 +129,19 @@ let package = Package(
     .target(
       name: "SolidIO",
       dependencies: [
+        "CZlib",
         "SolidCore",
         "SwiftCompression",
       ],
       path: "Sources/Solid/IO",
       plugins: lintPlugins
+    ),
+    .systemLibrary(
+      name: "CZlib",
+      providers: [
+        .brew(["zlib"]),
+        .apt(["zlib1g-dev"]),
+      ]
     ),
     .target(
       name: "SolidData",
@@ -381,7 +389,7 @@ let benchmarkEnabled =
   }
 if benchmarkEnabled {
   package.dependencies += [
-    .package(url: "https://github.com/ordo-one/package-benchmark", .upToNextMajor(from: "1.29.7")),
+    .package(url: "https://github.com/ordo-one/benchmark", .upToNextMajor(from: "1.29.7")),
   ]
   package.products += [
     .executable(
@@ -389,7 +397,7 @@ if benchmarkEnabled {
       targets: [
         "SolidBench"
       ],
-    )
+    ),
   ]
   package.targets += [
     .executableTarget(
@@ -403,44 +411,44 @@ if benchmarkEnabled {
       name: "SolidNumericBenchmark",
       dependencies: [
         "Solid",
-        .product(name: "Benchmark", package: "package-benchmark"),
+        .product(name: "Benchmark", package: "benchmark"),
       ],
       path: "Benchmarks/SolidNumericBenchmark",
       plugins: [
-        .plugin(name: "BenchmarkPlugin", package: "package-benchmark")
+        .plugin(name: "BenchmarkPlugin", package: "benchmark")
       ]
     ),
     .executableTarget(
       name: "SolidCBORBenchmark",
       dependencies: [
         "Solid",
-        .product(name: "Benchmark", package: "package-benchmark"),
+        .product(name: "Benchmark", package: "benchmark"),
       ],
       path: "Benchmarks/SolidCBORBenchmark",
       plugins: [
-        .plugin(name: "BenchmarkPlugin", package: "package-benchmark")
+        .plugin(name: "BenchmarkPlugin", package: "benchmark")
       ]
     ),
     .executableTarget(
       name: "SolidYAMLBenchmark",
       dependencies: [
         "Solid",
-        .product(name: "Benchmark", package: "package-benchmark"),
+        .product(name: "Benchmark", package: "benchmark"),
       ],
       path: "Benchmarks/SolidYAMLBenchmark",
       plugins: [
-        .plugin(name: "BenchmarkPlugin", package: "package-benchmark")
+        .plugin(name: "BenchmarkPlugin", package: "benchmark")
       ]
     ),
     .executableTarget(
       name: "SolidJSONBenchmark",
       dependencies: [
         "Solid",
-        .product(name: "Benchmark", package: "package-benchmark"),
+        .product(name: "Benchmark", package: "benchmark"),
       ],
       path: "Benchmarks/SolidJSONBenchmark",
       plugins: [
-        .plugin(name: "BenchmarkPlugin", package: "package-benchmark")
+        .plugin(name: "BenchmarkPlugin", package: "benchmark")
       ]
     ),
   ]
