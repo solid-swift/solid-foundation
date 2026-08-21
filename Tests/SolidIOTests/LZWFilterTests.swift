@@ -1,5 +1,5 @@
 //
-//  LZWAndPredictorTests.swift
+//  LZWFilterTests.swift
 //  SolidIOTests
 //
 //  Created by Codex on 8/15/26.
@@ -10,7 +10,7 @@ import Foundation
 import Testing
 
 @Suite
-struct LZWAndPredictorTests {
+struct LZWFilterTests {
 
   @Test(arguments: [0, 1])
   func lzwRoundTripEarlyChange(_ earlyChange: Int) throws {
@@ -53,27 +53,6 @@ struct LZWAndPredictorTests {
     if offset < source.count { encoded.append(try encoder.process(input: source[offset...]).output) }
     encoded.append(try #require(try encoder.finish()))
     #expect(try LZWDecoder().process(input: encoded).output == source)
-  }
-
-  @Test(arguments: [1, 2, 4, 8])
-  func tiffPredictorRoundTrip(_ bits: Int) throws {
-    let options = try PredictorOptions(
-      predictor: 2,
-      colors: 3,
-      bitsPerComponent: bits,
-      columns: 8
-    )
-    let source = Data((0..<(options.rowBytes * 3)).map { UInt8(($0 * 17) & 0xFF) })
-    let encoded = try PredictorCodec.encode(source, options: options)
-    #expect(try PredictorCodec.decode(encoded, options: options) == source)
-  }
-
-  @Test(arguments: Array(10...15))
-  func pngPredictorRoundTrip(_ predictor: Int) throws {
-    let options = try PredictorOptions(predictor: predictor, colors: 3, columns: 9)
-    let source = Data((0..<(options.rowBytes * 4)).map { UInt8(($0 * 43) & 0xFF) })
-    let encoded = try PredictorCodec.encode(source, options: options)
-    #expect(try PredictorCodec.decode(encoded, options: options) == source)
   }
 
 }

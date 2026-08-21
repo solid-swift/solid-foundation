@@ -9,4 +9,3 @@
 /// source-specific and must not be interpreted as calendar time unless the
 /// concrete source documents that behavior.
 public protocol MonotonicInstantSource: InstantSource {}
-

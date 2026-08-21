@@ -47,4 +47,3 @@ struct InstantSourceTests {
     #expect(source.instant == source.instant)
   }
 }
-

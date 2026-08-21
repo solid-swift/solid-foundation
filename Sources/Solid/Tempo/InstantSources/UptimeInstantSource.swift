@@ -17,10 +17,8 @@ public struct UptimeInstantSource: MonotonicInstantSource {
   // Darwin: UptimeInstantSource+Darwin.swift
   // Linux: UptimeInstantSource+Linux.swift
 }
-
 extension MonotonicInstantSource where Self == UptimeInstantSource {
 
   /// The system uptime source.
   public static var uptime: Self { .instance }
 }
-

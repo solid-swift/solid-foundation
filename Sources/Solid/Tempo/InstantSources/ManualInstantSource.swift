@@ -32,4 +32,3 @@ public final class ManualInstantSource: MonotonicInstantSource, Sendable {
     lockedInstant.withLock { $0 += duration }
   }
 }
-

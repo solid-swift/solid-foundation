@@ -108,4 +108,3 @@ struct StopwatchTests {
     #expect(stopwatch.elapsed == .milliseconds(100))
   }
 }
-
