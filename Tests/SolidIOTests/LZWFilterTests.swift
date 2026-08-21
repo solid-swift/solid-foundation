@@ -55,4 +55,67 @@ struct LZWFilterTests {
     #expect(try LZWDecoder().process(input: encoded).output == source)
   }
 
+  @Test(arguments: [0, 1])
+  func lzwDecoderStreamsAcrossOneByteChunks(_ earlyChange: Int) throws {
+    let source = Data((0..<65_536).map { UInt8((($0 * 1_103_515_245 + 12_345) >> 16) & 0xFF) })
+    let options = try LZWOptions(earlyChange: earlyChange)
+    let encoded = try Self.encode(source, options: options)
+    let decoder = LZWDecoder(options: options)
+    var decoded = Data()
+    var emittedBeforeEnd = false
+
+    for byte in encoded {
+      let result = try decoder.process(input: Data([byte]))
+      #expect(result.consumedInput == 1)
+      if result.progress == .needsInput && !result.output.isEmpty {
+        emittedBeforeEnd = true
+      }
+      decoded.append(result.output)
+    }
+
+    #expect(emittedBeforeEnd)
+    #expect(decoded == source)
+    #expect(try decoder.finish() == nil)
+  }
+
+  @Test
+  func lzwDecoderPreservesTrailingInputAfterPartialCode() throws {
+    let source = Data((0..<8192).map { UInt8(($0 * 43) & 0xFF) })
+    let options = try LZWOptions(earlyChange: 0, unitLength: 4, lowBitFirst: true)
+    let encoded = try Self.encode(source, options: options)
+    let split = encoded.count / 2
+    let decoder = LZWDecoder(options: options)
+    let first = try decoder.process(input: encoded.prefix(split))
+    let trailer = Data("trailing".utf8)
+    let secondInput = Data(encoded.dropFirst(split)) + trailer
+    let second = try decoder.process(input: secondInput)
+
+    #expect(first.progress == .needsInput)
+    #expect(second.progress == .finished)
+    #expect(second.consumedInput == encoded.count - split)
+    #expect(first.output + second.output == source)
+  }
+
+  @Test
+  func lzwDecoderRejectsPhysicalEndBeforeEndCode() throws {
+    let source = Data((0..<1024).map { UInt8(($0 * 7) & 0xFF) })
+    let encoded = try Self.encode(source)
+    let decoder = LZWDecoder()
+
+    _ = try decoder.process(input: encoded.dropLast())
+    #expect(throws: StreamCodecError.truncatedData) {
+      try decoder.finish()
+    }
+  }
+
+  private static func encode(
+    _ source: Data,
+    options: LZWOptions = try! LZWOptions()
+  ) throws -> Data {
+    let encoder = LZWEncoder(options: options)
+    var encoded = try encoder.process(input: source).output
+    encoded.append(try #require(try encoder.finish()))
+    return encoded
+  }
+
 }

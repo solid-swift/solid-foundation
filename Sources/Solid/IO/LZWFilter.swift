@@ -138,44 +138,86 @@ public final class LZWEncoder: IncrementalFilter {
 public final class LZWDecoder: IncrementalFilter {
 
   private struct State: Sendable {
-    var input = Data()
+    var input: LZWCodeBits
+    var output: LZWOutputBits
+    var prefixes = [Int](repeating: -1, count: 4096)
+    var suffixes = [Int](repeating: 0, count: 4096)
+    var expansion: [Int] = []
+    var nextCode: Int
+    var codeWidth: Int
+    var previousCode: Int?
     var finished = false
+
+    init(options: LZWOptions) {
+      input = LZWCodeBits(lowBitFirst: options.lowBitFirst)
+      output = LZWOutputBits(lowBitFirst: options.lowBitFirst)
+      nextCode = (1 << options.unitLength) + 2
+      codeWidth = options.unitLength + 1
+      expansion.reserveCapacity(4096)
+    }
   }
 
   private let options: LZWOptions
-  private let state = Mutex(State())
+  private let state: Mutex<State>
 
   /// Creates an LZW decoder.
   public init(options: LZWOptions = try! LZWOptions()) {
     self.options = options
+    state = Mutex(State(options: options))
   }
 
-  /// Decodes when the accumulated input contains an end-of-data code.
+  /// Decodes complete codes while preserving partial code and dictionary state.
   public func process(input: Data) throws -> IncrementalFilterResult {
     try state.withLock { state in
       guard !state.finished else {
         return IncrementalFilterResult(output: Data(), consumedInput: 0, progress: .finished)
       }
 
-      let previousCount = state.input.count
-      var combined = state.input
-      combined.append(input)
-      guard let decoded = try Self.decode(combined, options: options) else {
-        state.input = combined
-        return IncrementalFilterResult(
-          output: Data(),
-          consumedInput: input.count,
-          progress: .needsInput
-        )
-      }
+      let clearCode = 1 << options.unitLength
+      let endCode = clearCode + 1
+      var consumed = 0
 
-      state.finished = true
-      state.input.removeAll()
-      return IncrementalFilterResult(
-        output: decoded.output,
-        consumedInput: max(0, decoded.consumedBytes - previousCount),
-        progress: .finished
-      )
+      while true {
+        Self.increaseCodeWidthIfNeeded(&state, options: options)
+        guard let code = state.input.read(width: state.codeWidth, from: input, consumed: &consumed)
+        else {
+          return IncrementalFilterResult(
+            output: state.output.drain(),
+            consumedInput: consumed,
+            progress: .needsInput
+          )
+        }
+
+        if code == clearCode {
+          Self.resetDictionary(&state, options: options)
+          continue
+        }
+        if code == endCode {
+          state.finished = true
+          return IncrementalFilterResult(
+            output: state.output.finish(),
+            consumedInput: consumed,
+            progress: .finished
+          )
+        }
+
+        let firstSymbol: Int
+        if code < state.nextCode {
+          firstSymbol = try Self.writeEntry(code, state: &state, options: options)
+        } else if code == state.nextCode, let previousCode = state.previousCode {
+          firstSymbol = try Self.writeEntry(previousCode, state: &state, options: options)
+          state.output.write(firstSymbol, width: options.unitLength)
+        } else {
+          throw StreamCodecError.invalidData
+        }
+
+        if let previousCode = state.previousCode, state.nextCode < 4096 {
+          state.prefixes[state.nextCode] = previousCode
+          state.suffixes[state.nextCode] = firstSymbol
+          state.nextCode += 1
+        }
+        state.previousCode = code
+      }
     }
   }
 
@@ -187,65 +229,86 @@ public final class LZWDecoder: IncrementalFilter {
     }
   }
 
-  private static func decode(
-    _ input: Data,
-    options: LZWOptions
-  ) throws -> (output: Data, consumedBytes: Int)? {
-    let clearCode = 1 << options.unitLength
-    let endCode = clearCode + 1
-    var reader = BitReader(data: input, lowBitFirst: options.lowBitFirst)
-    var writer = BitWriter(lowBitFirst: options.lowBitFirst)
-    var dictionary: [Int: [Int]] = [:]
-    var nextCode = endCode + 1
-    var codeWidth = options.unitLength + 1
-    var previous: [Int]?
-
-    func reset() {
-      dictionary.removeAll(keepingCapacity: true)
-      nextCode = endCode + 1
-      codeWidth = options.unitLength + 1
-      previous = nil
-    }
-
-    while true {
-      if previous != nil,
-         codeWidth < 12,
-         nextCode + options.earlyChange + 1 == 1 << codeWidth
-      {
-        codeWidth += 1
-      }
-      guard let code = reader.read(width: codeWidth) else { return nil }
-      if code == clearCode {
-        reset()
-        continue
-      }
-      if code == endCode {
-        return (writer.finish(), reader.consumedBytes)
-      }
-
-      let entry: [Int]
-      if code < clearCode {
-        entry = [code]
-      } else if let known = dictionary[code] {
-        entry = known
-      } else if code == nextCode, let previous {
-        entry = previous + [previous[0]]
-      } else {
-        throw StreamCodecError.invalidData
-      }
-
-      for symbol in entry {
-        writer.write(symbol, width: options.unitLength)
-      }
-
-      if let previous, nextCode < 4096 {
-        dictionary[nextCode] = previous + [entry[0]]
-        nextCode += 1
-      }
-      previous = entry
+  private static func increaseCodeWidthIfNeeded(_ state: inout State, options: LZWOptions) {
+    if state.previousCode != nil,
+       state.codeWidth < 12,
+       state.nextCode + options.earlyChange + 1 == 1 << state.codeWidth
+    {
+      state.codeWidth += 1
     }
   }
 
+  private static func resetDictionary(_ state: inout State, options: LZWOptions) {
+    state.nextCode = (1 << options.unitLength) + 2
+    state.codeWidth = options.unitLength + 1
+    state.previousCode = nil
+  }
+
+  private static func writeEntry(
+    _ code: Int,
+    state: inout State,
+    options: LZWOptions
+  ) throws -> Int {
+    let clearCode = 1 << options.unitLength
+    let firstDictionaryCode = clearCode + 2
+    state.expansion.removeAll(keepingCapacity: true)
+
+    var current = code
+    while current >= clearCode {
+      guard current >= firstDictionaryCode,
+            current < state.nextCode,
+            state.expansion.count < 4096
+      else {
+        throw StreamCodecError.invalidData
+      }
+      state.expansion.append(state.suffixes[current])
+      current = state.prefixes[current]
+    }
+    guard current >= 0 else { throw StreamCodecError.invalidData }
+
+    state.output.write(current, width: options.unitLength)
+    for symbol in state.expansion.reversed() {
+      state.output.write(symbol, width: options.unitLength)
+    }
+    return current
+  }
+
+}
+
+private struct LZWCodeBits: Sendable {
+  private var reservoir: UInt64 = 0
+  private var bitCount = 0
+  private let lowBitFirst: Bool
+
+  init(lowBitFirst: Bool) { self.lowBitFirst = lowBitFirst }
+
+  mutating func read(width: Int, from input: Data, consumed: inout Int) -> Int? {
+    while bitCount < width {
+      guard consumed < input.count else { return nil }
+      let index = input.index(input.startIndex, offsetBy: consumed)
+      let byte = UInt64(input[index])
+      if lowBitFirst {
+        reservoir |= byte << bitCount
+      } else {
+        reservoir = (reservoir << 8) | byte
+      }
+      bitCount += 8
+      consumed += 1
+    }
+
+    let mask = (UInt64(1) << width) - 1
+    let value: UInt64
+    if lowBitFirst {
+      value = reservoir & mask
+      reservoir >>= width
+      bitCount -= width
+    } else {
+      bitCount -= width
+      value = (reservoir >> bitCount) & mask
+      reservoir &= bitCount == 0 ? 0 : (UInt64(1) << bitCount) - 1
+    }
+    return Int(value)
+  }
 }
 
 private struct LZWInputBits: Sendable {
@@ -315,73 +378,4 @@ private struct LZWOutputBits: Sendable {
     }
     return drain()
   }
-}
-
-private struct BitReader {
-
-  let data: Data
-  let lowBitFirst: Bool
-  private(set) var bitOffset = 0
-
-  var consumedBytes: Int {
-    (bitOffset + 7) / 8
-  }
-
-  mutating func read(width: Int) -> Int? {
-    guard bitOffset + width <= data.count * 8 else { return nil }
-    var value = 0
-    for index in 0..<width {
-      let absolute = bitOffset + index
-      let byte = data[data.index(data.startIndex, offsetBy: absolute / 8)]
-      let bitIndex = lowBitFirst ? absolute % 8 : 7 - absolute % 8
-      let bit = Int((byte >> bitIndex) & 1)
-      if lowBitFirst {
-        value |= bit << index
-      } else {
-        value = (value << 1) | bit
-      }
-    }
-    bitOffset += width
-    return value
-  }
-
-  func allUnits(width: Int) -> [Int] {
-    var copy = self
-    var values: [Int] = []
-    while let value = copy.read(width: width) {
-      values.append(value)
-    }
-    return values
-  }
-
-}
-
-private struct BitWriter {
-
-  let lowBitFirst: Bool
-  private var bytes: [UInt8] = []
-  private var bitOffset = 0
-
-  init(lowBitFirst: Bool) {
-    self.lowBitFirst = lowBitFirst
-  }
-
-  mutating func write(_ value: Int, width: Int) {
-    for index in 0..<width {
-      if bitOffset % 8 == 0 {
-        bytes.append(0)
-      }
-      let sourceBit = lowBitFirst ? index : width - index - 1
-      if value & (1 << sourceBit) != 0 {
-        let targetBit = lowBitFirst ? bitOffset % 8 : 7 - bitOffset % 8
-        bytes[bytes.count - 1] |= 1 << targetBit
-      }
-      bitOffset += 1
-    }
-  }
-
-  mutating func finish() -> Data {
-    Data(bytes)
-  }
-
 }
