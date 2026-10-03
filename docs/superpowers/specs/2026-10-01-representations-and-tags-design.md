@@ -101,7 +101,7 @@ extension FormatID {
   [hierarchy](#representation-hierarchy); nesting comes from the hierarchy, not from the JSON. The
   meta-schema enforces the allowed keys through `propertyNames`.
 - **Values** are overlays restricted to **representation keywords**: `type`, `units`, `encoding`,
-  `bitWidth`, `signed`, `tag`.
+  `bitWidth`, `signed`, `tag`, `dateTimeFormat`, `dateTimeAccept`.
 - **Assertions stay in the base schema.** Assertions are type-specific in JSON Schema (`maxLength`
   applies only to strings, `maximum` only to numbers), so a base `maxLength` does not affect an
   integer overlay. Overlays cannot add assertions; that keeps one set of constraints per field.
@@ -254,6 +254,8 @@ public enum DateTimeEncoding: Sendable, Hashable {
   case rfc3339(fractionalDigits: FractionalDigits = .upTo(9))
   case epoch(Units, as: NumberShape = .integer)
   case httpDate
+  case format(DateTimeFormatReference)                 // predefined name, interpolated format, or .pattern("…")
+  indirect case accepting(DateTimeEncoding, [DateTimeFormatReference])   // decode alternatives
   indirect case tagged(TagType, DateTimeEncoding)
 }
 ```

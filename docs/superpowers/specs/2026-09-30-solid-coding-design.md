@@ -21,7 +21,7 @@ so it works with any `Codable`-based API. The representation still comes from th
 | [JSON Patch and JSON Merge Patch](2026-10-01-json-patch-design.md) | `SolidData` RFC 6902/7396; typed `PatchOp`/`UpdateOp`/`MergeOp`, generated patch types, typed patch builder |
 | [Percent-encoding, form encoding, parameter serialization](2026-10-01-url-form-encoding-design.md) | RFC 3986/3987 percent-encoding, WHATWG `x-www-form-urlencoded`, structured forms, RFC 6570 additions, OpenAPI parameter styles |
 | [HTTP support](2026-10-01-http-support-design.md) | Typed fields, Problem Details (RFC 9457/9290), Server-Sent Events, multipart, text charsets |
-| [Tempo wire formats](2026-10-01-tempo-formats-design.md) | RFC 3339, RFC 9557, ISO 8601 durations, HTTP-date, epoch units, CBOR date tags |
+| [Tempo formatting and parsing](2026-10-01-tempo-formats-design.md) | Full date/time formatting library: interpolation-defined formats, UTS #35 patterns, predefined standard formats (ISO 8601, RFC 3339/9557/9110/5322, epoch, durations), many-on-decode/one-on-encode codecs, Foundation `FormatStyle`/`Regex` bridging, localization through Foundation |
 | [Format-targeted representations and tags](2026-10-01-representations-and-tags-design.md) | `representations` overrides (all / text / binary / one format), `FormatID`, typed `Tag`/`TagType`/`TagRegistry`, tag validation and policy |
 | SolidXML (planned, not yet written) | Hand-written XML format with the same event reader/writer and streaming support as JSON, YAML, and CBOR; prerequisite for `application/problem+xml` |
 
@@ -180,6 +180,8 @@ Publish a Solid coding vocabulary and meta-schema, starting from `feature/coding
 | `discriminator` | new | `object` with `oneOf`/`anyOf` | `{ "propertyName": "...", "mapping": { "value": "$ref" } }`, the same shape as OpenAPI; or `{ "tag": { … } }` in tag-capable formats |
 | `representations` | new | any | Overlays of representation keywords keyed by `text`, `binary`, or a `FormatID`. Assertions stay in the base schema. |
 | `tag` | new | any | A registered `TagType` name, or a native tag inside a format-specific overlay. Validated against the tag's content rules. |
+| `dateTimeFormat` | new | string-shaped date/time | Primary format: a predefined name (`rfc3339`, `http-date`, …) or `{ "pattern": "<UTS #35>" }`. Default comes from `format`. |
+| `dateTimeAccept` | new | string-shaped date/time | Additional formats accepted on decode, in order ([Tempo design](2026-10-01-tempo-formats-design.md#many-on-decode-one-on-encode)) |
 
 ### Format values
 
@@ -859,7 +861,7 @@ Phases 1a–1d can run in parallel.
 1. **Independent foundations**
    - a. Schema streaming evaluator; the tree validator becomes replay
      ([schema design](2026-10-01-schema-streaming-evaluation-design.md))
-   - b. Tempo wire formats ([Tempo design](2026-10-01-tempo-formats-design.md))
+   - b. Tempo formatting engine and predefined formats ([Tempo design](2026-10-01-tempo-formats-design.md))
    - c. Value-level JSON Patch and Merge Patch, including Pointer mutation and `jsonEquals`
      ([patch design](2026-10-01-json-patch-design.md))
    - d. Percent-encoding, the `FormFields` tuple layer, ordered URI-template values, and the
