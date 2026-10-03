@@ -236,7 +236,13 @@ programs.
 - **Tagged suffixes.** `[key=value]` tags such as `u-ca=` are parsed and preserved. Unknown tags
   are kept unless marked critical (`!`), in which case they are rejected, as the RFC requires.
   Calendars other than `iso8601` are rejected until Tempo supports them.
-- **Formatting** writes the zone suffix, and the offset unless `.omitOffset` is set.
+- **Formatting** writes the offset and the bracketed zone:
+  `2026-10-02T09:00:00-07:00[America/Los_Angeles]`.
+  - This is the **default format for `ZonedDateTime`**, used by its `description` and by
+    `format: zoned-date-time` in the coding vocabulary.
+  - Keeping the offset makes the value robust against zone database changes, as RFC 9557
+    recommends. Keeping the zone preserves the region for later arithmetic.
+  - `.omitOffset` (zone only) and the plain RFC 3339 form (offset only) are explicit opt-outs.
 
 ### HTTP-date (RFC 9110 §5.6.7)
 
@@ -463,7 +469,7 @@ internationalization data, so wire formats behave the same on every platform.
   remain as thin wrappers over the predefined formats.
 - **`description`** becomes the canonical ISO extended form with `T`, so `description` and parsing
   round-trip. This is a behaviour change, so record it in release notes. `Instant.description` is
-  RFC 3339 in UTC.
+  RFC 3339 in UTC. `ZonedDateTime.description` is the RFC 9557 form with offset and bracketed zone.
 - **Typo fix.** `LocalTime.parseReportingRollver` → `parseReportingRollover`, with a deprecated
   alias.
 - **Errors.** `DateTimeParseError`, `DateTimeFormatError` (incomplete or inconsistent format), and
@@ -499,7 +505,5 @@ internationalization data, so wire formats behave the same on every platform.
 
 ## Open Questions
 
-1. **`ZonedDateTime` default format.** Should it include the offset by default? RFC 9557
-   recommends it for robustness against zone database changes.
-2. **Literal case sensitivity.** Default case-insensitive matching of literals helps `T`/`t` and
+1. **Literal case sensitivity.** Default case-insensitive matching of literals helps `T`/`t` and
    `Z`/`z`, but may surprise custom formats. Keep the default, or make it opt-in per format?
