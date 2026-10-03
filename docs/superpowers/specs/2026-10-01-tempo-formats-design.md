@@ -168,8 +168,8 @@ extension DateTimeTextProvider where Self == FoundationTextProvider {
 
   The tables are built once per locale and cached.
 - **Choosing a provider:** `format.text(.localized(.current))`, or set it per call.
-- **Parsing localized text** matches the longest name first, case-insensitively when the
-  format's `caseInsensitive` option is set.
+- **Parsing localized text** matches the longest name first. Names match case-insensitively by
+  default ([Case sensitivity](#case-sensitivity)).
 
 ### Pattern strings (UTS #35)
 
@@ -257,6 +257,9 @@ programs.
   the most recent past year with the same last two digits, as §5.6.7 requires, relative to a
   `Clock` the caller can inject.
 - **Leniency.** Day-name and date mismatches are accepted on parse, as the spec recommends.
+- **Case.** HTTP-date is case-sensitive (§5.6.7), so `.httpDate` matches literals and names
+  exactly. `.httpDate(.cacheLenient)` matches case-insensitively, as the HTTP caching spec allows
+  cache recipients to do.
 
 ### RFC 5322 date-time
 
@@ -266,7 +269,8 @@ programs.
   - optional day-of-week and seconds;
   - CFWS (comments and folding whitespace);
   - obsolete forms (§4.3): two- and three-digit years, and alphabetic zones (`UT`, `GMT`, US zones,
-    and military zones, which are treated as `-0000` per §4.3).
+    and military zones, which are treated as `-0000` per §4.3);
+  - case-insensitive literals and names, since header field text in RFC 5322 is case-insensitive.
 
 ### Durations (ISO 8601)
 
@@ -299,7 +303,9 @@ let fields = try format.parseFields("…")                       // ParsedFields
 
 - **Matching.** A whole-string parse must consume all input. `parsePrefix` returns the remainder.
 - **Options** (`ParseOptions`, settable on any format):
-  - `caseInsensitive` (default `true` for text fields and literals)
+  - `literalCase`: `.sensitive` (default) or `.insensitive`
+  - `textCase`: `.insensitive` (default) or `.sensitive`, for month, weekday, era, and day-period
+    names
   - `whitespace`: `.exact` or `.collapse`
   - `twoDigitYearPivot`: a year, or relative to a `Clock`
   - `excessPrecision`
@@ -324,6 +330,35 @@ let fields = try format.parseFields("…")                       // ParsedFields
   can produce the subject. `"\(.month)/\(.day)"` cannot parse a `LocalDate` without
   `.defaulting(.year(...))`. The check runs once and throws `DateTimeFormatError.incomplete`. A
   `validate(for: .parsing)` method lets tests run it early.
+
+### Case sensitivity
+
+Literals and names are controlled separately, with different defaults:
+
+| Element | Default | Why |
+| --- | --- | --- |
+| Literals (`T`, `-`, `GMT`, `'at'`) | **Case-sensitive** | A custom format is explicit, so the text the author wrote is what's matched. |
+| Names (months, weekdays, eras, AM/PM) | **Case-insensitive** | People type "oct" and "OCT"; matching names exactly rarely catches a real error. |
+
+- **Per format:** `format.parseOptions(.literalCase(.insensitive))` or
+  `.textCase(.sensitive)`.
+- **Per literal:** `\(literal: "T", caseSensitive: false)`.
+- **Predefined formats follow their standards:**
+
+  | Format | Literals | Names |
+  | --- | --- | --- |
+  | RFC 3339, ISO 8601 family | `T`/`t` and `Z`/`z` accepted (RFC 3339 §5.6 note) | — |
+  | RFC 9557 | as RFC 3339; zone IDs as written (tz database IDs are case-sensitive) | — |
+  | HTTP-date | exact (RFC 9110 §5.6.7); `.cacheLenient` relaxes both | exact |
+  | RFC 5322 | case-insensitive | case-insensitive |
+
+Other libraries:
+- `java.time` is case-sensitive by default with one switch for literals and names, and turns
+  case-insensitivity on in its ISO and RFC 1123 formatters.
+- Go matches literals exactly and names case-insensitively.
+- Python `strptime` and Joda-Time ignore case throughout.
+
+This design follows Go for custom formats and `java.time` for its predefined formats.
 
 ## Many on Decode, One on Encode
 
@@ -505,5 +540,4 @@ internationalization data, so wire formats behave the same on every platform.
 
 ## Open Questions
 
-1. **Literal case sensitivity.** Default case-insensitive matching of literals helps `T`/`t` and
-   `Z`/`z`, but may surprise custom formats. Keep the default, or make it opt-in per format?
+None.
